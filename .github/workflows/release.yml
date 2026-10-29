@@ -1,0 +1,35 @@
+name: release
+
+# Push a tag like v0.1.0 -> tests, build, GitHub release with StatTracker.zip + .sha256
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt pyinstaller
+      - run: python -m pytest -q
+      - name: Tag must match APP_VERSION
+        shell: python
+        run: |
+          import os, sys
+          sys.path.insert(0, "src")
+          import app_info
+          tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          if tag != app_info.APP_VERSION:
+              sys.exit(f"tag {tag} != APP_VERSION {app_info.APP_VERSION}")
+      - run: python compiler/build.py --no-venv
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/StatTracker.zip
+            dist/StatTracker.zip.sha256

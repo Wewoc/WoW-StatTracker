@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StatTracker - compare your WoW characters</title>
+<meta name="description" content="StatTracker reads the game statistics of your World of Warcraft characters, keeps them in a local database and lets you compare them in your browser or in Excel.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23121212'/%3E%3Cpath d='M12 48V30h8v18zm16 0V16h8v32zm16 0V24h8v24z' fill='%23f4c430'/%3E%3C/svg%3E">
+<style>
+  :root { --bg:#121212; --panel:#1b1b1b; --line:#2e2e2e; --fg:#e0e0e0; --dim:#9a9a9a; --gold:#f4c430; --best:#5dd16b; --link:#7ab7ff; }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, "Segoe UI", Arial, sans-serif; }
+  a { color: var(--link); }
+  img { max-width: 100%; height: auto; display: block; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+
+  /* language switch: every text exists twice, CSS shows one */
+  html[lang="en"] .de, html[lang="de"] .en { display: none !important; }
+
+  header { position: sticky; top: 0; z-index: 5; background: rgba(18,18,18,.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+  .nav { display: flex; align-items: center; gap: 18px; min-height: 56px; flex-wrap: wrap; }
+  .brand { color: var(--gold); font-weight: 700; font-size: 1.15rem; text-decoration: none; margin-right: auto; }
+  .nav a.link { color: var(--fg); text-decoration: none; font-size: .92rem; }
+  .nav a.link:hover { color: var(--gold); }
+  .lang { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .lang button { background: transparent; color: var(--dim); border: 0; padding: 4px 10px; font: inherit; font-size: .85rem; cursor: pointer; }
+  .lang button[aria-pressed="true"] { background: var(--gold); color: #1a1a1a; font-weight: 600; }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  .hero { padding: 56px 0 32px; text-align: center; }
+  .hero h1 { margin: 0 0 12px; font-size: clamp(1.9rem, 5vw, 3rem); line-height: 1.15; color: var(--gold); }
+  .hero p.lead { max-width: 680px; margin: 0 auto 24px; color: var(--fg); font-size: 1.1rem; }
+  .btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 36px; }
+  .btn { display: inline-block; padding: 10px 22px; border-radius: 8px; text-decoration: none; font-weight: 600; border: 1px solid var(--gold); }
+  .btn.primary { background: var(--gold); color: #1a1a1a; }
+  .btn.ghost { color: var(--gold); }
+  .btn:hover { filter: brightness(1.12); }
+  .shot { border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 40px rgba(0,0,0,.55); background: var(--panel); }
+  .note { color: var(--dim); font-size: .85rem; margin-top: 10px; }
+
+  section { padding: 44px 0; }
+  h2 { margin: 0 0 22px; font-size: 1.6rem; color: var(--gold); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .card h3 { margin: 0 0 6px; font-size: 1.05rem; }
+  .card p { margin: 0; color: #c9c9c9; font-size: .95rem; }
+
+  ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 0; display: grid; gap: 14px; }
+  ol.steps li { counter-increment: s; position: relative; padding: 14px 18px 14px 62px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 16px; top: 12px; width: 32px; height: 32px; border-radius: 50%; background: var(--gold); color: #1a1a1a; font-weight: 700; display: grid; place-items: center; }
+  code { background: #0d0d0d; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; font-size: .9em; color: var(--best); }
+
+  .shots { display: grid; gap: 28px; }
+  figure { margin: 0; }
+  figcaption { color: var(--dim); font-size: .9rem; margin-top: 8px; }
+  figure.app img { max-width: 902px; width: 100%; margin: 0 auto; }
+  figure.app figcaption { max-width: 902px; margin-left: auto; margin-right: auto; }
+
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 18px; margin-bottom: 10px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { margin: 10px 0 2px; color: #c9c9c9; }
+
+  footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 28px 0 40px; color: var(--dim); font-size: .88rem; text-align: center; }
+  footer p { margin: 4px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top">StatTracker</a>
+    <a class="link" href="#features"><span class="l en">Features</span><span class="l de">Funktionen</span></a>
+    <a class="link" href="#screenshots"><span class="l en">Screenshots</span><span class="l de">Bilder</span></a>
+    <a class="link" href="#start"><span class="l en">Quick start</span><span class="l de">Schnellstart</span></a>
+    <a class="link" href="https://github.com/Wewoc/WoW-StatTracker">GitHub</a>
+    <div class="lang" role="group" aria-label="Language / Sprache">
+      <button type="button" data-set="de" aria-pressed="false">DE</button>
+      <button type="button" data-set="en" aria-pressed="true">EN</button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap hero">
+    <h1><span class="en">Compare your WoW characters,<br>side by side.</span><span class="de">Vergleiche deine WoW-Charaktere,<br>Seite an Seite.</span></h1>
+    <p class="lead">
+      <span class="en">StatTracker reads the game statistics of your World of Warcraft characters through a small addon, keeps every scan in a local database and shows them in a page in your browser or in Excel. Everything stays on your computer.</span>
+      <span class="de">StatTracker liest die Spielstatistiken deiner World-of-Warcraft-Charaktere über ein kleines Addon aus, speichert jeden Scan in einer lokalen Datenbank und zeigt sie auf einer Seite im Browser oder in Excel. Alles bleibt auf deinem Rechner.</span>
+    </p>
+    <div class="btns">
+      <a class="btn primary" href="https://github.com/Wewoc/WoW-StatTracker/releases/latest"><span class="en">Download for Windows</span><span class="de">Für Windows herunterladen</span></a>
+      <a class="btn ghost" href="https://github.com/Wewoc/WoW-StatTracker"><span class="en">View on GitHub</span><span class="de">Auf GitHub ansehen</span></a>
+    </div>
+    <img class="shot en" src="images/stats-en.png" width="1920" height="1140" alt="The StatTracker stats page: a table comparing four characters, the best value of each row highlighted in green.">
+    <img class="shot de" src="images/stats-de.png" width="1920" height="1140" alt="Die StatTracker-Statistikseite: eine Tabelle vergleicht vier Charaktere, der beste Wert jeder Zeile ist grün hervorgehoben.">
+    <p class="note"><span class="en">All screenshots show invented demo data - made-up characters, realms and numbers.</span><span class="de">Alle Bilder zeigen erfundene Demodaten - ausgedachte Charaktere, Realms und Zahlen.</span></p>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <h2><span class="en">What it does</span><span class="de">Was es kann</span></h2>
+      <div class="grid">
+        <div class="card"><h3><span class="en">Compare characters</span><span class="de">Charaktere vergleichen</span></h3>
+          <p><span class="en">Search, filter by category, show only differences, sort by any character. The best value in a row is highlighted. One button selects or deselects all characters.</span><span class="de">Suchen, nach Kategorie filtern, nur Unterschiede zeigen, nach jedem Charakter sortieren. Der beste Wert einer Zeile ist hervorgehoben. Ein Knopf wählt alle Charaktere an oder ab.</span></p></div>
+        <div class="card"><h3><span class="en">Excel export</span><span class="de">Excel-Export</span></h3>
+          <p><span class="en">One sheet per game version with a column per character, units for gold and played time, and the best values marked.</span><span class="de">Ein Blatt pro Spielversion mit einer Spalte je Charakter, Einheiten für Gold und Spielzeit und markierten Bestwerten.</span></p></div>
+        <div class="card"><h3><span class="en">History in a local database</span><span class="de">Historie in lokaler Datenbank</span></h3>
+          <p><span class="en">Every scan is kept, so old numbers are not lost when you scan again. No account, no cloud.</span><span class="de">Jeder Scan bleibt erhalten, alte Zahlen gehen beim nächsten Scan nicht verloren. Kein Konto, keine Cloud.</span></p></div>
+        <div class="card"><h3><span class="en">Per game version</span><span class="de">Pro Spielversion</span></h3>
+          <p><span class="en">Only Retail, the tested version, is enabled by default. Other game versions can be enabled in the settings; each one gets its own database and page.</span><span class="de">Standardmäßig ist nur Retail aktiv, die getestete Version. Weitere Spielversionen lassen sich in den Einstellungen aktivieren; jede hat eigene Datenbank und Seite.</span></p></div>
+        <div class="card"><h3><span class="en">Addon at the click of a button</span><span class="de">Addon per Knopfdruck</span></h3>
+          <p><span class="en">Install, update and uninstall the addon from the app; the interface number is set automatically. A gentle scan is spread over about 10 seconds, so the game does not freeze.</span><span class="de">Addon in der App installieren, aktualisieren und deinstallieren; die Interface-Nummer wird automatisch gesetzt. Der Scan ist auf etwa 10 Sekunden gestreckt, das Spiel friert nicht ein.</span></p></div>
+        <div class="card"><h3><span class="en">German and English</span><span class="de">Deutsch und Englisch</span></h3>
+          <p><span class="en">The window, the stats page and the Excel file follow the language you pick. Portable, with checksum-verified self-updates and automatic rollback.</span><span class="de">Fenster, Statistik-Seite und Excel-Datei folgen der gewählten Sprache. Portabel, mit prüfsummengesicherten Selbst-Updates und automatischem Rollback.</span></p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="screenshots">
+    <div class="wrap">
+      <h2><span class="en">Screenshots</span><span class="de">Bilder</span></h2>
+      <div class="shots">
+        <figure class="app">
+          <img class="shot en" loading="lazy" src="images/app-en.png" width="902" height="552" alt="The StatTracker window: WoW folder, game version, account, buttons to install the addon, read the data and open the stats page, and a log.">
+          <img class="shot de" loading="lazy" src="images/app-de.png" width="902" height="552" alt="Das StatTracker-Fenster: WoW-Ordner, Spielversion, Account, Knöpfe zum Installieren des Addons, Einlesen der Daten und Öffnen der Statistik-Seite sowie ein Protokoll.">
+          <figcaption><span class="en">The program window: pick the WoW folder, game version and account, install the addon, read the data, open the page.</span><span class="de">Das Programmfenster: WoW-Ordner, Spielversion und Account wählen, Addon installieren, Daten einlesen, Seite öffnen.</span></figcaption>
+        </figure>
+        <figure>
+          <img class="shot en" loading="lazy" src="images/compare-en.png" width="1920" height="1140" alt="The stats page with one character deselected and the table sorted by a character.">
+          <img class="shot de" loading="lazy" src="images/compare-de.png" width="1920" height="1140" alt="Die Statistik-Seite mit einem abgewählten Charakter und nach einem Charakter sortierter Tabelle.">
+          <figcaption><span class="en">The stats page with one character deselected and the table sorted by the first character; the best value of each row is green.</span><span class="de">Die Statistik-Seite mit einem abgewählten Charakter, sortiert nach dem ersten Charakter; der beste Wert jeder Zeile ist grün.</span></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="start">
+    <div class="wrap">
+      <h2><span class="en">Quick start</span><span class="de">Schnellstart</span></h2>
+      <ol class="steps">
+        <li><span class="en"><strong>Download</strong> <code>StatTracker.zip</code> from the latest release and unpack it into your own folder, for example <code>Documents\StatTracker</code> (not <code>C:\Program Files</code>). Start <code>StatTracker.exe</code>. No Python needed.</span><span class="de"><strong>Lade</strong> <code>StatTracker.zip</code> aus dem neuesten Release und entpacke sie in einen eigenen Ordner, zum Beispiel <code>Dokumente\StatTracker</code> (nicht <code>C:\Program Files</code>). Starte <code>StatTracker.exe</code>. Python ist nicht nötig.</span></li>
+        <li><span class="en">Choose your <strong>WoW folder</strong> and the account, then <strong>1. Install / update addon</strong>.</span><span class="de">Wähle deinen <strong>WoW-Ordner</strong> und den Account, dann <strong>1. Addon installieren / aktualisieren</strong>.</span></li>
+        <li><span class="en">In game, once per character: <code>/statscan</code>. Wait for "Stat sync done" (about 10 seconds), then <code>/reload</code> or log out.</span><span class="de">Im Spiel, einmal pro Charakter: <code>/statscan</code>. Auf „Stat-Sync fertig“ warten (etwa 10 Sekunden), dann <code>/reload</code> oder ausloggen.</span></li>
+        <li><span class="en"><strong>2. Read data</strong>, then <strong>3. Open stats page</strong> - or <strong>Export to Excel</strong>.</span><span class="de"><strong>2. Daten einlesen</strong>, dann <strong>3. Statistik-Seite öffnen</strong> - oder <strong>Excel exportieren</strong>.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <h2>FAQ</h2>
+      <details><summary><span class="en">Is my data sent anywhere?</span><span class="de">Werden meine Daten irgendwohin gesendet?</span></summary>
+        <p><span class="en">No. Statistics, database and pages stay in the <code>data</code> folder next to the program. The only network request is the optional check for a new release on GitHub, which sends no personal data. You can switch it off in the settings.</span><span class="de">Nein. Statistiken, Datenbank und Seiten bleiben im Ordner <code>data</code> neben dem Programm. Die einzige Netzwerkanfrage ist die optionale Suche nach einem neuen Release auf GitHub, sie sendet keine persönlichen Daten. In den Einstellungen lässt sie sich abschalten.</span></p></details>
+      <details><summary><span class="en">Which game versions work?</span><span class="de">Welche Spielversionen funktionieren?</span></summary>
+        <p><span class="en"><strong>Retail</strong> is tested and works. <strong>BC Anniversary</strong> is tested and does <em>not</em> work: that game version provides no statistics, so there is nothing to read. All other versions are untested.</span><span class="de"><strong>Retail</strong> ist getestet und funktioniert. <strong>BC Anniversary</strong> ist getestet und funktioniert <em>nicht</em>: Diese Spielversion stellt keine Statistiken bereit, es gibt also nichts auszulesen. Alle anderen Versionen sind ungetestet.</span></p></details>
+      <details><summary><span class="en">Windows warns about the file.</span><span class="de">Windows warnt vor der Datei.</span></summary>
+        <p><span class="en">The program is not code-signed, so SmartScreen may show a warning: choose <em>More info</em>, then <em>Run anyway</em>. The source code is open, and every update is verified against a published checksum.</span><span class="de">Das Programm ist nicht signiert, daher zeigt SmartScreen eventuell eine Warnung: <em>Weitere Informationen</em>, dann <em>Trotzdem ausführen</em>. Der Quellcode ist offen, und jedes Update wird gegen eine veröffentlichte Prüfsumme geprüft.</span></p></details>
+      <details><summary><span class="en">How do I uninstall it?</span><span class="de">Wie deinstalliere ich es?</span></summary>
+        <p><span class="en">Use <em>Uninstall addon</em> in the app (it asks before touching the data the addon saved inside WoW), then delete the program folder.</span><span class="de">Nutze <em>Addon deinstallieren</em> in der App (sie fragt, bevor sie die vom Addon in WoW gespeicherten Daten anfasst) und lösche danach den Programmordner.</span></p></details>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>&copy; 2026 Wewoc &middot; <span class="en">GNU General Public License v3.0 or later</span><span class="de">GNU General Public License v3.0 oder neuer</span> &middot; <a href="https://github.com/Wewoc/WoW-StatTracker">GitHub</a></p>
+    <p><span class="en">Provided "as is", without warranty of any kind. Use at your own risk.</span><span class="de">Bereitgestellt „wie besehen“, ohne Gewährleistung jeglicher Art. Nutzung auf eigenes Risiko.</span></p>
+    <p><span class="en">A fan tool. World of Warcraft is a trademark of Blizzard Entertainment, which is not affiliated with this project.</span><span class="de">Ein Fan-Werkzeug. World of Warcraft ist eine Marke von Blizzard Entertainment, die mit diesem Projekt nicht verbunden ist.</span></p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var TITLE = { en: "StatTracker - compare your WoW characters", de: "StatTracker - vergleiche deine WoW-Charaktere" };
+  var root = document.documentElement;
+  function set(lang) {
+    if (lang !== "de" && lang !== "en") lang = "en";
+    root.lang = lang;
+    document.title = TITLE[lang];
+    document.querySelectorAll(".lang button").forEach(function (b) {
+      b.setAttribute("aria-pressed", b.dataset.set === lang ? "true" : "false");
+    });
+    try { localStorage.setItem("lang", lang); } catch (e) { /* storage blocked: the choice just is not remembered */ }
+  }
+  var stored = null;
+  try { stored = localStorage.getItem("lang"); } catch (e) { /* ignore */ }
+  var query = new URLSearchParams(location.search).get("lang");
+  set(query || stored || ((navigator.language || "en").slice(0, 2) === "de" ? "de" : "en"));
+  document.querySelectorAll(".lang button").forEach(function (b) {
+    b.addEventListener("click", function () { set(b.dataset.set); });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+.venv-build/
+
+# Instance data (portable mode: lives in data/, never checked in)
+data/
+config.json
+gui_config.json
+wow_stats*.db
+stats*.html
+*.xlsx
+crash.log
+
+# Update leftovers next to a built exe
+_update_pending/
+_update_backup/
+_update_helper.lock
+_update_success.flag
+
+# Old release archives (releases belong on GitHub)
+*.zip

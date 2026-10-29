@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StatTracker</title>
+<style>
+  :root { --bg:#121212; --panel:#1b1b1b; --line:#2e2e2e; --fg:#e0e0e0; --dim:#8a8a8a; --gold:#f4c430; --best:#5dd16b; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, Arial, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 16px; }
+  h1 { color: var(--gold); margin: 0 0 4px; font-size: 1.4rem; }
+  .sub { color: var(--dim); font-size: .85rem; margin-bottom: 12px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; background: var(--panel);
+         border: 1px solid var(--line); padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; }
+  input[type=search], select { background: #101010; color: var(--fg); border: 1px solid var(--line);
+         padding: 6px 8px; border-radius: 4px; font-size: .9rem; }
+  input[type=search] { min-width: 220px; }
+  button { background: #101010; color: var(--fg); border: 1px solid var(--line); padding: 4px 10px;
+           border-radius: 4px; font-size: .85rem; cursor: pointer; }
+  button:hover { border-color: var(--gold); color: var(--gold); }
+  label { font-size: .85rem; cursor: pointer; white-space: nowrap; }
+  .chars label { background:#101010; border:1px solid var(--line); padding:3px 8px; border-radius:12px; }
+  .count { color: var(--dim); font-size: .85rem; margin: 6px 2px; }
+  .wrap { overflow: auto; max-height: calc(100vh - 230px); border: 1px solid var(--line); border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border-bottom: 1px solid var(--line); padding: 6px 10px; text-align: left; font-size: .88rem; }
+  th { position: sticky; top: 0; background: #1e1e1e; color: var(--gold); z-index: 1; cursor: pointer; user-select: none; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.cat { color: var(--dim); font-size: .8rem; }
+  td.best { color: var(--best); font-weight: 700; }
+  tr:hover td { background: #1a1a1a; }
+  .small { font-size: .72rem; color: var(--dim); font-weight: 400; display: block; }
+  .empty { padding: 24px; color: var(--dim); }
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<div class="sub" id="gen"></div>
+
+<div class="bar">
+  <input type="search" id="q">
+  <select id="cat"></select>
+  <label><input type="checkbox" id="diff"> <span id="lblDiff"></span></label>
+  <label><input type="checkbox" id="hideEmpty" checked> <span id="lblEmpty"></span></label>
+</div>
+<div class="bar chars" id="chars"></div>
+<div class="count" id="count"></div>
+<div class="wrap"><table id="t"><thead></thead><tbody></tbody></table></div>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+const $ = id => document.getElementById(id);
+const EMPTY = "--";
+let sortChar = null;   // char key, or null = category/name
+let sortDir = -1;      // -1 = descending
+
+// UI texts come from the generator (src/i18n.py, html_* keys); {name} marks a value to fill in.
+const UI = (DATA && DATA.ui) || {};
+const fmt = (s, vals) => (s || "").replace(/\{(\w+)\}/g, (_, k) => (k in vals ? vals[k] : ""));
+
+function isEmpty(cell) { return !cell || cell[0] === EMPTY || cell[0] === ""; }
+function selected() { return DATA.chars.filter(c => $("chk_" + c.key).checked); }
+
+// One button: "Select all" while at least one character is unchecked, "Deselect all" when all are checked.
+function syncToggle() {
+  const all = DATA.chars.every(c => $("chk_" + c.key).checked);
+  $("toggleAll").textContent = all ? (UI.deselect_all || "") : (UI.select_all || "");
+}
+function toggleAll() {
+  const all = DATA.chars.every(c => $("chk_" + c.key).checked);
+  DATA.chars.forEach(c => { $("chk_" + c.key).checked = !all; });
+  render();
+}
+
+function init() {
+  document.documentElement.lang = (DATA && DATA.lang) || "en";
+  document.title = UI.title || "StatTracker";
+  $("title").textContent = UI.title || "StatTracker";
+  if (!DATA || !DATA.chars.length) {
+    document.body.insertAdjacentHTML("beforeend", '<div class="empty"></div>');
+    document.querySelector(".empty").textContent = UI.no_data || "";
+    return;
+  }
+  $("gen").textContent = fmt(UI.generated, {generated: DATA.generated, chars: DATA.chars.length, stats: DATA.stats.length});
+  $("q").placeholder = UI.search || "";
+  $("lblDiff").textContent = UI.only_diff || "";
+  $("lblEmpty").textContent = UI.hide_empty || "";
+
+  const cats = [...new Set(DATA.stats.map(s => s.cat))].sort();
+  const sel = $("cat");
+  sel.add(new Option(UI.all_cats || "", ""));
+  cats.forEach(c => sel.add(new Option(c, c)));
+
+  const box = $("chars");
+  const tg = document.createElement("button");
+  tg.type = "button"; tg.id = "toggleAll";
+  tg.addEventListener("click", toggleAll);
+  box.append(tg);
+  DATA.chars.forEach(c => {
+    const l = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = true; cb.id = "chk_" + c.key;
+    cb.addEventListener("change", render);
+    l.append(cb, " " + c.key);
+    box.append(l);
+  });
+
+  ["q", "cat", "diff", "hideEmpty"].forEach(id => $(id).addEventListener("input", render));
+  render();
+}
+
+function render() {
+  syncToggle();
+  const chars = selected();
+  const q = $("q").value.trim().toLowerCase();
+  const cat = $("cat").value;
+  const onlyDiff = $("diff").checked;
+  const hideEmpty = $("hideEmpty").checked;
+
+  // header
+  const head = $("t").tHead;
+  head.textContent = "";
+  const hr = head.insertRow();
+  const mk = (txt, cls, key) => {
+    const th = document.createElement("th");
+    th.textContent = txt; if (cls) th.className = cls;
+    th.addEventListener("click", () => {
+      if (sortChar === key) sortDir = -sortDir; else { sortChar = key; sortDir = -1; }
+      render();
+    });
+    return th;
+  };
+  hr.append(mk(UI.col_cat || "", "", null), mk(UI.col_stat || "", "", null));
+  chars.forEach(c => {
+    const th = mk(c.key, "num", c.key);
+    const s = document.createElement("span");
+    s.className = "small";
+    s.textContent = [c.class, c.level, c.scanned_at].filter(Boolean).join(" · ");
+    th.append(s);
+    hr.append(th);
+  });
+
+  // filter rows
+  let rows = DATA.stats.filter(s => {
+    if (cat && s.cat !== cat) return false;
+    if (q && !(s.name.toLowerCase().includes(q) || s.cat.toLowerCase().includes(q))) return false;
+    const cells = chars.map(c => s.v[c.key]);
+    if (hideEmpty && cells.every(isEmpty)) return false;
+    if (onlyDiff && chars.length > 1) {
+      const set = new Set(cells.map(x => x ? x[0] : EMPTY));
+      if (set.size < 2) return false;
+    }
+    return true;
+  });
+
+  if (sortChar) {
+    const val = s => { const c = s.v[sortChar]; return c && c[1] !== null ? c[1] : -Infinity; };
+    rows = rows.slice().sort((a, b) => (val(a) - val(b)) * sortDir || a.name.localeCompare(b.name));
+  }
+
+  const body = $("t").tBodies[0];
+  body.textContent = "";
+  const frag = document.createDocumentFragment();
+  rows.forEach(s => {
+    const tr = document.createElement("tr");
+    const tc = document.createElement("td"); tc.className = "cat"; tc.textContent = s.cat;
+    const tn = document.createElement("td"); tn.textContent = s.name;
+    tr.append(tc, tn);
+
+    const cells = chars.map(c => s.v[c.key]);
+    let best = null;
+    const nums = cells.map(x => x ? x[1] : null);
+    if (chars.length > 1 && nums.every(n => n !== null) && new Set(nums).size > 1) best = Math.max(...nums);
+
+    cells.forEach(x => {
+      const td = document.createElement("td");
+      td.className = "num";
+      td.textContent = x ? x[0] : "–";
+      if (best !== null && x && x[1] === best) td.classList.add("best");
+      tr.append(td);
+    });
+    frag.append(tr);
+  });
+  body.append(frag);
+  $("count").textContent = fmt(UI.count, {shown: rows.length, total: DATA.stats.length});
+}
+
+init();
+</script>
+</body>
+</html>
