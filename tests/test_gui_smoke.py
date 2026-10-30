@@ -100,6 +100,34 @@ def test_status_shows_a_wrong_interface_number_until_reinstalled(app, env):
     assert "Addon: version" in app.var_status.get()
 
 
+def _newer_release_with_dialog(app, monkeypatch, choice):
+    """Stubs the update dialog and the download; returns the lists of dialogs shown and updates started."""
+    shown, started = [], []
+    monkeypatch.setattr(gui_app.gui_dialogs, "ask_update", lambda *a, **k: shown.append(a) or choice)
+    monkeypatch.setattr(app, "_start_update", lambda data, tag: started.append(tag))
+    return {"tag_name": "v9.9.9", "name": "StatTracker 9.9.9"}, shown, started
+
+
+def test_overlapping_update_checks_open_only_one_dialog(app, monkeypatch):
+    """Start check + manual check both queue a release; the second must not open a second dialog or download."""
+    data, shown, started = _newer_release_with_dialog(app, monkeypatch, "update")
+    app._update_open = False
+    try:
+        app._on_release(data, False)
+        app._on_release(data, True)
+        assert len(shown) == 1 and started == ["v9.9.9"]
+    finally:
+        app._update_open = False
+
+
+def test_update_dialog_can_be_reopened_after_later(app, monkeypatch):
+    data, shown, started = _newer_release_with_dialog(app, monkeypatch, None)
+    app._update_open = False
+    app._on_release(data, True)
+    app._on_release(data, True)
+    assert len(shown) == 2 and not started
+
+
 def test_update_check_is_passive_while_repo_is_unconfirmed(app, monkeypatch):
     monkeypatch.setattr(app_info, "REPO_CONFIRMED", False)
     monkeypatch.setattr(gui_app.updater, "fetch_latest_release",
