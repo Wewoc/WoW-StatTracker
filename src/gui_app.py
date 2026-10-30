@@ -82,6 +82,7 @@ class App(tk.Tk):
 
         self._log_lines = []          # [(line, tag)] - replayed after a language switch
         self._queue = queue.Queue()   # results from worker threads (update check / download)
+        self._update_open = False     # update dialog open or update under way: no second dialog/download
 
         self._build()
         self.refresh_variants(keep=self.var_variant.get())
@@ -450,6 +451,7 @@ class App(tk.Tk):
                     if item[2]:  # silent at start (offline use is normal), loud when asked for
                         messagebox.showerror(t("dlg_title"), t("update_check_failed", error=item[1]))
                 elif kind == "update_failed":
+                    self._update_open = False
                     self.write(t("update_failed", error=item[1]), "err")
                 elif kind == "apply":
                     self._apply_update(item[1])
@@ -463,10 +465,17 @@ class App(tk.Tk):
             if manual:
                 messagebox.showinfo(t("dlg_title"), t("update_none", version=app_info.APP_VERSION))
             return
+        if self._update_open:   # start check and manual check can both queue a release
+            return
         can_apply = paths.is_frozen()
         if not can_apply:
             self.write(t("update_not_frozen", url=app_info.RELEASES_URL))
-        choice = gui_dialogs.ask_update(self, str(data.get("name") or tag), app_info.APP_VERSION, can_apply)
+        choice = None
+        self._update_open = True
+        try:
+            choice = gui_dialogs.ask_update(self, str(data.get("name") or tag), app_info.APP_VERSION, can_apply)
+        finally:
+            self._update_open = choice == "update"   # stays set until the update fails or the app restarts
         if choice == "update":
             self._start_update(data, tag)
         elif choice == "github":
@@ -495,6 +504,7 @@ class App(tk.Tk):
         try:
             updater.launch_helper(paths.base_dir(), payload, [os.getpid()], restart=True)
         except (RuntimeError, OSError) as exc:
+            self._update_open = False
             self.write(t("update_failed", error=exc), "err")
             return
         self.after(300, self.destroy)  # the helper waits for this process to exit
