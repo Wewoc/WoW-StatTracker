@@ -268,6 +268,8 @@ class App(tk.Tk):
             parts.append(t("status_addon_ok", version=status[1]))
         elif status[0] == "outdated":
             parts.append(t("status_addon_outdated", installed=status[1], bundled=status[2]))
+        elif status[0] == "interface":
+            parts.append(t("status_addon_interface", installed=status[1], expected=status[2]))
         else:
             parts.append(t("status_addon_unknown"))
         html = wow_install.out_files(variant)[1]

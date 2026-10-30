@@ -158,6 +158,23 @@ def toc_version(toc_path):
     return m.group(1) if m else None
 
 
+def toc_interface(toc_path):
+    """The numbers of the '## Interface:' line of a .toc file (it may list several), or None."""
+    try:
+        text = Path(toc_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    m = re.search(r"(?m)^## Interface:[ \t]*([\d, \t]+)", text)
+    numbers = [int(n) for n in re.findall(r"\d+", m.group(1))] if m else []
+    return numbers or None
+
+
+def expected_interface(root, variant):
+    """The interface number the installed copy should carry (from .build.info), or None if unknown."""
+    product = VARIANT_PRODUCT.get(variant)
+    return interface_number(parse_build_info(root).get(product)) if product else None
+
+
 # ------------------------------------------------------------------ install
 @dataclass
 class InstallResult:
@@ -197,8 +214,10 @@ def install_addon(root, variant, addon_src=None):
 
 
 def addon_status(root, variant, addon_src=None):
-    """('missing',) | ('ok', ver) | ('outdated', installed, bundled) | ('unknown',).
-    'unknown' = installed but a version cannot be compared."""
+    """('missing',) | ('ok', ver) | ('outdated', installed, bundled) | ('interface', installed, expected)
+    | ('unknown',). 'unknown' = installed but a version cannot be compared. 'interface' = same version,
+    but the installed .toc does not carry the interface number of the game build (.build.info), so WoW
+    shows the addon as out of date; only reported when both numbers are known."""
     dest = addon_dir(root, variant)
     if not (dest / "StatTracker.toc").is_file():
         return ("missing",)
@@ -208,6 +227,10 @@ def addon_status(root, variant, addon_src=None):
         return ("unknown",)
     if installed != bundled:
         return ("outdated", installed, bundled)
+    expected = expected_interface(root, variant)
+    carried = toc_interface(dest / "StatTracker.toc")
+    if expected is not None and carried and expected not in carried:
+        return ("interface", carried[0], expected)
     return ("ok", installed)
 
 

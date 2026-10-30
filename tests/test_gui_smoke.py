@@ -83,10 +83,21 @@ def test_install_then_uninstall_through_the_window(app, env, monkeypatch):
     monkeypatch.setattr(gui_app.messagebox, "askyesno", lambda *a, **k: True)
     app.on_install()
     assert wow_install.addon_dir(env.wow, "_retail_").is_dir()
-    assert "Addon: version 0.1.0" in app.var_status.get()
+    assert f"Addon: version {app_info.APP_VERSION}" in app.var_status.get()
     app.on_uninstall()
     assert not wow_install.addon_dir(env.wow, "_retail_").exists()
     assert "Addon: not installed" in app.var_status.get()
+
+
+def test_status_shows_a_wrong_interface_number_until_reinstalled(app, env):
+    app.on_install()
+    toc = wow_install.addon_dir(env.wow, "_retail_") / "StatTracker.toc"
+    toc.write_text(toc.read_text(encoding="utf-8").replace("## Interface: 120105", "## Interface: 120000"),
+                   encoding="utf-8")
+    app.update_status()
+    assert "interface number does not match the game (installed 120000, game 120105)" in app.var_status.get()
+    app.on_install()
+    assert "Addon: version" in app.var_status.get()
 
 
 def test_update_check_is_passive_while_repo_is_unconfirmed(app, monkeypatch):

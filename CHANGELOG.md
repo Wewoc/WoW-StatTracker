@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Fixed: the addon status now also checks the interface number. After a WoW patch the game shows the addon as out of date while the window still said "ok"; it now reports "interface number does not match the game", and *1. Install / update addon* sets the new number
+- Changed: the addon itself is unchanged, but its version follows the program version, so after updating from 0.1.0 the window asks once to run *1. Install / update addon*
+
 ## 0.1.0
 
 First repository release (continues the earlier 0.0.x packages).

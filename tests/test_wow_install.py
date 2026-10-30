@@ -3,6 +3,7 @@
 
 import pytest
 
+import app_info
 import wow_install
 
 
@@ -59,9 +60,71 @@ def test_addon_status(instance, fake_wow):
     res = wow_install.install_addon(fake_wow, "_retail_")
     assert wow_install.addon_status(fake_wow, "_retail_")[0] == "ok"
     toc = res.dest / "StatTracker.toc"
-    toc.write_text(toc.read_text(encoding="utf-8").replace("## Version: 0.1.0", "## Version: 0.0.1"), encoding="utf-8")
+    toc.write_text(toc.read_text(encoding="utf-8").replace(
+        f"## Version: {app_info.APP_VERSION}", "## Version: 0.0.1"), encoding="utf-8")
     status = wow_install.addon_status(fake_wow, "_retail_")
     assert status[0] == "outdated" and status[1] == "0.0.1"
+
+
+def _set_toc_interface(toc, value):
+    text = toc.read_text(encoding="utf-8")
+    toc.write_text(text.replace("## Interface: 120105", f"## Interface: {value}"), encoding="utf-8")
+
+
+def test_toc_interface_reads_one_or_several_numbers(tmp_path):
+    toc = tmp_path / "a.toc"
+    toc.write_text("## Interface: 120105\n## Title: x\n", encoding="utf-8")
+    assert wow_install.toc_interface(toc) == [120105]
+    toc.write_text("## Interface: 110207, 120105\n## Title: x\n", encoding="utf-8")
+    assert wow_install.toc_interface(toc) == [110207, 120105]
+    toc.write_text("## Title: x\n", encoding="utf-8")
+    assert wow_install.toc_interface(toc) is None
+    assert wow_install.toc_interface(tmp_path / "missing.toc") is None
+
+
+def test_addon_status_flags_a_wrong_interface_number(instance, fake_wow):
+    res = wow_install.install_addon(fake_wow, "_retail_")
+    _set_toc_interface(res.dest / "StatTracker.toc", 120000)
+    assert wow_install.addon_status(fake_wow, "_retail_") == ("interface", 120000, 120105)
+    # reinstalling patches the number again
+    wow_install.install_addon(fake_wow, "_retail_")
+    assert wow_install.addon_status(fake_wow, "_retail_")[0] == "ok"
+
+
+def test_addon_status_interface_follows_build_info(instance, fake_wow):
+    wow_install.install_addon(fake_wow, "_retail_")
+    (fake_wow / ".build.info").write_text(
+        "Branch!STRING:0|Active!DEC:1|Product!STRING:0|Version!STRING:0\n"
+        "eu|1|wow|12.2.0.70000\n", encoding="utf-8")   # a game patch happened
+    assert wow_install.addon_status(fake_wow, "_retail_") == ("interface", 120105, 120200)
+
+
+def test_addon_status_accepts_a_list_containing_the_expected_number(instance, fake_wow):
+    res = wow_install.install_addon(fake_wow, "_retail_")
+    _set_toc_interface(res.dest / "StatTracker.toc", "110207, 120105")
+    assert wow_install.addon_status(fake_wow, "_retail_")[0] == "ok"
+    toc = res.dest / "StatTracker.toc"
+    toc.write_text(toc.read_text(encoding="utf-8").replace("110207, 120105", "110207, 120000"), encoding="utf-8")
+    assert wow_install.addon_status(fake_wow, "_retail_") == ("interface", 110207, 120105)
+
+
+def test_addon_status_skips_interface_check_when_build_is_unknown(instance, fake_wow):
+    res = wow_install.install_addon(fake_wow, "_retail_")
+    _set_toc_interface(res.dest / "StatTracker.toc", 120000)
+    (fake_wow / ".build.info").unlink()
+    assert wow_install.addon_status(fake_wow, "_retail_")[0] == "ok"
+    (fake_wow / ".build.info").write_text(            # file present, but no row for this product
+        "Branch!STRING:0|Active!DEC:1|Product!STRING:0|Version!STRING:0\n"
+        "eu|1|wowf|1.600.1.1234\n", encoding="utf-8")
+    assert wow_install.addon_status(fake_wow, "_retail_")[0] == "ok"
+
+
+def test_addon_status_outdated_wins_over_interface(instance, fake_wow):
+    res = wow_install.install_addon(fake_wow, "_retail_")
+    toc = res.dest / "StatTracker.toc"
+    text = toc.read_text(encoding="utf-8").replace(f"## Version: {app_info.APP_VERSION}", "## Version: 0.0.1")
+    toc.write_text(text.replace("## Interface: 120105", "## Interface: 120000"), encoding="utf-8")
+    assert wow_install.addon_status(fake_wow, "_retail_")[0] == "outdated"
 
 
 def test_uninstall_removes_addon_but_keeps_everything_else(instance, fake_wow):
