@@ -67,6 +67,10 @@ _STRINGS = {
         "de": "Addon: veraltet (installiert {installed}, mitgeliefert {bundled}) - Schritt 1 ausführen",
         "en": "Addon: outdated (installed {installed}, bundled {bundled}) - run step 1",
     },
+    "status_addon_interface": {
+        "de": "Addon: Interface-Nummer passt nicht zum Spiel (installiert {installed}, Spiel {expected}) - Schritt 1 ausführen",
+        "en": "Addon: interface number does not match the game (installed {installed}, game {expected}) - run step 1",
+    },
     "status_addon_unknown": {"de": "Addon: installiert", "en": "Addon: installed"},
 
     # ------------------------------------------------------- messages / dialogs

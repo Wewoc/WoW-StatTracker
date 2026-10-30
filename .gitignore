@@ -29,3 +29,7 @@ _update_success.flag
 
 # Old release archives (releases belong on GitHub)
 *.zip
+
+# Local working instructions for the coding assistant (not part of the project)
+CLAUDE.md
+ROADMAP.md
