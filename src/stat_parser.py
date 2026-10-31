@@ -338,6 +338,24 @@ def init_db(path):
     return conn
 
 
+# The contract between the addon and this parser is StatTrackerDB.version (header of
+# StatTracker.lua). The addon writes it for the whole file, so it is a ceiling, not a mark on
+# a single scan: a file with a higher number than DATA_VERSION is refused, a missing number is
+# accepted (hand-made files, older tests). Raising it goes with the change of the fields.
+DATA_VERSION = 2
+
+
+def check_data_version(db, path):
+    """Exits with a message if the data version of the file is higher than this program
+    knows or is not a whole number; a missing one passes. main() calls it before the database
+    is opened, so a refused file leaves no copy and no change behind."""
+    found = db.get("version") if isinstance(db, dict) else None
+    if found is None:
+        return
+    if isinstance(found, bool) or not isinstance(found, int) or found > DATA_VERSION:
+        sys.exit(t("parse_err_data_too_new", path=path, found=found, known=DATA_VERSION))
+
+
 def import_data(conn, db):
     meta = db.get("meta")
     chars = db.get("chars")
@@ -491,6 +509,7 @@ def main(argv=None):
         sys.exit(t("parse_err_read", path=src, error=e))
     if "StatTrackerDB" not in parsed:
         sys.exit(t("parse_err_no_db_var"))
+    check_data_version(parsed["StatTrackerDB"], src)
 
     conn = init_db(a.db)
     try:

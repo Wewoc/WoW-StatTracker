@@ -288,6 +288,12 @@ _STRINGS = {
         "en": "ERROR: the database {path} has schema {found}, this StatTracker only knows up to schema {known}. "
               "Update StatTracker; the database was not changed.",
     },
+    "parse_err_data_too_new": {
+        "de": "FEHLER: Die Datei {path} hat das Datenformat {found!r}, dieses StatTracker versteht nur Datenformate "
+              "bis {known}. StatTracker aktualisieren; es wurde nichts gelesen und nichts geändert.",
+        "en": "ERROR: the file {path} has data format {found!r}, this StatTracker only understands data formats "
+              "up to {known}. Update StatTracker; nothing was read and nothing was changed.",
+    },
     "parse_err_backup_failed": {
         "de": "FEHLER: Das Backup der Datenbank ist fehlgeschlagen, es wurde nichts geändert. "
               "Freien Platz und Schreibrechte im Ordner der Datenbank prüfen. {error}",
