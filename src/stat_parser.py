@@ -226,17 +226,25 @@ def fmt_duration(sec):
 
 # ------------------------------------------------------------------------ DB
 # Schema version of the statistics database, kept in SQLite's PRAGMA user_version.
-# 0 = no number written yet (databases of v0.1.x), 1 = the layout below. Changing the layout
-# means a new entry in MIGRATIONS and a higher SCHEMA_VERSION; an old step is never edited.
+# 0 = no number written yet (databases of v0.1.x), 1 = the same layout, 2 = the layout below
+# (scans gained class_file, race, race_file). Changing the layout means a new entry in
+# MIGRATIONS and a higher SCHEMA_VERSION; an old step is never edited.
 # A database newer than SCHEMA_VERSION is refused untouched (fail-closed).
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _migrate_0_to_1(conn):
     """Schema 0 has the same layout as schema 1: only the number is set (by init_db)."""
 
 
-MIGRATIONS = {1: _migrate_0_to_1}      # target version -> step from the version before
+def _migrate_1_to_2(conn):
+    """Schema 2 adds the stable class name and the race to every scan. Scans taken before stay
+    NULL: they are never filled in from a later scan, because a race can change."""
+    for column in ("class_file", "race", "race_file"):
+        conn.execute(f"ALTER TABLE scans ADD COLUMN {column} TEXT")
+
+
+MIGRATIONS = {1: _migrate_0_to_1, 2: _migrate_1_to_2}      # target version -> step from the version before
 
 SCHEMA_SQL = """
         CREATE TABLE IF NOT EXISTS scans (
@@ -246,6 +254,9 @@ SCHEMA_SQL = """
             class      TEXT,
             level      INTEGER,
             faction    TEXT,
+            class_file TEXT,
+            race       TEXT,
+            race_file  TEXT,
             UNIQUE (char_key, scanned_at)
         );
         CREATE TABLE IF NOT EXISTS stat_defs (
@@ -338,6 +349,30 @@ def init_db(path):
     return conn
 
 
+# The contract between the addon and this parser is StatTrackerDB.version (header of
+# StatTracker.lua). The addon writes it for the whole file, so it is a ceiling, not a mark on
+# a single scan: a file with a higher number than DATA_VERSION is refused, a missing number is
+# accepted (hand-made files, older tests). Raising it goes with the change of the fields.
+DATA_VERSION = 3
+
+
+def check_data_version(db, path):
+    """Exits with a message if the data version of the file is higher than this program
+    knows or is not a whole number; a missing one passes. main() calls it before the database
+    is opened, so a refused file leaves no copy and no change behind."""
+    found = db.get("version") if isinstance(db, dict) else None
+    if found is None:
+        return
+    if isinstance(found, bool) or not isinstance(found, int) or found > DATA_VERSION:
+        sys.exit(t("parse_err_data_too_new", path=path, found=found, known=DATA_VERSION))
+
+
+def _name_or_none(value):
+    """Display text from the addon (class file, race): a non-empty string, otherwise NULL.
+    A scan from an older addon has none; a wrong type is not worth stopping the import for."""
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def import_data(conn, db):
     meta = db.get("meta")
     chars = db.get("chars")
@@ -360,8 +395,10 @@ def import_data(conn, db):
         if not isinstance(stats, dict) or not stats or "scannedAt" not in c:
             sys.exit(t("parse_err_incomplete_char", key=key))
         cur = conn.execute(
-            "INSERT OR IGNORE INTO scans(char_key,scanned_at,class,level,faction) VALUES(?,?,?,?,?)",
-            (key, c["scannedAt"], c.get("class"), c.get("level"), c.get("faction")))
+            "INSERT OR IGNORE INTO scans(char_key,scanned_at,class,level,faction,class_file,race,race_file) "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            (key, c["scannedAt"], c.get("class"), c.get("level"), c.get("faction"),
+             _name_or_none(c.get("classFile")), _name_or_none(c.get("race")), _name_or_none(c.get("raceFile"))))
         if cur.rowcount == 0:
             skipped += 1
             continue
@@ -417,12 +454,14 @@ def derived_payload(stats, chars, lang):
 def build_payload(conn, lang=None):
     lang = lang or i18n.get_language()
     scans = conn.execute("""
-        SELECT s.scan_id, s.char_key, s.scanned_at, s.class, s.level, s.faction
+        SELECT s.scan_id, s.char_key, s.scanned_at, s.class, s.level, s.faction,
+               s.class_file, s.race, s.race_file
         FROM scans s
         WHERE s.scan_id = (SELECT scan_id FROM scans WHERE char_key = s.char_key
                            ORDER BY scanned_at DESC, scan_id DESC LIMIT 1)
         ORDER BY s.char_key""").fetchall()
-    chars = [{"key": r[1], "scanned_at": r[2], "class": r[3], "level": r[4], "faction": r[5]}
+    chars = [{"key": r[1], "scanned_at": r[2], "class": r[3], "level": r[4], "faction": r[5],
+              "class_file": r[6], "race": r[7], "race_file": r[8]}
              for r in scans]
     scan_to_char = {r[0]: r[1] for r in scans}
 
@@ -491,6 +530,7 @@ def main(argv=None):
         sys.exit(t("parse_err_read", path=src, error=e))
     if "StatTrackerDB" not in parsed:
         sys.exit(t("parse_err_no_db_var"))
+    check_data_version(parsed["StatTrackerDB"], src)
 
     conn = init_db(a.db)
     try:

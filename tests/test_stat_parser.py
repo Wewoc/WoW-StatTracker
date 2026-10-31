@@ -164,3 +164,73 @@ def test_refresh_numbers_corrects_old_rows(sv, tmp_path):
     assert stat_parser.refresh_numbers(conn) == 1
     assert conn.execute("SELECT value_num FROM stat_values WHERE stat_id=3").fetchone()[0] == 0.2
     conn.close()
+
+
+# ------------------------------------------------- class file, race, race file (data version 3)
+RACE_FIELDS = '["classFile"] = "MAGE", ["race"] = "Human", ["raceFile"] = "Human",'
+
+
+def sample(fields="", scanned_at="2026-10-01 10:00:00", version=3):
+    """SAMPLE with other scan time, data version and extra fields on the character."""
+    text = SAMPLE.replace('["version"] = 2', f'["version"] = {version}')
+    text = text.replace('"2026-10-01 10:00:00"', f'"{scanned_at}"')
+    return text.replace('["faction"] = "Alliance",', f'["faction"] = "Alliance", {fields}')
+
+
+def race_rows(tmp_path):
+    conn = sqlite3.connect(tmp_path / "x.db")
+    try:
+        return conn.execute("SELECT scanned_at, class_file, race, race_file FROM scans ORDER BY scanned_at").fetchall()
+    finally:
+        conn.close()
+
+
+def test_class_file_race_and_race_file_are_stored_and_reach_the_page(sv, tmp_path):
+    sv.write_text(sample(RACE_FIELDS), encoding="utf-8")
+    run(sv, tmp_path)
+    assert race_rows(tmp_path) == [("2026-10-01 10:00:00", "MAGE", "Human", "Human")]
+    char = _payload_from_html(tmp_path / "out" / "x.html")["chars"][0]
+    assert (char["class"], char["class_file"], char["race"], char["race_file"]) == ("Mage", "MAGE", "Human", "Human")
+
+
+def test_a_scan_from_an_older_addon_has_no_race(sv, tmp_path):
+    run(sv, tmp_path)                                         # SAMPLE: version 2, no new fields
+    assert race_rows(tmp_path) == [("2026-10-01 10:00:00", None, None, None)]
+    char = _payload_from_html(tmp_path / "out" / "x.html")["chars"][0]
+    assert (char["class_file"], char["race"], char["race_file"]) == (None, None, None)
+
+
+def test_a_known_scan_is_never_filled_in_later(sv, tmp_path, capsys):
+    run(sv, tmp_path)                                         # the scan is stored without a race
+    capsys.readouterr()
+    sv.write_text(sample(RACE_FIELDS), encoding="utf-8")      # same scan time, now with a race
+    run(sv, tmp_path)
+    assert "0 new, 1 already" in capsys.readouterr().out
+    assert race_rows(tmp_path) == [("2026-10-01 10:00:00", None, None, None)]
+
+
+def test_every_scan_keeps_the_race_it_had_and_the_page_shows_the_latest(sv, tmp_path):
+    sv.write_text(sample(RACE_FIELDS), encoding="utf-8")
+    run(sv, tmp_path)
+    changed = RACE_FIELDS.replace('"Human"', '"Orc"').replace('"MAGE"', '"WARLOCK"')    # a race change
+    sv.write_text(sample(changed, scanned_at="2026-10-05 10:00:00"), encoding="utf-8")
+    run(sv, tmp_path)
+    assert race_rows(tmp_path) == [("2026-10-01 10:00:00", "MAGE", "Human", "Human"),
+                                   ("2026-10-05 10:00:00", "WARLOCK", "Orc", "Orc")]
+    char = _payload_from_html(tmp_path / "out" / "x.html")["chars"][0]
+    assert (char["class_file"], char["race"], char["race_file"]) == ("WARLOCK", "Orc", "Orc")
+
+
+def test_a_value_of_the_wrong_type_or_an_empty_one_becomes_null(sv, tmp_path):
+    odd = '["classFile"] = 5, ["race"] = true, ["raceFile"] = "  ",'
+    sv.write_text(sample(odd), encoding="utf-8")
+    run(sv, tmp_path)                                         # no abort for display data
+    assert race_rows(tmp_path) == [("2026-10-01 10:00:00", None, None, None)]
+
+
+def test_localized_race_and_stable_file_are_kept_apart(sv, tmp_path):
+    german = '["classFile"] = "MAGE", ["race"] = "Mensch", ["raceFile"] = "Human",'
+    sv.write_text(sample(german).replace('["class"] = "Mage"', '["class"] = "Magier"'), encoding="utf-8")
+    run(sv, tmp_path)
+    char = _payload_from_html(tmp_path / "out" / "x.html")["chars"][0]
+    assert (char["class"], char["class_file"], char["race"], char["race_file"]) == ("Magier", "MAGE", "Mensch", "Human")

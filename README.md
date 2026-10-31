@@ -22,6 +22,8 @@ StatTracker reads the **game statistics** of your World of Warcraft characters t
 
 Repeat step 5/6 whenever you want fresh numbers. Old scans stay in the database.
 
+The addon also records each character's class (as a language-independent name) and race with every scan. Scans taken with an older addon have no race, and it is never filled in afterwards: run *1. Install / update addon* and scan the character again to get it. The stats page does not use it yet.
+
 ## Game versions
 
 Only game versions you enabled show up in the dropdown. The default is **Retail** only. Open *Settings ...* to enable others. Every game version gets its own database and page (`wow_stats.db` / `stats.html` for Retail, `wow_stats_<version>.db` / `stats_<version>.html` for the others).

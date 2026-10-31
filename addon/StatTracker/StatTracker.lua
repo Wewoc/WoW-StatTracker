@@ -12,12 +12,13 @@
 -- Chat messages are German on a German client (deDE), English otherwise.
 --
 -- Data structure (account-wide):
---   StatTrackerDB.version            = 2
+--   StatTrackerDB.version            = 3
 --   StatTrackerDB.auto               = true/false
 --   StatTrackerDB.meta[statID]       = { name = "...", cat = "category > subcategory" }
 --   StatTrackerDB.chars["Name-Realm"] = {
 --       scannedAt = "YYYY-MM-DD HH:MM:SS", scannedEpoch = time(),
 --       class = "...", level = N, faction = "...",
+--       classFile = "MAGE", race = "...", raceFile = "Human",   -- classFile/raceFile are language independent
 --       stats = { [statID] = "value as text" },
 --       playedTotal = seconds, playedLevel = seconds,   -- arrives shortly after the scan (TIME_PLAYED_MSG)
 --   }
@@ -40,7 +41,7 @@ loader:RegisterEvent("ADDON_LOADED")
 loader:SetScript("OnEvent", function(self, _, name)
     if name ~= ADDON then return end
     StatTrackerDB = StatTrackerDB or {}
-    StatTrackerDB.version = 2
+    StatTrackerDB.version = 3
     StatTrackerDB.meta = StatTrackerDB.meta or {}
     StatTrackerDB.chars = StatTrackerDB.chars or {}
     if StatTrackerDB.auto == nil then StatTrackerDB.auto = true end
@@ -138,6 +139,9 @@ local function FinishScan(key, st)
         class = st.class,
         level = st.level,
         faction = st.faction,
+        classFile = st.classFile,
+        race = st.race,
+        raceFile = st.raceFile,
         stats = st.stats,
     }
     for id, m in pairs(st.meta) do
@@ -179,9 +183,13 @@ local function ScanAllStats()
     end
 
     local key = UnitName("player") .. "-" .. GetRealmName()
+    -- the second return value of UnitClass/UnitRace is the language independent file name
+    local className, classFile = UnitClass("player")
+    local raceName, raceFile = UnitRace("player")
     local st = {
         tasks = tasks, ti = 1, ai = 1, stats = {}, meta = {}, count = 0,
-        class = UnitClass("player"), level = UnitLevel("player"), faction = UnitFactionGroup("player"),
+        class = className, level = UnitLevel("player"), faction = UnitFactionGroup("player"),
+        classFile = classFile, race = raceName, raceFile = raceFile,
     }
     local perTick = math.max(1, math.ceil(total / (SCAN_SECONDS / SCAN_TICK)))
 

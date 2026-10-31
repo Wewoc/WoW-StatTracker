@@ -42,11 +42,25 @@ V01_LAYOUT = """
 """
 
 
+# The columns of the v0.1 layout: a later schema may add columns, the old ones must stay as they were.
+V01_COLUMNS = {"scans": "scan_id, char_key, scanned_at, class, level, faction",
+               "stat_defs": "stat_id, name, category",
+               "stat_values": "scan_id, stat_id, value_text, value_num"}
+
+
 def rows(path):
     conn = sqlite3.connect(path)
     try:
-        return [conn.execute(f"SELECT * FROM {t} ORDER BY 1, 2").fetchall()
-                for t in ("scans", "stat_defs", "stat_values")]
+        return [conn.execute(f"SELECT {cols} FROM {t} ORDER BY 1, 2").fetchall()
+                for t, cols in V01_COLUMNS.items()]
+    finally:
+        conn.close()
+
+
+def columns(path, table="scans"):
+    conn = sqlite3.connect(path)
+    try:
+        return [(r[1], r[2]) for r in conn.execute(f"PRAGMA table_info({table})")]
     finally:
         conn.close()
 
@@ -101,6 +115,42 @@ def test_v01_database_is_stamped_and_keeps_every_row(tmp_path):
     assert version(db) == SCHEMA_VERSION
     assert before[2] == [(1, 1, "1.234", 1234)]          # the fixture really holds a value
     assert rows(db) == before
+
+
+def migration_copies(folder):
+    target = folder / "backups" / "migration"
+    return sorted(target.iterdir()) if target.is_dir() else []
+
+
+def test_schema_1_gets_the_race_columns_and_every_old_scan_stays_empty(tmp_path):
+    db = make_v01(tmp_path / "v1.db", user_version=1)
+    before = rows(db)
+    stat_parser.init_db(db).close()
+    assert version(db) == 2
+    assert rows(db) == before                                # the old columns are untouched
+    assert [c for c, _t in columns(db)][-3:] == ["class_file", "race", "race_file"]
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT class_file, race, race_file FROM scans").fetchall() == [(None, None, None)]
+    conn.close()
+    (copy,) = migration_copies(tmp_path)                     # the copy holds the state before
+    assert copy.name.endswith(".pre-v2.bak") and version(copy) == 1
+    assert "race" not in [c for c, _t in columns(copy)]
+
+
+def test_schema_0_takes_both_steps_and_leaves_one_permanent_copy(tmp_path):
+    db = make_v01(tmp_path / "v0.db")
+    stat_parser.init_db(db).close()
+    assert version(db) == 2
+    (copy,) = migration_copies(tmp_path)
+    assert copy.name.endswith(".pre-v2.bak") and version(copy) == 0
+    assert not (tmp_path / "backups" / "daily").exists()
+
+
+def test_a_migrated_database_has_the_same_columns_as_a_new_one(tmp_path):
+    stat_parser.init_db(tmp_path / "new.db").close()
+    stat_parser.init_db(make_v01(tmp_path / "old.db")).close()
+    for table in ("scans", "stat_defs", "stat_values"):
+        assert columns(tmp_path / "old.db", table) == columns(tmp_path / "new.db", table)
 
 
 def test_opening_again_changes_nothing(tmp_path):

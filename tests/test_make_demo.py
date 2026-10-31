@@ -51,6 +51,16 @@ def test_demo_rates_are_close_to_the_invented_ones(tmp_path, lang):
             assert roles[role]["chars"][char["key"]]["rate"] == pytest.approx(wanted, rel=0.02, abs=0.02)
 
 
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_demo_characters_carry_class_file_and_race(tmp_path, lang):
+    data = _data(make_demo.make(tmp_path, lang))
+    by_key = {c["key"]: c for c in data["chars"]}
+    for demo in make_demo.CHARS:
+        char = by_key[demo["key"]]
+        assert (char["class_file"], char["race_file"]) == (demo["cls_file"], demo["race_file"])
+        assert char["race"] == demo["race"][make_demo.LANGS.index(lang)]
+
+
 def test_demo_is_deterministic():
     assert make_demo.build_lua("en") == make_demo.build_lua("en")
     assert make_demo.build_lua("de") != make_demo.build_lua("en")

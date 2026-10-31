@@ -54,7 +54,8 @@ function GetAchievementInfo(cat, i) return cat * 10000 + i, "Stat " .. (cat * 10
 function GetStatistic(id) CALLS = CALLS + 1; return tostring(id) end
 function UnitName() return "Alice" end
 function GetRealmName() return "Realm" end
-function UnitClass() return "Mage" end
+function UnitClass() return "Mage", "MAGE", 8 end
+function UnitRace() return "Human", "Human", 1 end
 function UnitLevel() return 80 end
 function UnitFactionGroup() return "Alliance" end
 function RequestTimePlayed() REQUESTED = true end
@@ -122,6 +123,29 @@ def test_everything_is_stored_with_the_played_time(en):
     assert rec["class"] == "Mage" and rec.level == 80 and rec.faction == "Alliance"
     assert rec.playedTotal == 90061 and rec.playedLevel == 3600
     assert db.meta[1030700].cat == "Cat101 > Cat103"
+
+
+def test_class_file_race_and_race_file_are_stored_and_the_contract_version_is_3(en):
+    db = en.StatTrackerDB
+    rec = db.chars["Alice-Realm"]
+    assert (rec.classFile, rec.race, rec.raceFile) == ("MAGE", "Human", "Human")
+    assert rec["class"] == "Mage"                            # the localized class name stays as it was
+    assert db.version == 3
+
+
+def test_the_file_names_do_not_depend_on_the_client_language():
+    g = run_addon("deDE", 'function UnitClass() return "Magier", "MAGE", 8 end '
+                          'function UnitRace() return "Mensch", "Human", 1 end')
+    rec = g.StatTrackerDB.chars["Alice-Realm"]
+    assert (rec["class"], rec.classFile, rec.race, rec.raceFile) == ("Magier", "MAGE", "Mensch", "Human")
+
+
+def test_a_missing_race_does_not_lose_the_scan():
+    g = run_addon("enUS", "function UnitRace() return nil end")
+    rec = g.StatTrackerDB.chars["Alice-Realm"]
+    assert len(list(rec.stats.keys())) == TOTAL and rec.playedTotal == 90061
+    assert rec.race is None and rec.raceFile is None
+    assert (rec.classFile, rec["class"]) == ("MAGE", "Mage")
 
 
 def _scan_failure(tweak, locale="enUS"):
