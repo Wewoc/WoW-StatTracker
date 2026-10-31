@@ -22,6 +22,8 @@ StatTracker liest die **Spielstatistiken** deiner World-of-Warcraft-Charaktere �
 
 Schritt 5/6 wiederholen, wenn du frische Zahlen willst. Alte Scans bleiben in der Datenbank.
 
+Das Addon speichert bei jedem Scan auch die Klasse (als sprachunabh채ngigen Namen) und die Rasse des Charakters. Scans eines 채lteren Addons haben keine Rasse, sie wird nie nachgetragen: *1. Addon installieren / aktualisieren* ausf체hren und den Charakter erneut scannen. Die Statistik-Seite nutzt sie noch nicht.
+
 ## Spielversionen
 
 Im Dropdown erscheinen nur Spielversionen, die du aktiviert hast. Standard ist nur **Retail**. Unter *Einstellungen ...* lassen sich weitere aktivieren. Jede Spielversion hat eigene Datenbank und Seite (`wow_stats.db` / `stats.html` f체r Retail, `wow_stats_<Version>.db` / `stats_<Version>.html` f체r die anderen).

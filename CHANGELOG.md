@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- New: with every scan the addon records the class (as a language-independent name) and the race of the character, and the database keeps both per scan (database schema 2). The stats page does not use them yet
+- Note: scans taken before have no race and never get one afterwards, because a race can change. After the update run *1. Install / update addon* and scan each character once more (`/statscan`)
+- Note: the first read after the update upgrades the database to schema 2 and leaves one copy named `pre-v2` in `data/backups/migration/`
+- Changed: a `StatTracker.lua` with a newer data format than the program knows is refused before the database is opened (no copy, no change), with a message to update StatTracker
+- Docs: both READMEs mention the recorded class and race
+
 ## 0.1.4
 
 - New: before an import writes to an existing database, StatTracker copies it into `data/backups/`. `daily/` keeps one copy per day for the last 7 days; `migration/` keeps one copy before every database upgrade and is never deleted automatically. If a copy cannot be written, the import stops before it changes anything
