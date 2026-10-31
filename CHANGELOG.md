@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.4
 
 - New: before an import writes to an existing database, StatTracker copies it into `data/backups/`. `daily/` keeps one copy per day for the last 7 days; `migration/` keeps one copy before every database upgrade and is never deleted automatically. If a copy cannot be written, the import stops before it changes anything
+- Note: a database that has no schema number yet (it was not read since 0.1.3) gets one copy in `migration/` at its first read, named `pre-v1`
+- Changed: the addon itself is unchanged, but its version follows the program version, so after updating from 0.1.3 the window asks once to run *1. Install / update addon*
 - Docs: both READMEs describe the backup folders and how to restore a copy
 
 ## 0.1.3
