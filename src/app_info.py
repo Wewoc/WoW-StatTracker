@@ -19,6 +19,7 @@ REPO_CONFIRMED = True
 
 REPO_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}"
 RELEASES_URL = f"{REPO_URL}/releases/latest"
+SITE_URL = f"https://{REPO_OWNER.lower()}.github.io/{REPO_NAME}/"   # landing page (GitHub Pages, docs/)
 LATEST_API_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
 
 COPYRIGHT = "© 2026 Wewoc"

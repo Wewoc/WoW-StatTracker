@@ -38,6 +38,9 @@
   .rwrap th { cursor: default; }
   tr.total td { font-weight: 700; background: #1e1e1e; }
   .note { color: var(--dim); font-size: .78rem; margin-top: 6px; }
+  .foot { color: var(--dim); font-size: .8rem; margin: 12px 2px 0; }
+  .foot a { color: var(--dim); }
+  .foot a:hover { color: var(--gold); }
 </style>
 </head>
 <body>
@@ -58,6 +61,7 @@
 </details>
 <div class="count" id="count"></div>
 <div class="wrap"><table id="t"><thead></thead><tbody></tbody></table></div>
+<div class="foot" id="foot"></div>
 
 <script>
 const DATA = /*__DATA__*/null;
@@ -120,7 +124,18 @@ function init() {
 
   ["q", "cat", "diff", "hideEmpty"].forEach(id => $(id).addEventListener("input", render));
   renderRates();
+  renderFoot();
   render();
+}
+
+// Version, link to the project page and copyright (values from src/app_info.py via the generator).
+function renderFoot() {
+  const A = DATA.app;
+  if (!A) return;
+  const link = document.createElement("a");
+  link.href = A.site; link.target = "_blank"; link.rel = "noopener noreferrer";
+  link.textContent = A.site.replace(/^https:\/\//, "").replace(/\/$/, "");
+  $("foot").append(fmt(UI.footer_version, {version: A.version}), " · ", link, " · " + A.copyright + " · " + A.license);
 }
 
 // Rates per played hour (computed by the generator, src/stat_derive.py); static, whatever is checked above.

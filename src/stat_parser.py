@@ -20,6 +20,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import app_info
 import i18n
 import paths
 import stat_derive
@@ -354,6 +355,8 @@ def build_payload(conn, lang=None):
     return {"generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "lang": lang,
             "ui": i18n.html_strings(lang),
+            "app": {"version": app_info.APP_VERSION, "copyright": app_info.COPYRIGHT,
+                    "license": app_info.LICENSE_NAME, "site": app_info.SITE_URL},
             "chars": chars,
             "stats": sorted(defs.values(), key=lambda d: (d["cat"], d["name"])),
             "derived": derived_payload(list(defs.values()), chars, lang)}

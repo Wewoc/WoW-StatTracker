@@ -43,6 +43,11 @@ def test_urls_are_derived_from_one_repo():
     assert app_info.RELEASES_URL.startswith(app_info.REPO_URL)
 
 
+def test_site_url_is_the_published_landing_page():
+    assert app_info.SITE_URL == "https://wewoc.github.io/WoW-StatTracker/"
+    assert app_info.SITE_URL.startswith("https://") and app_info.SITE_URL.endswith("/")
+
+
 def test_repository_is_the_published_one_everywhere():
     assert app_info.REPO_URL == "https://github.com/Wewoc/WoW-StatTracker"
     assert app_info.REPO_CONFIRMED is True
@@ -52,7 +57,7 @@ def test_repository_is_the_published_one_everywhere():
     files += list((ROOT / "src").glob("*.py")) + list((ROOT / ".github").rglob("*.yml"))
     for path in files:
         assert not stale.search(path.read_text(encoding="utf-8")), f"old repository name in {path.name}"
-    for name in ("README.md", "README.de.md", "docs/index.html", "addon/StatTracker/StatTracker.toc"):
+    for name in ("docs/index.html", "addon/StatTracker/StatTracker.toc"):   # the READMEs live in the repo and need no link to it
         assert app_info.REPO_URL in (ROOT / name).read_text(encoding="utf-8"), name
 
 

@@ -339,7 +339,8 @@ _STRINGS = {
     "derive_reason_no_chars": {"de": "kein Charakter verwertbar", "en": "no usable character"},
 
     # --------------------------------------------------- stats page (template.html)
-    "html_title": {"de": "WoW Statistik-Vergleich", "en": "WoW statistics comparison"},
+    "html_title": {"de": "WoW-StatTracker", "en": "WoW-StatTracker"},
+    "html_footer_version": {"de": "Version {version}", "en": "Version {version}"},
     "html_generated": {
         "de": "Erzeugt: {generated} · {chars} Charaktere · {stats} Statistiken",
         "en": "Generated: {generated} · {chars} characters · {stats} statistics",
