@@ -34,18 +34,23 @@ LANGS = ("en", "de")
 # there is no rate).
 CHARS = (
     dict(key="Korvak-Ironmaw", cls=("Warrior", "Krieger"), level=74, faction=("Horde", "Horde"),
+         cls_file="WARRIOR", race=("Orc", "Orc"), race_file="Orc",
          at="2026-10-26 19:42:10", epoch=1793043730, played=1503997, level_played=105279, weight=0.55,
          mount="Ashen Warwolf"),
     dict(key="Mirella-Dawnspire", cls=("Mage", "Magier"), level=80, faction=("Alliance", "Allianz"),
+         cls_file="MAGE", race=("Human", "Mensch"), race_file="Human",
          at="2026-10-25 19:41:10", epoch=1792957270, played=2583885, level_played=180871, weight=1.0,
          mount="Cloudweaver Drake"),
     dict(key="Selwyn-Moonvale", cls=("Druid", "Druide"), level=58, faction=("Alliance", "Allianz"),
+         cls_file="DRUID", race=("Night Elf", "Nachtelfe"), race_file="NightElf",
          at="2026-10-27 19:43:10", epoch=1793130190, played=579555, level_played=40568, weight=0.25,
          mount="Moonlit Stag"),
     dict(key="Thalrin-Sunhaven", cls=("Paladin", "Paladin"), level=80, faction=("Horde", "Horde"),
+         cls_file="PALADIN", race=("Blood Elf", "Blutelf"), race_file="BloodElf",
          at="2026-10-24 19:40:10", epoch=1792870810, played=3619171, level_played=253341, weight=1.3,
          mount="Sunmane Charger"),
     dict(key="Pippa-Brightwater", cls=("Priest", "Priester"), level=9, faction=("Alliance", "Allianz"),
+         cls_file="PRIEST", race=("Dwarf", "Zwerg"), race_file="Dwarf",
          at="2026-10-28 19:44:10", epoch=1793216650, played=2520, level_played=2520, weight=0.004,
          mount="Brightwater Pony"),
 )
@@ -144,7 +149,7 @@ def build_lua(lang):
     """The demo SavedVariables file (StatTrackerDB) for one language."""
     i = LANGS.index(lang)
     meta, stats = _tables(i)
-    out = ["StatTrackerDB = {", '\t["version"] = 2,', '\t["auto"] = true,', '\t["meta"] = {']
+    out = ["StatTrackerDB = {", '\t["version"] = 3,', '\t["auto"] = true,', '\t["meta"] = {']
     for sid, (name, cat) in meta.items():
         out.append(f'\t\t[{sid}] = {{ ["name"] = {_lua_str(name)}, ["cat"] = {_lua_str(cat)} }},')
     out += ["\t},", '\t["chars"] = {']
@@ -153,6 +158,8 @@ def build_lua(lang):
                 f'\t\t\t["scannedAt"] = {_lua_str(c["at"])}, ["scannedEpoch"] = {c["epoch"]},',
                 f'\t\t\t["class"] = {_lua_str(c["cls"][i])}, ["level"] = {c["level"]}, '
                 f'["faction"] = {_lua_str(c["faction"][i])},',
+                f'\t\t\t["classFile"] = {_lua_str(c["cls_file"])}, ["race"] = {_lua_str(c["race"][i])}, '
+                f'["raceFile"] = {_lua_str(c["race_file"])},',
                 '\t\t\t["stats"] = {']
         out += [f"\t\t\t\t[{sid}] = {_lua_str(text)}," for sid, text in values.items()]
         out += ["\t\t\t},",
