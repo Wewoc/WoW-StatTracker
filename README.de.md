@@ -6,11 +6,10 @@ StatTracker liest die **Spielstatistiken** deiner World-of-Warcraft-Charaktere �
 
 - Windows-Programm mit kleinem Fenster - kein Python nötig (Release-Download)
 - Deutsche und englische Oberfläche (Dropdown im Fenster)
+- Raten pro Spielstunde (Kills, Tode, Gold) je Charakter und insgesamt; lässt sich eine Zahl nicht berechnen, nennt die Seite den Grund
 - Arbeitet pro Spielversion; standardmäßig ist nur **Retail** aktiviert
 - Installiert und deinstalliert sein Addon für dich
 - Sucht auf GitHub nach neuen Versionen und kann sich selbst aktualisieren (Prüfsumme, mit Rollback)
-
-> Repository: [github.com/Wewoc/WoW-StatTracker](https://github.com/Wewoc/WoW-StatTracker)
 
 ## Schnellstart (Release-Download)
 

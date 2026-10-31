@@ -57,6 +57,14 @@ screenshots show invented demo data only; `tests/test_docs_site.py` checks that 
 exists in both languages and that nothing is loaded from a third party. If you change the
 repository owner/name, update the GitHub links in `docs/index.html` as well.
 
+To redo the screenshots after the stats page changed: `python tools/make_demo.py --out <folder outside the repository>`
+writes invented demo data per language and three variants of the page (`shot-stats.html`,
+`shot-rates.html`, `shot-compare.html`). Take one picture of each with Edge or Chrome in headless
+mode, 1280 x 760 at scale 1.5 (= 1920 x 1140), for example
+`msedge --headless=new --hide-scrollbars --force-device-scale-factor=1.5 --window-size=1280,760 --screenshot=stats-en.png file:///<folder>/en/shot-stats.html`,
+and copy them to `docs/images/` as `stats-`, `rates-` and `compare-` plus `en`/`de`. `app-*.png`
+(the program window) is taken by hand.
+
 ## Layout
 
 ```
@@ -64,7 +72,7 @@ src/            application code (flat modules), template.html, updater_helper.p
 addon/          the WoW addon (copied into AddOns by the program)
 compiler/       PyInstaller build
 tests/          pytest
-tools/          developer helpers (check_stats.py) - not part of the release
+tools/          developer helpers (check_stats.py, make_demo.py) - not part of the release
 docs/           this file
 ```
 
