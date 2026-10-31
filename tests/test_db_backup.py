@@ -245,14 +245,14 @@ def test_an_existing_database_is_copied_once_a_day_and_the_copy_is_reported(tmp_
 
 
 def test_before_a_migration_a_permanent_copy_with_the_old_state_is_made(tmp_path, monkeypatch, capsys):
-    db = existing_db(tmp_path)                               # schema 1, one scan
-    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", 2)
-    monkeypatch.setattr(stat_parser, "MIGRATIONS", {1: lambda conn: None, 2: lambda conn: None})
+    db = existing_db(tmp_path)                               # the current schema (2), one scan
+    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", 3)    # a pretend next schema
+    monkeypatch.setattr(stat_parser, "MIGRATIONS", {**stat_parser.MIGRATIONS, 3: lambda conn: None})
     stat_parser.init_db(db).close()
     (copy,) = list((tmp_path / "backups" / "migration").iterdir())
-    assert copy.name.startswith("wow_stats.") and copy.name.endswith(".pre-v2.bak")
-    assert content(copy) == (1, 1)                           # the state before the migration
-    assert content(db) == (1, 2)
+    assert copy.name.startswith("wow_stats.") and copy.name.endswith(".pre-v3.bak")
+    assert content(copy) == (1, 2)                           # the state before the migration
+    assert content(db) == (1, 3)
     assert not (tmp_path / "backups" / "daily").exists()     # one copy per run
     assert f"Backup:   {copy}" in capsys.readouterr().out
 
@@ -262,12 +262,12 @@ def test_the_migration_copy_survives_a_failing_migration(tmp_path, monkeypatch):
         raise RuntimeError("boom")
 
     db = existing_db(tmp_path)
-    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", 2)
-    monkeypatch.setattr(stat_parser, "MIGRATIONS", {1: lambda conn: None, 2: broken})
+    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", 3)
+    monkeypatch.setattr(stat_parser, "MIGRATIONS", {**stat_parser.MIGRATIONS, 3: broken})
     with pytest.raises(RuntimeError, match="boom"):
         stat_parser.init_db(db)
     (copy,) = list((tmp_path / "backups" / "migration").iterdir())
-    assert content(copy) == (1, 1) and content(db) == (1, 1)
+    assert content(copy) == (1, 2) and content(db) == (1, 2)
 
 
 def test_a_database_from_a_newer_program_gets_no_backup_and_stays_untouched(tmp_path):

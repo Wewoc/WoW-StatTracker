@@ -226,17 +226,25 @@ def fmt_duration(sec):
 
 # ------------------------------------------------------------------------ DB
 # Schema version of the statistics database, kept in SQLite's PRAGMA user_version.
-# 0 = no number written yet (databases of v0.1.x), 1 = the layout below. Changing the layout
-# means a new entry in MIGRATIONS and a higher SCHEMA_VERSION; an old step is never edited.
+# 0 = no number written yet (databases of v0.1.x), 1 = the same layout, 2 = the layout below
+# (scans gained class_file, race, race_file). Changing the layout means a new entry in
+# MIGRATIONS and a higher SCHEMA_VERSION; an old step is never edited.
 # A database newer than SCHEMA_VERSION is refused untouched (fail-closed).
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _migrate_0_to_1(conn):
     """Schema 0 has the same layout as schema 1: only the number is set (by init_db)."""
 
 
-MIGRATIONS = {1: _migrate_0_to_1}      # target version -> step from the version before
+def _migrate_1_to_2(conn):
+    """Schema 2 adds the stable class name and the race to every scan. Scans taken before stay
+    NULL: they are never filled in from a later scan, because a race can change."""
+    for column in ("class_file", "race", "race_file"):
+        conn.execute(f"ALTER TABLE scans ADD COLUMN {column} TEXT")
+
+
+MIGRATIONS = {1: _migrate_0_to_1, 2: _migrate_1_to_2}      # target version -> step from the version before
 
 SCHEMA_SQL = """
         CREATE TABLE IF NOT EXISTS scans (
@@ -246,6 +254,9 @@ SCHEMA_SQL = """
             class      TEXT,
             level      INTEGER,
             faction    TEXT,
+            class_file TEXT,
+            race       TEXT,
+            race_file  TEXT,
             UNIQUE (char_key, scanned_at)
         );
         CREATE TABLE IF NOT EXISTS stat_defs (
