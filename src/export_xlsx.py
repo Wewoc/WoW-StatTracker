@@ -52,6 +52,7 @@ def load_db(db_path):
     """Returns (chars, stats): chars = list of dicts, stats = list (id, name, cat, {key: (text, num)})."""
     conn = sqlite3.connect(db_path)
     try:
+        stat_parser.check_schema(conn, db_path)      # a database from a newer program is not read
         scans = conn.execute("""
             SELECT s.scan_id, s.char_key, s.scanned_at, s.class, s.level
             FROM scans s

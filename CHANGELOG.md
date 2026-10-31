@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3
+
+- New: the stats page shows rates per hour played (creatures killed, honorable kills, deaths, gold) for every character and as a total over all of them, in a collapsible block. If a number cannot be worked out, for example because of too little played time, the page says why instead of showing a value
+- New: the stats page is titled "WoW-StatTracker" and has a footer with the version, a link to the project page, the copyright and the license
+- New: the statistics database carries a schema version. The first read with this version stamps your existing database (a number in the file header, no data changes). A database from a newer program is refused untouched, by the import and by the Excel export, with a message to update
+- Changed: the addon itself is unchanged, but its version follows the program version, so after updating from 0.1.2 the window asks once to run *1. Install / update addon*
+- Docs: the landing page and both READMEs describe the rates; the screenshots are new and made from invented demo data (`tools/make_demo.py`)
+
 ## 0.1.2
 
 - Fixed: the update dialog could open twice when the check at start and a manual check overlapped; the second dialog blocked the running update and *Update now* could start a second download. It now opens once

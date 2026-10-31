@@ -282,6 +282,12 @@ _STRINGS = {
         "de": "FEHLER: mehrere Accounts gefunden, --input angeben:\n  {paths}",
         "en": "ERROR: several accounts found, pass --input:\n  {paths}",
     },
+    "parse_err_db_too_new": {
+        "de": "FEHLER: Die Datenbank {path} hat das Schema {found}, dieses StatTracker kennt nur bis Schema {known}. "
+              "StatTracker aktualisieren; die Datenbank wurde nicht verändert.",
+        "en": "ERROR: the database {path} has schema {found}, this StatTracker only knows up to schema {known}. "
+              "Update StatTracker; the database was not changed.",
+    },
     "parse_err_read": {"de": "FEHLER beim Lesen von {path}: {error}", "en": "ERROR reading {path}: {error}"},
     "parse_err_no_db_var": {"de": "FEHLER: StatTrackerDB nicht in der Datei.", "en": "ERROR: StatTrackerDB not in the file."},
     "parse_out_source": {"de": "Quelle:   {path}", "en": "Source:   {path}"},
@@ -328,8 +334,19 @@ _STRINGS = {
     "unit_text": {"de": "Text", "en": "Text"},
     "unit_mix": {"de": "Mix", "en": "Mixed"},
 
+    # ------------------------------------------- derived statistics (stat_derive.py)
+    "derive_kills_pve": {"de": "Kreaturen getötet pro Std.", "en": "Creatures killed per hour"},
+    "derive_kills_pvp": {"de": "Ehrenhafte Siege pro Std.", "en": "Honorable kills per hour"},
+    "derive_deaths": {"de": "Tode pro Std.", "en": "Deaths per hour"},
+    "derive_gold": {"de": "Erhaltenes Gold pro Std. (in Gold)", "en": "Gold acquired per hour (in gold)"},
+    "derive_reason_no_played": {"de": "keine Spielzeit", "en": "no played time"},
+    "derive_reason_too_little_played": {"de": "zu wenig Spielzeit", "en": "too little played time"},
+    "derive_reason_no_stat": {"de": "Statistik fehlt", "en": "statistic missing"},
+    "derive_reason_no_chars": {"de": "kein Charakter verwertbar", "en": "no usable character"},
+
     # --------------------------------------------------- stats page (template.html)
-    "html_title": {"de": "WoW Statistik-Vergleich", "en": "WoW statistics comparison"},
+    "html_title": {"de": "WoW-StatTracker", "en": "WoW-StatTracker"},
+    "html_footer_version": {"de": "Version {version}", "en": "Version {version}"},
     "html_generated": {
         "de": "Erzeugt: {generated} · {chars} Charaktere · {stats} Statistiken",
         "en": "Generated: {generated} · {chars} characters · {stats} statistics",
@@ -344,6 +361,18 @@ _STRINGS = {
     "html_col_cat": {"de": "Kategorie", "en": "Category"},
     "html_col_stat": {"de": "Statistik", "en": "Statistic"},
     "html_count": {"de": "{shown} von {total} Statistiken", "en": "{shown} of {total} statistics"},
+    "html_rates_title": {"de": "Raten pro Spielstunde", "en": "Rates per hour played"},
+    "html_rates_col_char": {"de": "Charakter", "en": "Character"},
+    "html_rates_total": {"de": "Gesamt", "en": "Total"},
+    "html_rates_total_of": {"de": "{used} von {of} Charakteren", "en": "{used} of {of} characters"},
+    "html_rates_note": {
+        "de": "Zähler geteilt durch die gesamte Spielzeit des Charakters (aktueller Scan). "
+              "Gesamt = Summe der Zähler / Summe der Stunden, ohne Charaktere mit weniger als {hours} Std. Spielzeit. "
+              "„--“ bei Toden und Ehrenhaften Siegen zählt als 0.",
+        "en": "Counter divided by the character's total played time (latest scan). "
+              "Total = sum of counters / sum of hours, leaving out characters with less than {hours} h played. "
+              "“--” for deaths and honorable kills counts as 0.",
+    },
 }
 
 

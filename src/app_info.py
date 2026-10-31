@@ -7,7 +7,7 @@
 # imports (compiler/build_manifest.py imports it too).
 
 APP_NAME = "StatTracker"
-APP_VERSION = "0.1.2"  # must equal "## Version:" in addon/StatTracker/StatTracker.toc (tests check it)
+APP_VERSION = "0.1.3"  # must equal "## Version:" in addon/StatTracker/StatTracker.toc (tests check it)
 
 # Repository (github.com/Wewoc/WoW-StatTracker). The product, exe, release assets and the
 # addon keep the name "StatTracker"; only the GitHub repository is called WoW-StatTracker.
@@ -19,6 +19,7 @@ REPO_CONFIRMED = True
 
 REPO_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}"
 RELEASES_URL = f"{REPO_URL}/releases/latest"
+SITE_URL = f"https://{REPO_OWNER.lower()}.github.io/{REPO_NAME}/"   # landing page (GitHub Pages, docs/)
 LATEST_API_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
 
 COPYRIGHT = "© 2026 Wewoc"

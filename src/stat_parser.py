@@ -20,8 +20,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import app_info
 import i18n
 import paths
+import stat_derive
 from i18n import t
 
 DEFAULT_WTF = Path(r"C:\Program Files (x86)\World of Warcraft\_retail_\WTF\Account")
@@ -221,10 +223,20 @@ def fmt_duration(sec):
 
 
 # ------------------------------------------------------------------------ DB
-def init_db(path):
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.executescript("""
+# Schema version of the statistics database, kept in SQLite's PRAGMA user_version.
+# 0 = no number written yet (databases of v0.1.x), 1 = the layout below. Changing the layout
+# means a new entry in MIGRATIONS and a higher SCHEMA_VERSION; an old step is never edited.
+# A database newer than SCHEMA_VERSION is refused untouched (fail-closed).
+SCHEMA_VERSION = 1
+
+
+def _migrate_0_to_1(conn):
+    """Schema 0 has the same layout as schema 1: only the number is set (by init_db)."""
+
+
+MIGRATIONS = {1: _migrate_0_to_1}      # target version -> step from the version before
+
+SCHEMA_SQL = """
         CREATE TABLE IF NOT EXISTS scans (
             scan_id    INTEGER PRIMARY KEY AUTOINCREMENT,
             char_key   TEXT NOT NULL,
@@ -246,7 +258,59 @@ def init_db(path):
             value_num  INTEGER,
             PRIMARY KEY (scan_id, stat_id)
         );
-    """)
+"""
+
+
+def schema_version(conn):
+    return conn.execute("PRAGMA user_version").fetchone()[0]
+
+
+def check_schema(conn, path):
+    """Exits with a message if the database is newer than this program knows; otherwise
+    returns its version. Everything that opens a statistics database calls this first."""
+    found = schema_version(conn)
+    if found > SCHEMA_VERSION:
+        sys.exit(t("parse_err_db_too_new", path=path, found=found, known=SCHEMA_VERSION))
+    return found
+
+
+def _in_transaction(conn, work):
+    """Runs work() as one transaction: all or nothing. The connection keeps its normal
+    transaction handling afterwards (import_data relies on it to commit only at the end)."""
+    previous = conn.isolation_level
+    conn.isolation_level = None            # BEGIN/COMMIT are issued here, not by sqlite3
+    try:
+        conn.execute("BEGIN")
+        try:
+            work()
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.isolation_level = previous
+
+
+def init_db(path):
+    """Opens (or creates) the statistics database at its current schema version.
+    New or empty file: created at SCHEMA_VERSION. Older database: migrated step by step, each
+    step its own transaction, the number raised at the end of it. Newer database: exits with
+    a message and has not written anything."""
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        found = check_schema(conn, path)
+        has_tables = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='scans'").fetchone() is not None
+        if not has_tables:
+            conn.executescript(f"BEGIN;{SCHEMA_SQL}PRAGMA user_version = {SCHEMA_VERSION};COMMIT;")
+        else:
+            for target in range(found + 1, SCHEMA_VERSION + 1):
+                _in_transaction(conn, lambda: (MIGRATIONS[target](conn),
+                                               conn.execute(f"PRAGMA user_version = {target}")))
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 
@@ -314,6 +378,18 @@ def refresh_numbers(conn):
 
 
 # ---------------------------------------------------------------------- HTML
+def derived_payload(stats, chars, lang):
+    """Rates per played hour (stat_derive) with the display texts of `lang` filled in:
+    "label" per role, "why" next to every "reason"."""
+    derived = stat_derive.compute(stats, [c["key"] for c in chars])
+    for role in derived["roles"]:
+        role["label"] = i18n.raw(role.pop("label_key"), lang)
+        for res in (*role["chars"].values(), role["total"]):
+            if "reason" in res:
+                res["why"] = i18n.raw(stat_derive.REASON_KEYS[res["reason"]], lang)
+    return derived
+
+
 def build_payload(conn, lang=None):
     lang = lang or i18n.get_language()
     scans = conn.execute("""
@@ -341,8 +417,11 @@ def build_payload(conn, lang=None):
     return {"generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "lang": lang,
             "ui": i18n.html_strings(lang),
+            "app": {"version": app_info.APP_VERSION, "copyright": app_info.COPYRIGHT,
+                    "license": app_info.LICENSE_NAME, "site": app_info.SITE_URL},
             "chars": chars,
-            "stats": sorted(defs.values(), key=lambda d: (d["cat"], d["name"]))}
+            "stats": sorted(defs.values(), key=lambda d: (d["cat"], d["name"])),
+            "derived": derived_payload(list(defs.values()), chars, lang)}
 
 
 def write_html(payload, out_path):

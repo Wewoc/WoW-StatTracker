@@ -7,6 +7,7 @@ import sqlite3
 
 import pytest
 
+import app_info
 import i18n
 import stat_parser
 
@@ -108,7 +109,10 @@ def test_payload_carries_language_and_ui_strings(sv, tmp_path):
     run(sv, tmp_path)
     data = _payload_from_html(tmp_path / "out" / "x.html")
     assert data["lang"] == "de"
-    assert data["ui"]["title"] == "WoW Statistik-Vergleich"
+    assert data["ui"]["title"] == "WoW-StatTracker"
+    assert data["ui"]["footer_version"] == "Version {version}"
+    assert data["app"] == {"version": app_info.APP_VERSION, "copyright": app_info.COPYRIGHT,
+                           "license": app_info.LICENSE_NAME, "site": app_info.SITE_URL}
     played = {s["id"]: s for s in data["stats"]}[-1]
     assert played["name"] == "Gesamte Spielzeit"
     assert played["v"]["Alice-Realm"][0] == "1 Tage, 1 Std., 1 Min., 1 Sek."
