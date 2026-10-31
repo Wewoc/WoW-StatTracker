@@ -288,6 +288,16 @@ _STRINGS = {
         "en": "ERROR: the database {path} has schema {found}, this StatTracker only knows up to schema {known}. "
               "Update StatTracker; the database was not changed.",
     },
+    "parse_err_backup_failed": {
+        "de": "FEHLER: Das Backup der Datenbank ist fehlgeschlagen, es wurde nichts geändert. "
+              "Freien Platz und Schreibrechte im Ordner der Datenbank prüfen. {error}",
+        "en": "ERROR: the backup of the database failed, nothing was changed. "
+              "Check the free space and write permission in the database folder. {error}",
+    },
+    "parse_warn_backup_rotate": {
+        "de": "WARNUNG: Alte Backups konnten nicht gelöscht werden: {paths}",
+        "en": "WARNING: old backups could not be deleted: {paths}",
+    },
     "parse_err_read": {"de": "FEHLER beim Lesen von {path}: {error}", "en": "ERROR reading {path}: {error}"},
     "parse_err_no_db_var": {"de": "FEHLER: StatTrackerDB nicht in der Datei.", "en": "ERROR: StatTrackerDB not in the file."},
     "parse_out_source": {"de": "Quelle:   {path}", "en": "Source:   {path}"},
@@ -296,6 +306,7 @@ _STRINGS = {
         "de": "Zahlen:   {count} gespeicherte Werte nach neuer Regel korrigiert",
         "en": "Numbers:  {count} stored values corrected by the current rules",
     },
+    "parse_out_backup": {"de": "Backup:   {path}", "en": "Backup:   {path}"},
     "parse_out_db": {"de": "DB:       {path}", "en": "DB:       {path}"},
     "parse_out_html": {
         "de": "HTML:     {path}  ({chars} Charaktere, {stats} Statistiken)",

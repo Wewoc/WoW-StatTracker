@@ -17,7 +17,8 @@ python src/start.py
 On Windows you can also double-click `src/bat/start.bat`.
 
 All data goes to `data/` in the repository root (git-ignored): `config.json`,
-`wow_stats*.db`, `stats*.html`, `stattracker.xlsx`, `crash.log`.
+`wow_stats*.db`, `stats*.html`, `stattracker.xlsx`, `crash.log`, `backups/` (copies of the
+database: `daily/` rotates, `migration/` stays).
 
 ## Tests
 
@@ -88,4 +89,5 @@ data/                                                    (yours - never touched)
 - Files carry the SPDX header (`GPL-3.0-or-later`) and the copyright line.
 - Interface text lives in `src/i18n.py` (`de`/`en`); `tests/test_i18n.py` checks that every key used in code exists and both languages carry the same placeholders.
 - `updater_helper.ps1` must stay plain ASCII (a test checks it).
+- A statistics database is opened for writing only through `stat_parser.init_db`, which takes the copy (`src/db_backup.py`) before the first change; a schema migration gets its own permanent copy.
 - Never put user data (databases, generated pages, config) into the repository - `tests/test_public_ready.py` guards this and private references.

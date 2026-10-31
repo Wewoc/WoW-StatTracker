@@ -7,7 +7,7 @@
 # imports (compiler/build_manifest.py imports it too).
 
 APP_NAME = "StatTracker"
-APP_VERSION = "0.1.3"  # must equal "## Version:" in addon/StatTracker/StatTracker.toc (tests check it)
+APP_VERSION = "0.1.4"  # must equal "## Version:" in addon/StatTracker/StatTracker.toc (tests check it)
 
 # Repository (github.com/Wewoc/WoW-StatTracker). The product, exe, release assets and the
 # addon keep the name "StatTracker"; only the GitHub repository is called WoW-StatTracker.
