@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.5
 
 - New: with every scan the addon records the class (as a language-independent name) and the race of the character, and the database keeps both per scan (database schema 2). The stats page does not use them yet
 - Note: scans taken before have no race and never get one afterwards, because a race can change. After the update run *1. Install / update addon* and scan each character once more (`/statscan`)

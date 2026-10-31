@@ -3,7 +3,7 @@
 ## Notes: /statscan reads all statistics of the character into the SavedVariable StatTrackerDB
 ## Notes-deDE: /statscan liest alle Statistiken des Charakters in die SavedVariable StatTrackerDB
 ## Author: Wewoc
-## Version: 0.1.4
+## Version: 0.1.5
 ## X-Website: https://github.com/Wewoc/WoW-StatTracker
 ## X-License: GPL-3.0-or-later
 ## SavedVariables: StatTrackerDB
