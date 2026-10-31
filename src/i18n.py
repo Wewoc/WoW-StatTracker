@@ -282,6 +282,12 @@ _STRINGS = {
         "de": "FEHLER: mehrere Accounts gefunden, --input angeben:\n  {paths}",
         "en": "ERROR: several accounts found, pass --input:\n  {paths}",
     },
+    "parse_err_db_too_new": {
+        "de": "FEHLER: Die Datenbank {path} hat das Schema {found}, dieses StatTracker kennt nur bis Schema {known}. "
+              "StatTracker aktualisieren; die Datenbank wurde nicht verändert.",
+        "en": "ERROR: the database {path} has schema {found}, this StatTracker only knows up to schema {known}. "
+              "Update StatTracker; the database was not changed.",
+    },
     "parse_err_read": {"de": "FEHLER beim Lesen von {path}: {error}", "en": "ERROR reading {path}: {error}"},
     "parse_err_no_db_var": {"de": "FEHLER: StatTrackerDB nicht in der Datei.", "en": "ERROR: StatTrackerDB not in the file."},
     "parse_out_source": {"de": "Quelle:   {path}", "en": "Source:   {path}"},

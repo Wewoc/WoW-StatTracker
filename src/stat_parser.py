@@ -223,10 +223,20 @@ def fmt_duration(sec):
 
 
 # ------------------------------------------------------------------------ DB
-def init_db(path):
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.executescript("""
+# Schema version of the statistics database, kept in SQLite's PRAGMA user_version.
+# 0 = no number written yet (databases of v0.1.x), 1 = the layout below. Changing the layout
+# means a new entry in MIGRATIONS and a higher SCHEMA_VERSION; an old step is never edited.
+# A database newer than SCHEMA_VERSION is refused untouched (fail-closed).
+SCHEMA_VERSION = 1
+
+
+def _migrate_0_to_1(conn):
+    """Schema 0 has the same layout as schema 1: only the number is set (by init_db)."""
+
+
+MIGRATIONS = {1: _migrate_0_to_1}      # target version -> step from the version before
+
+SCHEMA_SQL = """
         CREATE TABLE IF NOT EXISTS scans (
             scan_id    INTEGER PRIMARY KEY AUTOINCREMENT,
             char_key   TEXT NOT NULL,
@@ -248,7 +258,52 @@ def init_db(path):
             value_num  INTEGER,
             PRIMARY KEY (scan_id, stat_id)
         );
-    """)
+"""
+
+
+def schema_version(conn):
+    return conn.execute("PRAGMA user_version").fetchone()[0]
+
+
+def _in_transaction(conn, work):
+    """Runs work() as one transaction: all or nothing. The connection keeps its normal
+    transaction handling afterwards (import_data relies on it to commit only at the end)."""
+    previous = conn.isolation_level
+    conn.isolation_level = None            # BEGIN/COMMIT are issued here, not by sqlite3
+    try:
+        conn.execute("BEGIN")
+        try:
+            work()
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.isolation_level = previous
+
+
+def init_db(path):
+    """Opens (or creates) the statistics database at its current schema version.
+    New or empty file: created at SCHEMA_VERSION. Older database: migrated step by step, each
+    step its own transaction, the number raised at the end of it. Newer database: exits with
+    a message and has not written anything."""
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        found = schema_version(conn)
+        if found > SCHEMA_VERSION:
+            sys.exit(t("parse_err_db_too_new", path=path, found=found, known=SCHEMA_VERSION))
+        has_tables = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='scans'").fetchone() is not None
+        if not has_tables:
+            conn.executescript(f"BEGIN;{SCHEMA_SQL}PRAGMA user_version = {SCHEMA_VERSION};COMMIT;")
+        else:
+            for target in range(found + 1, SCHEMA_VERSION + 1):
+                _in_transaction(conn, lambda: (MIGRATIONS[target](conn),
+                                               conn.execute(f"PRAGMA user_version = {target}")))
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 
