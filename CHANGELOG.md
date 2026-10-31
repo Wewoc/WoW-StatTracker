@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.6
 
 - New: the stats page shows the race next to class and level of each character, in the rates block and in the column header. The scan date moves to a line of its own in the column header
 - New: a collapsible *Groups* block groups the characters ticked above by class, race, faction or realm and shows per group the number of characters, the average level, the total played time and the four rates per hour (sum of counters / sum of hours, "n of m characters" where one cannot be used). Any statistic with a number can be added as a column (sum, average or maximum; gold is shown in gold)
