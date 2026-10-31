@@ -406,7 +406,7 @@ _STRINGS = {
     "html_groups_unknown": {"de": "unbekannt", "en": "unknown"},
     "html_groups_none_selected": {"de": "Keine Charaktere ausgewählt.", "en": "No characters selected."},
     "html_groups_no_value": {"de": "kein Wert", "en": "no value"},
-    "html_groups_hours": {"de": "{n} Std.", "en": "{n} h"},
+    "html_groups_hours": {"de": "{n} Std.", "en": "{n} h"},      # no-break space: the unit stays with the number
     "html_groups_note": {
         "de": "Klasse und Rasse stammen aus dem Scan: Charaktere, die seit dem Addon-Update nicht neu gescannt wurden, "
               "stehen unter „unbekannt“. Raten = Summe der Zähler / Summe der Stunden der Gruppe, ohne Charaktere mit "
@@ -422,7 +422,7 @@ _STRINGS = {
     "html_groups_agg_max": {"de": "Maximum", "en": "Maximum"},
     "html_groups_add": {"de": "Hinzufügen", "en": "Add"},
     "html_groups_remove": {"de": "Entfernen", "en": "Remove"},
-    "html_groups_gold": {"de": "{n} g", "en": "{n} g"},
+    "html_groups_gold": {"de": "{n} g", "en": "{n} g"},
     "html_groups_extra_note": {
         "de": "Eine Summe ergibt nur bei Zählern einen Sinn. Charaktere, für die die Statistik keine Zahl hat "
               "(Dauer, Prozent, Text), werden ausgelassen; Gold wird in Gold angezeigt.",

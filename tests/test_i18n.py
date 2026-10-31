@@ -104,6 +104,13 @@ def test_names_hold_every_class_and_the_known_races(lang):
     assert not any(k in classes or k in races for k in ("", "Mage "))
 
 
+@pytest.mark.parametrize("key", ["html_groups_hours", "html_groups_gold"])
+def test_a_unit_stays_with_its_number_in_the_group_table(key):
+    for lang in ("de", "en"):
+        text = i18n.raw(key, lang)
+        assert text.startswith("{n} ") and " " not in text, (key, lang)      # no-break space, no plain space
+
+
 def test_names_are_neutral_and_differ_by_language():
     assert i18n.names("class_", "de")["DRUID"] == "Druide"          # not "Druidin"
     assert i18n.names("class_", "en")["DEATHKNIGHT"] == "Death Knight"
