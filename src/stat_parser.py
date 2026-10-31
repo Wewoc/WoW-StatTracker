@@ -6,7 +6,8 @@
 #
 # Reads WTF/Account/<ACCOUNT>/SavedVariables/StatTracker.lua, stores every scan in
 # a SQLite database (with history) and builds a self-contained stats page from it
-# (data embedded, no web server needed).
+# (data embedded, no web server needed). Before it writes to an existing database it takes a
+# copy of it (db_backup).
 #
 # Usage:
 #     python stat_parser.py --input PATH\StatTracker.lua [--db FILE] [--output FILE]
@@ -21,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 
 import app_info
+import db_backup
 import i18n
 import paths
 import stat_derive
@@ -291,11 +293,32 @@ def _in_transaction(conn, work):
         conn.isolation_level = previous
 
 
+def _back_up(conn, path, found):
+    """A copy of an existing database before anything is written to it: before a migration
+    (found < SCHEMA_VERSION) one that is kept for good, otherwise the copy of the day. If it
+    cannot be written, exits with a message and nothing has been changed (fail-closed). Old daily
+    copies that cannot be deleted only produce a warning."""
+    try:
+        if found < SCHEMA_VERSION:
+            made = db_backup.migration_backup(conn, path, SCHEMA_VERSION)
+        else:
+            made = db_backup.daily_backup(conn, path)
+    except db_backup.BackupError as exc:
+        sys.exit(t("parse_err_backup_failed", error=exc))
+    if made:
+        print(t("parse_out_backup", path=made))
+    if found >= SCHEMA_VERSION:
+        failed = db_backup.rotate(path)
+        if failed:
+            print(t("parse_warn_backup_rotate", paths=", ".join(map(str, failed))))
+
+
 def init_db(path):
     """Opens (or creates) the statistics database at its current schema version.
-    New or empty file: created at SCHEMA_VERSION. Older database: migrated step by step, each
-    step its own transaction, the number raised at the end of it. Newer database: exits with
-    a message and has not written anything."""
+    New or empty file: created at SCHEMA_VERSION. Older database: copied (db_backup), then
+    migrated step by step, each step its own transaction, the number raised at the end of it.
+    Current database: copied once a day. Newer database: exits with a message and has not
+    written anything. A copy that cannot be written stops everything before the first change."""
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     try:
@@ -305,6 +328,7 @@ def init_db(path):
         if not has_tables:
             conn.executescript(f"BEGIN;{SCHEMA_SQL}PRAGMA user_version = {SCHEMA_VERSION};COMMIT;")
         else:
+            _back_up(conn, path, found)
             for target in range(found + 1, SCHEMA_VERSION + 1):
                 _in_transaction(conn, lambda: (MIGRATIONS[target](conn),
                                                conn.execute(f"PRAGMA user_version = {target}")))
