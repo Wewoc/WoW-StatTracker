@@ -31,6 +31,13 @@
   tr:hover td { background: #1a1a1a; }
   .small { font-size: .72rem; color: var(--dim); font-weight: 400; display: block; }
   .empty { padding: 24px; color: var(--dim); }
+  details.rates { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+                  padding: 8px 12px; margin-bottom: 8px; }
+  details.rates summary { cursor: pointer; color: var(--gold); font-size: .95rem; }
+  .rwrap { overflow: auto; max-height: 50vh; margin-top: 8px; border: 1px solid var(--line); border-radius: 6px; }
+  .rwrap th { cursor: default; }
+  tr.total td { font-weight: 700; background: #1e1e1e; }
+  .note { color: var(--dim); font-size: .78rem; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -44,6 +51,11 @@
   <label><input type="checkbox" id="hideEmpty" checked> <span id="lblEmpty"></span></label>
 </div>
 <div class="bar chars" id="chars"></div>
+<details class="rates" id="rates">
+  <summary id="ratesTitle"></summary>
+  <div class="rwrap"><table id="rt"><thead></thead><tbody></tbody></table></div>
+  <div class="note" id="ratesNote"></div>
+</details>
 <div class="count" id="count"></div>
 <div class="wrap"><table id="t"><thead></thead><tbody></tbody></table></div>
 
@@ -107,7 +119,64 @@ function init() {
   });
 
   ["q", "cat", "diff", "hideEmpty"].forEach(id => $(id).addEventListener("input", render));
+  renderRates();
   render();
+}
+
+// Rates per played hour (computed by the generator, src/stat_derive.py); static, whatever is checked above.
+function fmtRate(v) {
+  const d = v === 0 ? 0 : v >= 100 ? 0 : v >= 10 ? 1 : v >= 0.1 ? 2 : 3;
+  return v.toLocaleString(DATA.lang, {minimumFractionDigits: d, maximumFractionDigits: d});
+}
+
+function renderRates() {
+  const D = DATA.derived;
+  if (!D || !D.roles || !D.roles.length) { $("rates").hidden = true; return; }
+  $("ratesTitle").textContent = UI.rates_title || "";
+  $("ratesNote").textContent = fmt(UI.rates_note, {hours: D.min_played_seconds / 3600});
+
+  const hr = $("rt").tHead.insertRow();
+  const th0 = document.createElement("th");
+  th0.textContent = UI.rates_col_char || "";
+  hr.append(th0);
+  D.roles.forEach(r => {
+    const th = document.createElement("th");
+    th.className = "num"; th.textContent = r.label;
+    hr.append(th);
+  });
+
+  // A rate, or "–" with the reason; the total also says how many characters it is made of.
+  const cell = (res, isTotal) => {
+    const td = document.createElement("td");
+    td.className = "num";
+    const small = document.createElement("span");
+    small.className = "small";
+    if (res && "rate" in res) {
+      td.textContent = fmtRate(res.rate);
+      if (isTotal) small.textContent = fmt(UI.rates_total_of, {used: res.used, of: res.of});
+    } else {
+      td.textContent = "–";
+      small.textContent = (res && res.why) || "";
+    }
+    if (small.textContent) td.append(small);
+    return td;
+  };
+
+  const body = $("rt").tBodies[0];
+  const total = body.insertRow();
+  total.className = "total";
+  total.insertCell().textContent = UI.rates_total || "";
+  D.roles.forEach(r => total.append(cell(r.total, true)));
+  DATA.chars.forEach(c => {
+    const tr = body.insertRow();
+    const first = tr.insertCell();
+    first.textContent = c.key;
+    const s = document.createElement("span");
+    s.className = "small";
+    s.textContent = [c.class, c.level].filter(Boolean).join(" · ");
+    first.append(s);
+    D.roles.forEach(r => tr.append(cell(r.chars[c.key], false)));
+  });
 }
 
 function render() {

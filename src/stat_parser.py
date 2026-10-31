@@ -22,6 +22,7 @@ from pathlib import Path
 
 import i18n
 import paths
+import stat_derive
 from i18n import t
 
 DEFAULT_WTF = Path(r"C:\Program Files (x86)\World of Warcraft\_retail_\WTF\Account")
@@ -314,6 +315,18 @@ def refresh_numbers(conn):
 
 
 # ---------------------------------------------------------------------- HTML
+def derived_payload(stats, chars, lang):
+    """Rates per played hour (stat_derive) with the display texts of `lang` filled in:
+    "label" per role, "why" next to every "reason"."""
+    derived = stat_derive.compute(stats, [c["key"] for c in chars])
+    for role in derived["roles"]:
+        role["label"] = i18n.raw(role.pop("label_key"), lang)
+        for res in (*role["chars"].values(), role["total"]):
+            if "reason" in res:
+                res["why"] = i18n.raw(stat_derive.REASON_KEYS[res["reason"]], lang)
+    return derived
+
+
 def build_payload(conn, lang=None):
     lang = lang or i18n.get_language()
     scans = conn.execute("""
@@ -342,7 +355,8 @@ def build_payload(conn, lang=None):
             "lang": lang,
             "ui": i18n.html_strings(lang),
             "chars": chars,
-            "stats": sorted(defs.values(), key=lambda d: (d["cat"], d["name"]))}
+            "stats": sorted(defs.values(), key=lambda d: (d["cat"], d["name"])),
+            "derived": derived_payload(list(defs.values()), chars, lang)}
 
 
 def write_html(payload, out_path):
