@@ -188,7 +188,7 @@ function renderRates() {
     first.textContent = c.key;
     const s = document.createElement("span");
     s.className = "small";
-    s.textContent = [c.class, c.level].filter(Boolean).join(" · ");
+    s.textContent = [c.race, c.class, c.level].filter(Boolean).join(" · ");
     first.append(s);
     D.roles.forEach(r => tr.append(cell(r.chars[c.key], false)));
   });
@@ -218,10 +218,12 @@ function render() {
   hr.append(mk(UI.col_cat || "", "", null), mk(UI.col_stat || "", "", null));
   chars.forEach(c => {
     const th = mk(c.key, "num", c.key);
-    const s = document.createElement("span");
-    s.className = "small";
-    s.textContent = [c.class, c.level, c.scanned_at].filter(Boolean).join(" · ");
-    th.append(s);
+    [[c.race, c.class, c.level], [c.scanned_at]].forEach(parts => {   // two lines: who, and when scanned
+      const s = document.createElement("span");
+      s.className = "small";
+      s.textContent = parts.filter(Boolean).join(" · ");
+      if (s.textContent) th.append(s);
+    });
     hr.append(th);
   });
 
