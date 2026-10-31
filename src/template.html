@@ -42,6 +42,9 @@
   .gbar .lbl { color: var(--dim); font-size: .8rem; }
   .gbar label { background:#101010; border:1px solid var(--line); padding:3px 8px; border-radius:12px; }
   .gnone { padding: 10px 2px; color: var(--dim); font-size: .85rem; }
+  .gbar .chip { background:#101010; border:1px solid var(--line); padding:3px 8px; border-radius:12px; font-size:.85rem; }
+  .gbar .chip button { border: 0; background: none; padding: 0 0 0 6px; font-size: .95rem; }
+  #xstat { max-width: 340px; }
   .foot { color: var(--dim); font-size: .8rem; margin: 12px 2px 0; }
   .foot a { color: var(--dim); }
   .foot a:hover { color: var(--gold); }
@@ -68,6 +71,15 @@
   <div class="gbar"><span class="lbl" id="lblGroupBy"></span><select id="groupBy"></select></div>
   <div class="gbar" id="groupPick"></div>
   <div class="gbar" id="figures"></div>
+  <div class="gbar">
+    <span class="lbl" id="lblExtra"></span>
+    <input type="search" id="xq">
+    <select id="xstat"></select>
+    <select id="xagg"></select>
+    <button type="button" id="xadd"></button>
+  </div>
+  <div class="gbar" id="extraChips" hidden></div>
+  <div class="note" id="extraNote"></div>
   <div class="gnone" id="groupsNone" hidden></div>
   <div class="rwrap" id="groupsWrap"><table id="gt"><thead></thead><tbody></tbody></table></div>
   <div class="note" id="groupsNote"></div>
@@ -217,6 +229,11 @@ const BY_LABEL = {class: UI.groups_by_class, race: UI.groups_by_race, faction: U
 const FACTION = {Alliance: UI.faction_Alliance, Horde: UI.faction_Horde, Neutral: UI.faction_Neutral};
 const groupOff = {};          // per grouping: keys of the groups that are unticked
 const figureOff = new Set();  // ids of the figures that are unticked
+const extras = [];            // statistics added by hand: {id, agg}
+const AGG_LABEL = {sum: UI.groups_agg_sum, avg: UI.groups_agg_avg, max: UI.groups_agg_max};
+const AGG = {sum: v => v.reduce((a, b) => a + b, 0), avg: v => v.reduce((a, b) => a + b, 0) / v.length, max: v => Math.max(...v)};
+const GOLD_RE = /^(?:\d[\d.,]*\s*[gsc]\s*)+$/;   // "12g 5s 3c" (the pattern of stat_parser.to_number): the stored number is copper
+const STATS = new Map(((DATA && DATA.stats) || []).map(s => [s.id, s]));
 
 const own = (obj, key) => (Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined);
 const isNum = v => typeof v === "number" && isFinite(v);
@@ -277,6 +294,49 @@ function figureList() {
   return list;
 }
 
+// A statistic added by hand, combined over the group with the chosen function. Only characters with a
+// number for it count ("n of m"); a gold statistic is shown in gold.
+function extraFigure(e) {
+  const s = STATS.get(e.id);
+  const gold = !!s && Object.values(s.v).some(x => x && GOLD_RE.test(String(x[0]).trim()));
+  return {id: "x" + e.id + "_" + e.agg, label: (s ? s.name : String(e.id)) + " (" + AGG_LABEL[e.agg] + ")", cat: s ? s.cat : "",
+    calc: m => {
+      const v = s ? m.map(c => s.v[c.key]).filter(x => x && isNum(x[1])).map(x => x[1]) : [];
+      if (!v.length) return {};
+      const r = AGG[e.agg](v);
+      return {text: gold ? fmt(UI.groups_gold, {n: num(r / 10000, 2)}) : num(r, Number.isInteger(r) ? 0 : 2), of: [v.length, m.length]};
+    }};
+}
+
+function renderExtraPicker(chars) {
+  const q = $("xq").value.trim().toLowerCase();
+  const sel = $("xstat");
+  const keep = sel.value;
+  sel.textContent = "";
+  DATA.stats.forEach(s => {
+    if (s.id < 0) return;   // played time is a figure of its own
+    if (q && !(s.name.toLowerCase().includes(q) || s.cat.toLowerCase().includes(q))) return;
+    if (!chars.some(c => s.v[c.key] && isNum(s.v[c.key][1]))) return;   // nothing to combine
+    sel.add(new Option(s.name + " (" + s.cat + ")", String(s.id)));
+  });
+  if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+}
+
+function renderExtraChips() {
+  const box = $("extraChips");
+  box.textContent = "";
+  box.hidden = !extras.length;
+  extras.forEach((e, i) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    const rm = document.createElement("button");
+    rm.type = "button"; rm.textContent = "×"; rm.title = UI.groups_remove || "";
+    rm.addEventListener("click", () => { extras.splice(i, 1); renderGroups(); });
+    chip.append(extraFigure(e).label, rm);
+    box.append(chip);
+  });
+}
+
 function figureCell(res) {
   const td = document.createElement("td");
   td.className = "num";
@@ -313,11 +373,26 @@ function setupGroups() {
   });
   const hours = (DATA.derived ? DATA.derived.min_played_seconds : 3600) / 3600;
   $("groupsNote").textContent = fmt(UI.groups_note, {hours: hours});
+
+  $("lblExtra").textContent = UI.groups_extra || "";
+  $("xq").placeholder = UI.search || "";
+  $("xq").addEventListener("input", renderGroups);
+  Object.keys(AGG).forEach(k => $("xagg").add(new Option(AGG_LABEL[k] || k, k)));
+  $("xadd").textContent = UI.groups_add || "";
+  $("xadd").addEventListener("click", () => {
+    const id = Number($("xstat").value), agg = $("xagg").value;
+    if ($("xstat").value === "" || extras.some(e => e.id === id && e.agg === agg)) return;
+    extras.push({id, agg});
+    renderGroups();
+  });
+  $("extraNote").textContent = UI.groups_extra_note || "";
 }
 
 function renderGroups() {
   const chars = selected();
   const by = $("groupBy").value;
+  renderExtraPicker(chars);
+  renderExtraChips();
   const groups = buildGroups(chars, by);
   const off = groupOff[by] || (groupOff[by] = new Set());
 
@@ -343,7 +418,7 @@ function renderGroups() {
   head.textContent = ""; body.textContent = "";
   if (!chars.length) return;
 
-  const figs = figureList().filter(f => !figureOff.has(f.id));
+  const figs = figureList().filter(f => !figureOff.has(f.id)).concat(extras.map(extraFigure));
   const hr = head.insertRow();
   const th0 = document.createElement("th");
   th0.textContent = UI.groups_col_group || "";
@@ -351,6 +426,11 @@ function renderGroups() {
   figs.forEach(f => {
     const th = document.createElement("th");
     th.className = "num"; th.textContent = f.label;
+    if (f.cat) {
+      const s = document.createElement("span");
+      s.className = "small"; s.textContent = f.cat;
+      th.append(s);
+    }
     hr.append(th);
   });
 

@@ -416,6 +416,19 @@ _STRINGS = {
               "under “unknown”. Rates = sum of counters / sum of hours of the group, leaving out characters with "
               "less than {hours} h played. Total covers the groups shown; the characters ticked above are counted.",
     },
+    "html_groups_extra": {"de": "Weitere Statistik", "en": "More statistics"},
+    "html_groups_agg_sum": {"de": "Summe", "en": "Sum"},
+    "html_groups_agg_avg": {"de": "Durchschnitt", "en": "Average"},
+    "html_groups_agg_max": {"de": "Maximum", "en": "Maximum"},
+    "html_groups_add": {"de": "Hinzufügen", "en": "Add"},
+    "html_groups_remove": {"de": "Entfernen", "en": "Remove"},
+    "html_groups_gold": {"de": "{n} g", "en": "{n} g"},
+    "html_groups_extra_note": {
+        "de": "Eine Summe ergibt nur bei Zählern einen Sinn. Charaktere, für die die Statistik keine Zahl hat "
+              "(Dauer, Prozent, Text), werden ausgelassen; Gold wird in Gold angezeigt.",
+        "en": "A sum only makes sense for counters. Characters for which the statistic has no number "
+              "(duration, percent, text) are left out; gold is shown in gold.",
+    },
     "html_faction_Alliance": {"de": "Allianz", "en": "Alliance"},
     "html_faction_Horde": {"de": "Horde", "en": "Horde"},
     "html_faction_Neutral": {"de": "Neutral", "en": "Neutral"},
