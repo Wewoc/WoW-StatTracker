@@ -9,6 +9,7 @@ import sqlite3
 
 import pytest
 
+import export_xlsx
 import stat_parser
 from stat_parser import SCHEMA_VERSION
 
@@ -172,6 +173,35 @@ def test_failed_migration_rolls_back_and_keeps_the_last_good_version(tmp_path, m
     conn = sqlite3.connect(db)
     assert conn.execute("SELECT name FROM sqlite_master WHERE name='half_done'").fetchone() is None
     conn.close()
+
+
+def test_excel_export_reads_unstamped_and_current_databases_without_writing(tmp_path):
+    for number in (0, SCHEMA_VERSION):
+        db = make_v01(tmp_path / f"wow_stats_v{number}.db", user_version=number)
+        before = digest(db)
+        chars, stats = export_xlsx.load_db(db)
+        assert [c["key"] for c in chars] == ["Alice-Realm"]
+        assert digest(db) == before and version(db) == number     # reading never stamps
+
+
+def test_excel_export_refuses_a_newer_database_untouched(tmp_path):
+    db = make_v01(tmp_path / "wow_stats.db", user_version=SCHEMA_VERSION + 1)
+    before = digest(db)
+    with pytest.raises(SystemExit) as exc:
+        export_xlsx.load_db(db)
+    assert str(db) in str(exc.value) and str(SCHEMA_VERSION + 1) in str(exc.value)
+    assert digest(db) == before
+
+
+def test_whole_export_stops_when_one_database_is_too_new(tmp_path):
+    pytest.importorskip("openpyxl")
+    make_v01(tmp_path / "wow_stats.db")
+    newer = make_v01(tmp_path / "wow_stats_anniversary.db", user_version=SCHEMA_VERSION + 1)
+    out = tmp_path / "out.xlsx"
+    with pytest.raises(SystemExit) as exc:
+        export_xlsx.export(out, tmp_path)
+    assert newer.name in str(exc.value) or str(newer) in str(exc.value)
+    assert not out.exists()                                   # no half workbook
 
 
 def test_import_is_unchanged_on_a_stamped_database(tmp_path):

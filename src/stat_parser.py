@@ -265,6 +265,15 @@ def schema_version(conn):
     return conn.execute("PRAGMA user_version").fetchone()[0]
 
 
+def check_schema(conn, path):
+    """Exits with a message if the database is newer than this program knows; otherwise
+    returns its version. Everything that opens a statistics database calls this first."""
+    found = schema_version(conn)
+    if found > SCHEMA_VERSION:
+        sys.exit(t("parse_err_db_too_new", path=path, found=found, known=SCHEMA_VERSION))
+    return found
+
+
 def _in_transaction(conn, work):
     """Runs work() as one transaction: all or nothing. The connection keeps its normal
     transaction handling afterwards (import_data relies on it to commit only at the end)."""
@@ -290,9 +299,7 @@ def init_db(path):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     try:
-        found = schema_version(conn)
-        if found > SCHEMA_VERSION:
-            sys.exit(t("parse_err_db_too_new", path=path, found=found, known=SCHEMA_VERSION))
+        found = check_schema(conn, path)
         has_tables = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='scans'").fetchone() is not None
         if not has_tables:
