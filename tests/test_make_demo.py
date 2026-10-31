@@ -59,6 +59,8 @@ def test_demo_characters_carry_class_file_and_race(tmp_path, lang):
         char = by_key[demo["key"]]
         assert (char["class_file"], char["race_file"]) == (demo["cls_file"], demo["race_file"])
         assert char["race"] == demo["race"][make_demo.LANGS.index(lang)]
+        assert demo["cls_file"] in data["names"]["class"] and demo["race_file"] in data["names"]["race"]
+        assert demo["faction"][0] == demo["faction"][1]     # the addon stores the English faction name, whatever the client
 
 
 def test_demo_is_deterministic():
@@ -72,6 +74,8 @@ def test_screenshot_variants_leave_the_real_page_alone(tmp_path):
     assert 'class="rates" open' not in page and "sortChar = \"Korvak" not in page
     assert 'class="rates" open' in (folder / "shot-rates.html").read_text(encoding="utf-8")
     assert 'sortChar = "Korvak-Ironmaw"' in (folder / "shot-compare.html").read_text(encoding="utf-8")
+    assert '$("groups").open = true' not in page
+    assert '$("groups").open = true' in (folder / "shot-groups.html").read_text(encoding="utf-8")
 
 
 def test_language_is_restored(tmp_path):

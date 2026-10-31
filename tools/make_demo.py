@@ -8,10 +8,11 @@ same pictures can be made again after the stats page changes.
 
 Per language (the statistic names come from the client, so each language gets its own
 database) it writes a SavedVariables-style StatTracker.lua, runs the normal stat_parser
-on it and also writes three variants of the page for the screenshots:
+on it and also writes four variants of the page for the screenshots:
   shot-stats.html    the page as it is
   shot-rates.html    the same, with the rates block opened
   shot-compare.html  one character deselected, sorted by the first character
+  shot-groups.html   the Groups block opened: by faction, two more statistics added
 
 Usage (from the repository root):
   python tools/make_demo.py --out <folder>             # both languages
@@ -37,11 +38,11 @@ CHARS = (
          cls_file="WARRIOR", race=("Orc", "Orc"), race_file="Orc",
          at="2026-10-26 19:42:10", epoch=1793043730, played=1503997, level_played=105279, weight=0.55,
          mount="Ashen Warwolf"),
-    dict(key="Mirella-Dawnspire", cls=("Mage", "Magier"), level=80, faction=("Alliance", "Allianz"),
+    dict(key="Mirella-Dawnspire", cls=("Mage", "Magier"), level=80, faction=("Alliance", "Alliance"),
          cls_file="MAGE", race=("Human", "Mensch"), race_file="Human",
          at="2026-10-25 19:41:10", epoch=1792957270, played=2583885, level_played=180871, weight=1.0,
          mount="Cloudweaver Drake"),
-    dict(key="Selwyn-Moonvale", cls=("Druid", "Druide"), level=58, faction=("Alliance", "Allianz"),
+    dict(key="Selwyn-Moonvale", cls=("Druid", "Druide"), level=58, faction=("Alliance", "Alliance"),
          cls_file="DRUID", race=("Night Elf", "Nachtelfe"), race_file="NightElf",
          at="2026-10-27 19:43:10", epoch=1793130190, played=579555, level_played=40568, weight=0.25,
          mount="Moonlit Stag"),
@@ -49,7 +50,7 @@ CHARS = (
          cls_file="PALADIN", race=("Blood Elf", "Blutelf"), race_file="BloodElf",
          at="2026-10-24 19:40:10", epoch=1792870810, played=3619171, level_played=253341, weight=1.3,
          mount="Sunmane Charger"),
-    dict(key="Pippa-Brightwater", cls=("Priest", "Priester"), level=9, faction=("Alliance", "Allianz"),
+    dict(key="Pippa-Brightwater", cls=("Priest", "Priester"), level=9, faction=("Alliance", "Alliance"),
          cls_file="PRIEST", race=("Dwarf", "Zwerg"), race_file="Dwarf",
          at="2026-10-28 19:44:10", epoch=1793216650, played=2520, level_played=2520, weight=0.004,
          mount="Brightwater Pony"),
@@ -95,6 +96,10 @@ GENERIC_FIRST_ID = 9001            # far away from the real IDs used above
 
 COMPARE_JS = ('$("chk_Selwyn-Moonvale").checked = false; '
               'sortChar = "Korvak-Ironmaw"; sortDir = -1; render();')
+# the demo statistics 9003 (Jumps, a counter) and 328 (Total gold acquired, shown in gold)
+GROUPS_JS = ('$("groups").open = true; $("groupBy").value = "faction"; '
+             '[["9003", "sum"], ["328", "avg"]].forEach(p => { $("xstat").value = p[0]; $("xagg").value = p[1]; '
+             '$("xadd").click(); }); renderGroups();')
 
 
 def _number(n, i):
@@ -174,8 +179,10 @@ def shot_variants(html):
     get the extra lines; the real template is not touched."""
     rates = html.replace('<details class="rates"', '<details class="rates" open', 1)
     compare = html.replace("init();\n</script>", f"init();\n{COMPARE_JS}\n</script>", 1)
-    assert rates != html and compare != html, "template changed: adjust shot_variants"
-    return {"shot-stats.html": html, "shot-rates.html": rates, "shot-compare.html": compare}
+    groups = html.replace("init();\n</script>", f"init();\n{GROUPS_JS}\n</script>", 1)
+    assert rates != html and compare != html and groups != html, "template changed: adjust shot_variants"
+    return {"shot-stats.html": html, "shot-rates.html": rates, "shot-compare.html": compare,
+            "shot-groups.html": groups}
 
 
 def make(out_dir, lang):

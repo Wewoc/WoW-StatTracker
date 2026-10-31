@@ -22,7 +22,9 @@ StatTracker liest die **Spielstatistiken** deiner World-of-Warcraft-Charaktere �
 
 Schritt 5/6 wiederholen, wenn du frische Zahlen willst. Alte Scans bleiben in der Datenbank.
 
-Das Addon speichert bei jedem Scan auch die Klasse (als sprachunabhängigen Namen) und die Rasse des Charakters. Scans eines älteren Addons haben keine Rasse, sie wird nie nachgetragen: *1. Addon installieren / aktualisieren* ausführen und den Charakter erneut scannen. Die Statistik-Seite nutzt sie noch nicht.
+Das Addon speichert bei jedem Scan auch die Klasse (als sprachunabhängigen Namen) und die Rasse des Charakters. Scans eines älteren Addons haben keine Rasse, sie wird nie nachgetragen: *1. Addon installieren / aktualisieren* ausführen und den Charakter erneut scannen.
+
+Die Statistik-Seite zeigt Rasse, Klasse und Level unter jedem Namen. Ihr ausklappbarer Block *Gruppen* fasst die oben angehakten Charaktere nach Klasse, Rasse, Fraktion oder Realm zusammen und zeigt je Gruppe Anzahl, Durchschnittslevel, gesamte Spielzeit und die vier Raten pro Stunde; jede andere Statistik mit Zahl lässt sich als Spalte hinzufügen (Summe, Durchschnitt oder Maximum). Klasse und Rasse werden über den sprachunabhängigen Namen aus dem Spiel gruppiert: Ein Charakter, der seit dem Addon-Update nicht neu gescannt wurde, steht unter „unbekannt“, bis du das nachholst - es wird nichts geraten. Der Excel-Export hat keine Gruppen.
 
 ## Spielversionen
 

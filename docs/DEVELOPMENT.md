@@ -59,12 +59,13 @@ exists in both languages and that nothing is loaded from a third party. If you c
 repository owner/name, update the GitHub links in `docs/index.html` as well.
 
 To redo the screenshots after the stats page changed: `python tools/make_demo.py --out <folder outside the repository>`
-writes invented demo data per language and three variants of the page (`shot-stats.html`,
-`shot-rates.html`, `shot-compare.html`). Take one picture of each with Edge or Chrome in headless
-mode, 1280 x 760 at scale 1.5 (= 1920 x 1140), for example
+writes invented demo data per language and four variants of the page (`shot-stats.html`,
+`shot-rates.html`, `shot-compare.html`, `shot-groups.html`). Take one picture of each with Edge or
+Chrome in headless mode, 1280 x 760 at scale 1.5 (= 1920 x 1140; the groups picture 1280 x 800 =
+1920 x 1200), for example
 `msedge --headless=new --hide-scrollbars --force-device-scale-factor=1.5 --window-size=1280,760 --screenshot=stats-en.png file:///<folder>/en/shot-stats.html`,
-and copy them to `docs/images/` as `stats-`, `rates-` and `compare-` plus `en`/`de`. `app-*.png`
-(the program window) is taken by hand.
+and copy them to `docs/images/` as `stats-`, `rates-`, `compare-` and `groups-` plus `en`/`de`.
+`app-*.png` (the program window) is taken by hand.
 
 ## Layout
 
