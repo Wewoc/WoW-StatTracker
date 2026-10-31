@@ -22,7 +22,9 @@ StatTracker reads the **game statistics** of your World of Warcraft characters t
 
 Repeat step 5/6 whenever you want fresh numbers. Old scans stay in the database.
 
-The addon also records each character's class (as a language-independent name) and race with every scan. Scans taken with an older addon have no race, and it is never filled in afterwards: run *1. Install / update addon* and scan the character again to get it. The stats page does not use it yet.
+The addon also records each character's class (as a language-independent name) and race with every scan. Scans taken with an older addon have no race, and it is never filled in afterwards: run *1. Install / update addon* and scan the character again to get it.
+
+The stats page shows race, class and level under each name. Its collapsible *Groups* block groups the characters ticked above by class, race, faction or realm and shows per group the number of characters, the average level, the total played time and the four rates per hour; any other statistic with a number can be added as a column (sum, average or maximum). Class and race are grouped by the language-independent name from the game, so a character that has not been scanned again since the addon update is listed under "unknown" until you do - nothing is guessed. The Excel export has no groups.
 
 ## Game versions
 

@@ -8,10 +8,11 @@ same pictures can be made again after the stats page changes.
 
 Per language (the statistic names come from the client, so each language gets its own
 database) it writes a SavedVariables-style StatTracker.lua, runs the normal stat_parser
-on it and also writes three variants of the page for the screenshots:
+on it and also writes four variants of the page for the screenshots:
   shot-stats.html    the page as it is
   shot-rates.html    the same, with the rates block opened
   shot-compare.html  one character deselected, sorted by the first character
+  shot-groups.html   the Groups block opened: by faction, two more statistics added
 
 Usage (from the repository root):
   python tools/make_demo.py --out <folder>             # both languages
@@ -95,6 +96,10 @@ GENERIC_FIRST_ID = 9001            # far away from the real IDs used above
 
 COMPARE_JS = ('$("chk_Selwyn-Moonvale").checked = false; '
               'sortChar = "Korvak-Ironmaw"; sortDir = -1; render();')
+# the demo statistics 9003 (Jumps, a counter) and 328 (Total gold acquired, shown in gold)
+GROUPS_JS = ('$("groups").open = true; $("groupBy").value = "faction"; '
+             '[["9003", "sum"], ["328", "avg"]].forEach(p => { $("xstat").value = p[0]; $("xagg").value = p[1]; '
+             '$("xadd").click(); }); renderGroups();')
 
 
 def _number(n, i):
@@ -174,8 +179,10 @@ def shot_variants(html):
     get the extra lines; the real template is not touched."""
     rates = html.replace('<details class="rates"', '<details class="rates" open', 1)
     compare = html.replace("init();\n</script>", f"init();\n{COMPARE_JS}\n</script>", 1)
-    assert rates != html and compare != html, "template changed: adjust shot_variants"
-    return {"shot-stats.html": html, "shot-rates.html": rates, "shot-compare.html": compare}
+    groups = html.replace("init();\n</script>", f"init();\n{GROUPS_JS}\n</script>", 1)
+    assert rates != html and compare != html and groups != html, "template changed: adjust shot_variants"
+    return {"shot-stats.html": html, "shot-rates.html": rates, "shot-compare.html": compare,
+            "shot-groups.html": groups}
 
 
 def make(out_dir, lang):

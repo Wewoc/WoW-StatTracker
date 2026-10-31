@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- New: the stats page shows the race next to class and level of each character, in the rates block and in the column header. The scan date moves to a line of its own in the column header
+- New: a collapsible *Groups* block groups the characters ticked above by class, race, faction or realm and shows per group the number of characters, the average level, the total played time and the four rates per hour (sum of counters / sum of hours, "n of m characters" where one cannot be used). Any statistic with a number can be added as a column (sum, average or maximum; gold is shown in gold)
+- Note: class and race are grouped by the language-independent name the addon records since 0.1.5. A character not scanned again since then is listed under "unknown", nothing is guessed from the stored, gender dependent text. Faction and realm work for every character
+- Note: the Excel export is unchanged and has no groups
+- Docs: the landing page and both READMEs describe the Groups block, the screenshots are redone
+
 ## 0.1.5
 
 - New: with every scan the addon records the class (as a language-independent name) and the race of the character, and the database keeps both per scan (database schema 2). The stats page does not use them yet

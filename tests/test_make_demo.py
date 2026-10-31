@@ -74,6 +74,8 @@ def test_screenshot_variants_leave_the_real_page_alone(tmp_path):
     assert 'class="rates" open' not in page and "sortChar = \"Korvak" not in page
     assert 'class="rates" open' in (folder / "shot-rates.html").read_text(encoding="utf-8")
     assert 'sortChar = "Korvak-Ironmaw"' in (folder / "shot-compare.html").read_text(encoding="utf-8")
+    assert '$("groups").open = true' not in page
+    assert '$("groups").open = true' in (folder / "shot-groups.html").read_text(encoding="utf-8")
 
 
 def test_language_is_restored(tmp_path):
