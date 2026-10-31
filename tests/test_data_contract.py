@@ -37,6 +37,7 @@ def digest(path):
     '["version"] = nil,',                # nil is the same as absent
     '["version"] = 0,',
     '["version"] = 1,',
+    '["version"] = 2,',                  # the addon of 0.1.x
     f'["version"] = {DATA_VERSION},',
 ])
 def test_missing_and_known_versions_are_imported(tmp_path, version_line, capsys):
