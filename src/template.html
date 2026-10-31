@@ -38,6 +38,10 @@
   .rwrap th { cursor: default; }
   tr.total td { font-weight: 700; background: #1e1e1e; }
   .note { color: var(--dim); font-size: .78rem; margin-top: 6px; }
+  .gbar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-top: 8px; }
+  .gbar .lbl { color: var(--dim); font-size: .8rem; }
+  .gbar label { background:#101010; border:1px solid var(--line); padding:3px 8px; border-radius:12px; }
+  .gnone { padding: 10px 2px; color: var(--dim); font-size: .85rem; }
   .foot { color: var(--dim); font-size: .8rem; margin: 12px 2px 0; }
   .foot a { color: var(--dim); }
   .foot a:hover { color: var(--gold); }
@@ -58,6 +62,15 @@
   <summary id="ratesTitle"></summary>
   <div class="rwrap"><table id="rt"><thead></thead><tbody></tbody></table></div>
   <div class="note" id="ratesNote"></div>
+</details>
+<details class="rates groups" id="groups">
+  <summary id="groupsTitle"></summary>
+  <div class="gbar"><span class="lbl" id="lblGroupBy"></span><select id="groupBy"></select></div>
+  <div class="gbar" id="groupPick"></div>
+  <div class="gbar" id="figures"></div>
+  <div class="gnone" id="groupsNone" hidden></div>
+  <div class="rwrap" id="groupsWrap"><table id="gt"><thead></thead><tbody></tbody></table></div>
+  <div class="note" id="groupsNote"></div>
 </details>
 <div class="count" id="count"></div>
 <div class="wrap"><table id="t"><thead></thead><tbody></tbody></table></div>
@@ -123,6 +136,7 @@ function init() {
   });
 
   ["q", "cat", "diff", "hideEmpty"].forEach(id => $(id).addEventListener("input", render));
+  setupGroups();
   renderRates();
   renderFoot();
   render();
@@ -192,6 +206,167 @@ function renderRates() {
     first.append(s);
     D.roles.forEach(r => tr.append(cell(r.chars[c.key], false)));
   });
+}
+
+// Groups: the characters ticked above, grouped by class, race, faction or realm. Computed here from the
+// page data (the rules are in the note under the table). Class and race are grouped by the language
+// independent file name from the game; a character without one (scanned before the addon recorded it)
+// is "unknown". Nothing is guessed from the stored, gender dependent text.
+const GROUP_BY = ["class", "race", "faction", "realm"];
+const BY_LABEL = {class: UI.groups_by_class, race: UI.groups_by_race, faction: UI.groups_by_faction, realm: UI.groups_by_realm};
+const FACTION = {Alliance: UI.faction_Alliance, Horde: UI.faction_Horde, Neutral: UI.faction_Neutral};
+const groupOff = {};          // per grouping: keys of the groups that are unticked
+const figureOff = new Set();  // ids of the figures that are unticked
+
+const own = (obj, key) => (Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined);
+const isNum = v => typeof v === "number" && isFinite(v);
+const sum = list => list.reduce((a, b) => a + b, 0);
+const num = (v, digits) => v.toLocaleString(DATA.lang, {minimumFractionDigits: digits, maximumFractionDigits: digits});
+
+function groupKey(c, by) {
+  if (by === "class") return c.class_file || null;
+  if (by === "race") return c.race_file || null;
+  if (by === "faction") return c.faction || null;
+  const i = c.key.indexOf("-");   // "Name-Realm": cut at the first hyphen, a realm name can contain one
+  return i > 0 && i < c.key.length - 1 ? c.key.slice(i + 1) : null;
+}
+
+function groupLabel(by, key, members) {
+  if (key === null) return UI.groups_unknown || "";
+  if (by === "faction") return own(FACTION, key) || key;
+  if (by === "realm") return key;
+  const known = own((DATA.names || {})[by] || {}, key);
+  if (known) return known;
+  // a file name this program does not know yet: the text stored with the newest scan of the group
+  const newest = members.slice().sort((a, b) => (a.scanned_at < b.scanned_at ? 1 : -1))[0];
+  return (by === "class" ? newest.class : newest.race) || key;
+}
+
+function buildGroups(chars, by) {
+  const map = new Map();
+  chars.forEach(c => {
+    const key = groupKey(c, by);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(c);
+  });
+  const list = [...map].map(([key, members]) => ({key, members, label: groupLabel(by, key, members)}));
+  list.sort((a, b) => (a.key === null) - (b.key === null) || a.label.localeCompare(b.label, DATA.lang));
+  return list;
+}
+
+// One column of the group table: calc(members) gives {text, of: [used, total]} or {} for "no value".
+function figureList() {
+  const list = [
+    {id: "chars", label: UI.groups_fig_chars, calc: m => ({text: num(m.length, 0)})},
+    {id: "level", label: UI.groups_fig_level, calc: m => {
+      const v = m.map(c => c.level).filter(isNum);
+      return v.length ? {text: num(sum(v) / v.length, 1), of: [v.length, m.length]} : {};
+    }},
+    {id: "played", label: UI.groups_fig_played, calc: m => {
+      const p = DATA.stats.find(s => s.id === -1);   // played time, seconds (src/stat_parser.PLAYED_STATS)
+      const v = p ? m.map(c => p.v[c.key]).filter(x => x && isNum(x[1])).map(x => x[1]) : [];
+      return v.length ? {text: fmt(UI.groups_hours, {n: num(sum(v) / 3600, 1)}), of: [v.length, m.length]} : {};
+    }},
+  ];
+  // rates: sum of counters / sum of hours of the group (not the mean of the rates), like "Total" above
+  ((DATA.derived && DATA.derived.roles) || []).forEach(r => list.push({id: "role_" + r.role, label: r.label, calc: m => {
+    const used = m.map(c => r.chars[c.key]).filter(x => x && "rate" in x);
+    const hours = sum(used.map(x => x.hours));
+    return used.length && hours > 0 ? {text: fmtRate(sum(used.map(x => x.amount)) / hours), of: [used.length, m.length]} : {};
+  }}));
+  return list;
+}
+
+function figureCell(res) {
+  const td = document.createElement("td");
+  td.className = "num";
+  const small = document.createElement("span");
+  small.className = "small";
+  if (res.text === undefined) {
+    td.textContent = "–";
+    small.textContent = UI.groups_no_value || "";
+  } else {
+    td.textContent = res.text;
+    if (res.of && res.of[0] < res.of[1]) small.textContent = fmt(UI.rates_total_of, {used: res.of[0], of: res.of[1]});
+  }
+  if (small.textContent) td.append(small);
+  return td;
+}
+
+function setupGroups() {
+  $("groupsTitle").textContent = UI.groups_title || "";
+  $("lblGroupBy").textContent = UI.groups_by || "";
+  const sel = $("groupBy");
+  GROUP_BY.forEach(k => sel.add(new Option(BY_LABEL[k] || k, k)));
+  sel.addEventListener("change", renderGroups);
+  const bar = $("figures");
+  const lbl = document.createElement("span");
+  lbl.className = "lbl"; lbl.textContent = UI.groups_figures || "";
+  bar.append(lbl);
+  figureList().forEach(f => {
+    const l = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = true;
+    cb.addEventListener("change", () => { if (cb.checked) figureOff.delete(f.id); else figureOff.add(f.id); renderGroups(); });
+    l.append(cb, " " + f.label);
+    bar.append(l);
+  });
+  const hours = (DATA.derived ? DATA.derived.min_played_seconds : 3600) / 3600;
+  $("groupsNote").textContent = fmt(UI.groups_note, {hours: hours});
+}
+
+function renderGroups() {
+  const chars = selected();
+  const by = $("groupBy").value;
+  const groups = buildGroups(chars, by);
+  const off = groupOff[by] || (groupOff[by] = new Set());
+
+  const pick = $("groupPick");
+  pick.textContent = "";
+  const lbl = document.createElement("span");
+  lbl.className = "lbl"; lbl.textContent = UI.groups_pick || "";
+  pick.append(lbl);
+  groups.forEach(g => {
+    const l = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = !off.has(g.key);
+    cb.addEventListener("change", () => { if (cb.checked) off.delete(g.key); else off.add(g.key); renderGroups(); });
+    l.append(cb, " " + g.label + " (" + g.members.length + ")");
+    pick.append(l);
+  });
+
+  const none = $("groupsNone");
+  none.hidden = chars.length > 0;
+  none.textContent = chars.length ? "" : (UI.groups_none_selected || "");
+  $("groupsWrap").hidden = !chars.length;
+  const head = $("gt").tHead, body = $("gt").tBodies[0];
+  head.textContent = ""; body.textContent = "";
+  if (!chars.length) return;
+
+  const figs = figureList().filter(f => !figureOff.has(f.id));
+  const hr = head.insertRow();
+  const th0 = document.createElement("th");
+  th0.textContent = UI.groups_col_group || "";
+  hr.append(th0);
+  figs.forEach(f => {
+    const th = document.createElement("th");
+    th.className = "num"; th.textContent = f.label;
+    hr.append(th);
+  });
+
+  const shown = groups.filter(g => !off.has(g.key));
+  shown.forEach(g => {
+    const tr = body.insertRow();
+    tr.insertCell().textContent = g.label;
+    figs.forEach(f => tr.append(figureCell(f.calc(g.members))));
+  });
+  if (shown.length) {
+    const members = shown.flatMap(g => g.members);
+    const tr = body.insertRow();
+    tr.className = "total";
+    tr.insertCell().textContent = UI.rates_total || "";
+    figs.forEach(f => tr.append(figureCell(f.calc(members))));
+  }
 }
 
 function render() {
@@ -270,6 +445,7 @@ function render() {
   });
   body.append(frag);
   $("count").textContent = fmt(UI.count, {shown: rows.length, total: DATA.stats.length});
+  renderGroups();
 }
 
 init();

@@ -193,6 +193,16 @@ def test_class_file_race_and_race_file_are_stored_and_reach_the_page(sv, tmp_pat
     assert (char["class"], char["class_file"], char["race"], char["race_file"]) == ("Mage", "MAGE", "Human", "Human")
 
 
+@pytest.mark.parametrize("lang,mage,undead", [("de", "Magier", "Untoter"), ("en", "Mage", "Undead")])
+def test_payload_carries_class_and_race_names_in_the_page_language(sv, tmp_path, lang, mage, undead):
+    i18n.set_language(lang)
+    sv.write_text(sample(RACE_FIELDS), encoding="utf-8")
+    run(sv, tmp_path)
+    names = _payload_from_html(tmp_path / "out" / "x.html")["names"]
+    assert names["class"]["MAGE"] == mage and names["race"]["Scourge"] == undead
+    assert "class_MAGE" not in names["class"]                # keyed by the file name, without the key prefix
+
+
 def test_a_scan_from_an_older_addon_has_no_race(sv, tmp_path):
     run(sv, tmp_path)                                         # SAMPLE: version 2, no new fields
     assert race_rows(tmp_path) == [("2026-10-01 10:00:00", None, None, None)]

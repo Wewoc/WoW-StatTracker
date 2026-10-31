@@ -59,6 +59,8 @@ def test_demo_characters_carry_class_file_and_race(tmp_path, lang):
         char = by_key[demo["key"]]
         assert (char["class_file"], char["race_file"]) == (demo["cls_file"], demo["race_file"])
         assert char["race"] == demo["race"][make_demo.LANGS.index(lang)]
+        assert demo["cls_file"] in data["names"]["class"] and demo["race_file"] in data["names"]["race"]
+        assert demo["faction"][0] == demo["faction"][1]     # the addon stores the English faction name, whatever the client
 
 
 def test_demo_is_deterministic():

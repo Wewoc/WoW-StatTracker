@@ -10,6 +10,7 @@ import pytest
 import i18n
 
 SRC = Path(__file__).resolve().parent.parent / "src"
+NAME_PREFIXES = ("class_", "race_")
 
 
 def _fields(text):
@@ -56,6 +57,10 @@ def test_every_key_is_used_somewhere():
         elif key.startswith("unit_"):
             if 'f"unit_{' not in code:
                 unused.append(key)
+        elif key.startswith(NAME_PREFIXES):             # class_* / race_*: read through i18n.names(prefix, lang)
+            prefix = next(p for p in NAME_PREFIXES if key.startswith(p))
+            if f'names("{prefix}"' not in code:
+                unused.append(key)
         elif f'"{key}"' not in code:
             unused.append(key)
     assert not unused, f"unused i18n keys: {unused}"
@@ -84,6 +89,25 @@ def test_html_strings_cover_the_template():
     for lang in ("de", "en"):
         provided = set(i18n.html_strings(lang))
         assert used <= provided, (lang, used - provided)
+
+
+CLASS_FILES = {"WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "DEATHKNIGHT", "SHAMAN", "MAGE",
+               "WARLOCK", "MONK", "DRUID", "DEMONHUNTER", "EVOKER"}
+
+
+@pytest.mark.parametrize("lang", ["de", "en"])
+def test_names_hold_every_class_and_the_known_races(lang):
+    classes, races = i18n.names("class_", lang), i18n.names("race_", lang)
+    assert set(classes) == CLASS_FILES                      # the game has exactly these classes
+    assert {"Human", "Orc", "NightElf", "Scourge", "BloodElf", "Dracthyr"} <= set(races)
+    assert all(v and not v.startswith("[") for v in (*classes.values(), *races.values()))
+    assert not any(k in classes or k in races for k in ("", "Mage "))
+
+
+def test_names_are_neutral_and_differ_by_language():
+    assert i18n.names("class_", "de")["DRUID"] == "Druide"          # not "Druidin"
+    assert i18n.names("class_", "en")["DEATHKNIGHT"] == "Death Knight"
+    assert i18n.names("race_", "de")["Scourge"] == "Untoter"
 
 
 @pytest.mark.parametrize("lang", ["de", "en"])

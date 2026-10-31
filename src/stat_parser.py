@@ -480,6 +480,7 @@ def build_payload(conn, lang=None):
     return {"generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "lang": lang,
             "ui": i18n.html_strings(lang),
+            "names": {"class": i18n.names("class_", lang), "race": i18n.names("race_", lang)},
             "app": {"version": app_info.APP_VERSION, "copyright": app_info.COPYRIGHT,
                     "license": app_info.LICENSE_NAME, "site": app_info.SITE_URL},
             "chars": chars,

@@ -10,6 +10,7 @@
 #   t(key, **fields)   text in the current language, str.format()-ed
 #   raw(key)           text without formatting (html_* strings, formatted in JS)
 #   html_strings(lang) all html_* strings of one language (embedded in stats pages)
+#   names(prefix, lang) class_* / race_* names of one language (the group labels of the stats page)
 
 LANGUAGES = {"de": "Deutsch", "en": "English"}
 DEFAULT_LANGUAGE = "en"
@@ -390,6 +391,76 @@ _STRINGS = {
               "Total = sum of counters / sum of hours, leaving out characters with less than {hours} h played. "
               "“--” for deaths and honorable kills counts as 0.",
     },
+    "html_groups_title": {"de": "Gruppen", "en": "Groups"},
+    "html_groups_by": {"de": "Gruppieren nach", "en": "Group by"},
+    "html_groups_by_class": {"de": "Klasse", "en": "Class"},
+    "html_groups_by_race": {"de": "Rasse", "en": "Race"},
+    "html_groups_by_faction": {"de": "Fraktion", "en": "Faction"},
+    "html_groups_by_realm": {"de": "Realm", "en": "Realm"},
+    "html_groups_pick": {"de": "Angezeigte Gruppen", "en": "Groups shown"},
+    "html_groups_figures": {"de": "Kennzahlen", "en": "Figures"},
+    "html_groups_col_group": {"de": "Gruppe", "en": "Group"},
+    "html_groups_fig_chars": {"de": "Charaktere", "en": "Characters"},
+    "html_groups_fig_level": {"de": "Ø Level", "en": "Avg. level"},
+    "html_groups_fig_played": {"de": "Spielzeit gesamt", "en": "Total played time"},
+    "html_groups_unknown": {"de": "unbekannt", "en": "unknown"},
+    "html_groups_none_selected": {"de": "Keine Charaktere ausgewählt.", "en": "No characters selected."},
+    "html_groups_no_value": {"de": "kein Wert", "en": "no value"},
+    "html_groups_hours": {"de": "{n} Std.", "en": "{n} h"},
+    "html_groups_note": {
+        "de": "Klasse und Rasse stammen aus dem Scan: Charaktere, die seit dem Addon-Update nicht neu gescannt wurden, "
+              "stehen unter „unbekannt“. Raten = Summe der Zähler / Summe der Stunden der Gruppe, ohne Charaktere mit "
+              "weniger als {hours} Std. Spielzeit. Gesamt gilt für die angezeigten Gruppen; es zählen die oben "
+              "angehakten Charaktere.",
+        "en": "Class and race come from the scan: characters not scanned again since the addon update are listed "
+              "under “unknown”. Rates = sum of counters / sum of hours of the group, leaving out characters with "
+              "less than {hours} h played. Total covers the groups shown; the characters ticked above are counted.",
+    },
+    "html_faction_Alliance": {"de": "Allianz", "en": "Alliance"},
+    "html_faction_Horde": {"de": "Horde", "en": "Horde"},
+    "html_faction_Neutral": {"de": "Neutral", "en": "Neutral"},
+
+    # ------------------------------------------- class and race names for the groups on the stats page
+    # Keyed by the language independent file name the game gives (UnitClass/UnitRace, second value):
+    # one neutral name per class or race, whatever the gender of the character. Unknown file names
+    # are shown with the text stored in the scan. New races are added here by hand.
+    "class_WARRIOR": {"de": "Krieger", "en": "Warrior"},
+    "class_PALADIN": {"de": "Paladin", "en": "Paladin"},
+    "class_HUNTER": {"de": "Jäger", "en": "Hunter"},
+    "class_ROGUE": {"de": "Schurke", "en": "Rogue"},
+    "class_PRIEST": {"de": "Priester", "en": "Priest"},
+    "class_DEATHKNIGHT": {"de": "Todesritter", "en": "Death Knight"},
+    "class_SHAMAN": {"de": "Schamane", "en": "Shaman"},
+    "class_MAGE": {"de": "Magier", "en": "Mage"},
+    "class_WARLOCK": {"de": "Hexenmeister", "en": "Warlock"},
+    "class_MONK": {"de": "Mönch", "en": "Monk"},
+    "class_DRUID": {"de": "Druide", "en": "Druid"},
+    "class_DEMONHUNTER": {"de": "Dämonenjäger", "en": "Demon Hunter"},
+    "class_EVOKER": {"de": "Rufer", "en": "Evoker"},
+    "race_Human": {"de": "Mensch", "en": "Human"},
+    "race_Orc": {"de": "Orc", "en": "Orc"},
+    "race_Dwarf": {"de": "Zwerg", "en": "Dwarf"},
+    "race_NightElf": {"de": "Nachtelf", "en": "Night Elf"},
+    "race_Scourge": {"de": "Untoter", "en": "Undead"},
+    "race_Tauren": {"de": "Tauren", "en": "Tauren"},
+    "race_Gnome": {"de": "Gnom", "en": "Gnome"},
+    "race_Troll": {"de": "Troll", "en": "Troll"},
+    "race_Goblin": {"de": "Goblin", "en": "Goblin"},
+    "race_BloodElf": {"de": "Blutelf", "en": "Blood Elf"},
+    "race_Draenei": {"de": "Draenei", "en": "Draenei"},
+    "race_Worgen": {"de": "Worgen", "en": "Worgen"},
+    "race_Pandaren": {"de": "Pandaren", "en": "Pandaren"},
+    "race_Nightborne": {"de": "Nachtgeborener", "en": "Nightborne"},
+    "race_HighmountainTauren": {"de": "Hochbergtauren", "en": "Highmountain Tauren"},
+    "race_VoidElf": {"de": "Leerenelf", "en": "Void Elf"},
+    "race_LightforgedDraenei": {"de": "Lichtgeschmiedeter Draenei", "en": "Lightforged Draenei"},
+    "race_ZandalariTroll": {"de": "Zandalaritroll", "en": "Zandalari Troll"},
+    "race_KulTiran": {"de": "Kul Tiraner", "en": "Kul Tiran"},
+    "race_DarkIronDwarf": {"de": "Dunkeleisenzwerg", "en": "Dark Iron Dwarf"},
+    "race_Vulpera": {"de": "Vulpera", "en": "Vulpera"},
+    "race_MagharOrc": {"de": "Mag'har", "en": "Mag'har Orc"},
+    "race_Mechagnome": {"de": "Mechagnom", "en": "Mechagnome"},
+    "race_Dracthyr": {"de": "Dracthyr", "en": "Dracthyr"},
 }
 
 
@@ -421,3 +492,8 @@ def t(key: str, /, **fields) -> str:  # positional-only: some messages have a {k
 
 def html_strings(lang: str) -> dict:
     return {k[len("html_"):]: raw(k, lang) for k in _STRINGS if k.startswith("html_")}
+
+
+def names(prefix: str, lang: str) -> dict:
+    """{file name: text} of all keys with this prefix ("class_", "race_"), in one language."""
+    return {k[len(prefix):]: raw(k, lang) for k in _STRINGS if k.startswith(prefix)}
