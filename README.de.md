@@ -51,7 +51,14 @@ Beim Start (abschaltbar unter *Einstellungen ...*) fragt StatTracker bei GitHub 
 
 ## Wo liegen meine Daten?
 
-Neben dem Programm im Ordner `data`: `config.json`, `wow_stats*.db`, `stats*.html`, `stattracker.xlsx`. Sichere diesen Ordner, wenn dir die Historie wichtig ist.
+Neben dem Programm im Ordner `data`: `config.json`, `wow_stats*.db`, `stats*.html`, `stattracker.xlsx` und der Ordner `backups`. Sichere diesen Ordner, wenn dir die Historie wichtig ist.
+
+Bevor ein Einlesen in eine vorhandene Datenbank schreibt, kopiert StatTracker sie nach `data/backups/`:
+
+- `daily/` enthält eine Kopie pro Tag für die letzten 7 Tage; ältere werden automatisch gelöscht.
+- `migration/` enthält eine Kopie vor jedem Datenbank-Upgrade (der Dateiname nennt die Version, zu der es führt). Diese werden nie automatisch gelöscht; lösche sie von Hand, wenn du sie nicht mehr brauchst.
+
+So stellst du eine Kopie wieder her: StatTracker schließen, eine `.bak`-Datei aus dem Ordner kopieren, in `wow_stats.db` umbenennen (`wow_stats_<Version>.db` bei den anderen Spielversionen) und in `data` legen. Die Kopien liegen auf derselben Platte wie die Datenbank: sie schützen vor einem fehlerhaften Einlesen oder Upgrade, nicht vor einer defekten Platte - sichere `data` zusätzlich an anderer Stelle. Lässt sich eine Kopie nicht schreiben, bricht das Einlesen ab und ändert nichts.
 
 ## Aus dem Quellcode starten
 

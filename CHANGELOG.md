@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- New: before an import writes to an existing database, StatTracker copies it into `data/backups/`. `daily/` keeps one copy per day for the last 7 days; `migration/` keeps one copy before every database upgrade and is never deleted automatically. If a copy cannot be written, the import stops before it changes anything
+- Docs: both READMEs describe the backup folders and how to restore a copy
+
 ## 0.1.3
 
 - New: the stats page shows rates per hour played (creatures killed, honorable kills, deaths, gold) for every character and as a total over all of them, in a collapsible block. If a number cannot be worked out, for example because of too little played time, the page says why instead of showing a value

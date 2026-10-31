@@ -19,6 +19,7 @@ gui_config.json
 wow_stats*.db
 stats*.html
 *.xlsx
+*.bak
 crash.log
 
 # Update leftovers next to a built exe
