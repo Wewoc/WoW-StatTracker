@@ -9,6 +9,8 @@
 # Output files per game version live in data/ (see out_files()):
 #   _retail_       -> wow_stats.db / stats.html
 #   _anniversary_  -> wow_stats_anniversary.db / stats_anniversary.html   etc.
+# The history pages of the characters go to a folder per game version (see history_dir()):
+#   _retail_       -> history/        _anniversary_ -> history_anniversary/   etc.
 # Tested: Retail works. BC Anniversary does not work (that game version provides no
 # statistics). Everything else is untested.
 
@@ -103,6 +105,14 @@ def out_files(variant):
         return data / "wow_stats.db", data / "stats.html"
     n = variant.strip("_")
     return data / f"wow_stats_{n}.db", data / f"stats_{n}.html"
+
+
+def history_dir(variant):
+    """Folder of the history pages per game version, in data/ (next to the stats page it links to)."""
+    data = paths.data_dir()
+    if variant == DEFAULT_VARIANT:
+        return data / "history"
+    return data / f"history_{variant.strip('_')}"
 
 
 # ------------------------------------------------------------- build info / toc

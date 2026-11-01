@@ -17,7 +17,8 @@ python src/start.py
 On Windows you can also double-click `src/bat/start.bat`.
 
 All data goes to `data/` in the repository root (git-ignored): `config.json`,
-`wow_stats*.db`, `stats*.html`, `stattracker.xlsx`, `crash.log`, `backups/` (copies of the
+`wow_stats*.db`, `stats*.html`, `history/` (history pages per character, `history_<version>/` for other
+game versions, made by the import with `--history-dir`), `stattracker.xlsx`, `crash.log`, `backups/` (copies of the
 database: `daily/` rotates, `migration/` stays).
 
 plotly.js (for the history pages) is not part of the repository. `python compiler/plotly_fetch.py`

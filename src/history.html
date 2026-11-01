@@ -11,6 +11,8 @@
   body { font-family: system-ui, Arial, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 16px; }
   h1 { color: var(--gold); margin: 0 0 4px; font-size: 1.4rem; }
   .sub { color: var(--dim); font-size: .85rem; margin-bottom: 4px; }
+  a.back { color: var(--dim); text-decoration: none; }
+  a.back:hover { color: var(--gold); }
   .bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; background: var(--panel);
          border: 1px solid var(--line); padding: 10px 12px; border-radius: 6px; margin: 12px 0 8px; }
   input[type=search], select { background: #101010; color: var(--fg); border: 1px solid var(--line);
@@ -45,6 +47,7 @@
 <!--__PLOTLY__-->
 </head>
 <body>
+<div class="sub"><a class="back" id="back" hidden></a></div>
 <h1 id="title"></h1>
 <div class="sub" id="who"></div>
 <div class="sub" id="span"></div>
@@ -112,6 +115,9 @@ function init() {
     document.body.insertAdjacentHTML("beforeend", '<div class="empty"></div>');
     document.querySelector(".empty").textContent = UI.no_data || "";
     return;
+  }
+  if (DATA.back) {   // the link to the stats page (relative, set by the generator)
+    $("back").href = DATA.back; $("back").textContent = UI.hist_back || ""; $("back").hidden = false;
   }
   const c = DATA.char;
   document.title = fmt(UI.hist_title, {char: c.key});

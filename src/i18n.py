@@ -319,6 +319,15 @@ _STRINGS = {
         "de": "HTML:     {path}  ({chars} Charaktere, {stats} Statistiken)",
         "en": "HTML:     {path}  ({chars} characters, {stats} statistics)",
     },
+    "parse_out_history": {"de": "Verläufe: {count} geschrieben ({path})", "en": "History:  {count} written ({path})"},
+    "parse_warn_history": {
+        "de": "WARNUNG: Verlaufsseiten nicht geschrieben: {error}",
+        "en": "WARNING: history pages not written: {error}",
+    },
+    "parse_warn_history_char": {
+        "de": "WARNUNG: Verlaufsseite von {key} nicht geschrieben: {error}",
+        "en": "WARNING: history page of {key} not written: {error}",
+    },
 
     # ------------------------------------------------------------------- excel
     "xl_err_openpyxl": {
@@ -481,6 +490,20 @@ _STRINGS = {
     "html_hist_level": {"de": "Level", "en": "Level"},
     "html_hist_level_cat": {"de": "Charakter", "en": "Character"},
     "html_hist_plotly": {"de": "Diagramme: plotly.js {version} (MIT-Lizenz)", "en": "Charts: plotly.js {version} (MIT license)"},
+    "html_hist_back": {"de": "← Übersicht", "en": "← Overview"},
+    "html_hist_links_title": {"de": "Verläufe", "en": "History"},
+    "html_hist_links_note": {
+        "de": "Pro Charakter eine eigene Seite mit dem Verlauf aller Statistiken; in Klammern die Zahl der Scans. "
+              "Die Seiten liegen im Ordner „{dir}“ neben dieser Seite. Gibst du diese Seite allein weiter, "
+              "funktionieren die Links nicht.",
+        "en": "One page per character with the history of all statistics; the number of scans in brackets. "
+              "The pages are in the folder \"{dir}\" next to this page. If you pass this page on by itself, "
+              "the links do not work.",
+    },
+    "html_hist_links_missing": {
+        "de": "Noch ohne Verlauf (nur ein Scan): {n}",
+        "en": "Without history yet (only one scan): {n}",
+    },
     "html_hist_no_chart": {
         "de": "Das Diagramm konnte nicht aufgebaut werden (plotly.js fehlt).",
         "en": "The chart could not be built (plotly.js is missing).",

@@ -31,13 +31,17 @@ from i18n import t
 
 
 # ============================================================ logic helpers (no widgets)
-def run_parser(sv_file, db_path, html_path):
-    """Runs stat_parser.main() and returns (ok, output_text)."""
+def run_parser(sv_file, db_path, html_path, history_dir=None):
+    """Runs stat_parser.main() and returns (ok, output_text). history_dir: where the history pages go
+    (none are made if it is not given)."""
     buf = io.StringIO()
     ok = True
+    args = ["--input", str(sv_file), "--db", str(db_path), "--output", str(html_path)]
+    if history_dir:
+        args += ["--history-dir", str(history_dir)]
     try:
         with contextlib.redirect_stdout(buf):
-            stat_parser.main(["--input", str(sv_file), "--db", str(db_path), "--output", str(html_path)])
+            stat_parser.main(args)
     except SystemExit as e:
         if e.code not in (None, 0):
             ok = False
@@ -374,7 +378,7 @@ class App(tk.Tk):
             return False
         self.save()
         db_path, html_path = wow_install.out_files(variant)
-        ok, out = run_parser(sv, db_path, html_path)
+        ok, out = run_parser(sv, db_path, html_path, wow_install.history_dir(variant))
         for line in out.strip().splitlines():
             self.write(line, "err" if (not ok or line.startswith(("FEHLER", "WARNUNG", "ERROR", "WARNING"))) else None)
         self.write(t("log_parse_ok") if ok else t("log_parse_fail"), "ok" if ok else "err")

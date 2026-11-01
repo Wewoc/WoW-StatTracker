@@ -9,6 +9,7 @@ StatTracker liest die **Spielstatistiken** deiner World-of-Warcraft-Charaktere �
 - Windows-Programm mit kleinem Fenster, deutsche und englische Oberfläche
 - Raten pro Spielstunde (Kills, Tode, Gold) je Charakter und insgesamt; lässt sich eine Zahl nicht berechnen, nennt die Seite den Grund
 - Gruppiert deine Charaktere nach Klasse, Rasse, Fraktion oder Realm
+- Eine Verlaufsseite für jeden Charakter mit mindestens zwei Scans: Statistiken auswählen und als Linien über deine Scans ansehen
 - Arbeitet pro Spielversion; standardmäßig ist nur **Retail** aktiviert
 
 ## Schnellstart (Release-Download)
@@ -27,6 +28,8 @@ Das Addon speichert bei jedem Scan auch die Klasse (als sprachunabhängigen Name
 Die Statistik-Seite zeigt Rasse, Klasse und Level unter jedem Namen. Ihr ausklappbarer Block *Gruppen* fasst die oben angehakten Charaktere nach Klasse, Rasse, Fraktion oder Realm zusammen: Anzahl, Durchschnittslevel, Spielzeit und die Raten pro Stunde. Jede weitere Statistik mit Zahl lässt sich als Spalte hinzufügen (Summe, Durchschnitt oder Maximum). Eine Voreinstellung speichert Gruppierung, Kennzahlen und hinzugefügte Statistiken unter einem Namen; sie liegt in deinem Browser, nicht in der Seite. Der Excel-Export hat keine Gruppen.
 
 ![Der Gruppen-Block: Charaktere nach Fraktion gruppiert mit Anzahl, Durchschnittslevel, Spielzeit, Raten pro Stunde und zwei hinzugefügten Statistiken.](docs/images/groups-de.png)
+
+Jeder Charakter mit mindestens zwei Scans bekommt außerdem eine **Verlaufsseite**, verlinkt im Block *Verläufe* der Statistik-Seite: bis zu zehn Statistiken auswählen und als Linien über deine Scans ansehen, absolut oder als Index (erster Wert = 100). Ein Scan ohne Zahl hinterlässt eine Lücke, es wird nichts aufgefüllt. *2. Daten einlesen* erzeugt die Seiten (nur für Charaktere mit neuem Scan) und braucht kein Internet; die Links funktionieren, solange der Ordner `history` neben der Statistik-Seite liegt.
 
 ## Spielversionen
 
@@ -57,7 +60,7 @@ Beim Start (abschaltbar unter *Einstellungen ...*) fragt StatTracker bei GitHub 
 
 ## Wo liegen meine Daten?
 
-Neben dem Programm im Ordner `data`: `config.json`, `wow_stats*.db`, `stats*.html`, `stattracker.xlsx` und der Ordner `backups`. Sichere diesen Ordner, wenn dir die Historie wichtig ist.
+Neben dem Programm im Ordner `data`: `config.json`, `wow_stats*.db`, `stats*.html`, der Ordner `history` (`history_<Version>` bei den anderen Spielversionen; er lässt sich aus der Datenbank neu erzeugen), `stattracker.xlsx` und der Ordner `backups`. Sichere diesen Ordner, wenn dir die Historie wichtig ist.
 
 Bevor ein Einlesen in eine vorhandene Datenbank schreibt, kopiert StatTracker sie nach `data/backups/`:
 

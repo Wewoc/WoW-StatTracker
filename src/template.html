@@ -45,6 +45,10 @@
   .gnone { padding: 10px 2px; color: var(--dim); font-size: .85rem; }
   .gbar .chip { background:#101010; border:1px solid var(--line); padding:3px 8px; border-radius:12px; font-size:.85rem; }
   .gbar .chip button { border: 0; background: none; padding: 0 0 0 6px; font-size: .95rem; }
+  .gbar a.hlink { background:#101010; border:1px solid var(--line); padding:3px 8px; border-radius:12px;
+                  font-size:.85rem; color: var(--fg); text-decoration: none; }
+  .gbar a.hlink:hover { border-color: var(--gold); color: var(--gold); }
+  .gbar a.hlink span { color: var(--dim); }
   #xstat { max-width: 340px; }
   .foot { color: var(--dim); font-size: .8rem; margin: 12px 2px 0; }
   .foot a { color: var(--dim); }
@@ -95,6 +99,11 @@
   <div class="gnone" id="groupsNone" hidden></div>
   <div class="rwrap" id="groupsWrap"><table id="gt"><thead></thead><tbody></tbody></table></div>
   <div class="note" id="groupsNote"></div>
+</details>
+<details class="rates" id="history" hidden>
+  <summary id="historyTitle"></summary>
+  <div class="gbar" id="historyLinks"></div>
+  <div class="note" id="historyNote"></div>
 </details>
 <div class="count" id="count"></div>
 <div class="wrap"><table id="t"><thead></thead><tbody></tbody></table></div>
@@ -162,9 +171,32 @@ function init() {
   ["q", "cat", "diff", "hideEmpty"].forEach(id => $(id).addEventListener("input", render));
   setupGroups();
   setupPresets();
+  setupHistory();
   renderRates();
   renderFoot();
   render();
+}
+
+// Links to the history pages (one per character with at least two scans, written next to this page by the
+// program, src/stat_history.py). The block stays hidden when the generator gave none. A link is only as good
+// as the folder beside this page, which the note says.
+function setupHistory() {
+  const H = DATA.history;
+  const linked = H && H.links ? DATA.chars.filter(c => Object.prototype.hasOwnProperty.call(H.links, c.key)) : [];
+  if (!linked.length) return;
+  $("history").hidden = false;
+  $("historyTitle").textContent = UI.hist_links_title || "";
+  const box = $("historyLinks");
+  linked.forEach(c => {
+    const a = document.createElement("a");
+    const n = document.createElement("span");
+    a.className = "hlink"; a.href = H.links[c.key].href;
+    n.textContent = " (" + H.links[c.key].scans + ")";
+    a.append(c.key, n);
+    box.append(a);
+  });
+  const missing = DATA.chars.length - linked.length;
+  $("historyNote").textContent = fmt(UI.hist_links_note, {dir: H.dir}) + (missing ? " " + fmt(UI.hist_links_missing, {n: missing}) : "");
 }
 
 // Version, link to the project page and copyright (values from src/app_info.py via the generator).

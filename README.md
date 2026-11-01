@@ -9,6 +9,7 @@ StatTracker reads the **game statistics** of your World of Warcraft characters t
 - Windows program with a small window, English and German interface
 - Rates per hour played (kills, deaths, gold) for each character and as a total; if a number cannot be worked out, the page says why
 - Groups your characters by class, race, faction or realm
+- A history page for every character with at least two scans: pick statistics and see them as lines over your scans
 - Works per game version; by default only **Retail** is enabled
 
 ## Quick start (release download)
@@ -27,6 +28,8 @@ The addon also records each character's class (as a language-independent name) a
 The stats page shows race, class and level under each name. Its collapsible *Groups* block sums up the characters ticked above by class, race, faction or realm: number of characters, average level, played time and the rates per hour. Any other statistic with a number can be added as a column (sum, average or maximum). A preset saves the grouping, the figures and the added statistics under a name; it is kept in your browser, not in the page. The Excel export has no groups.
 
 ![The Groups block: characters grouped by faction with number of characters, average level, played time, rates per hour and two added statistics.](docs/images/groups-en.png)
+
+Every character with at least two scans also gets a **history page**, linked from the *History* block of the stats page: pick up to ten statistics and see them as lines over your scans, as absolute values or as an index (first value = 100). A scan without a number leaves a gap, nothing is filled in. *2. Read data* makes the pages (only for characters with a new scan) and needs no internet; the links work as long as the `history` folder lies next to the stats page.
 
 ## Game versions
 
@@ -57,7 +60,7 @@ At start (switch off in *Settings ...*) StatTracker asks GitHub whether a newer 
 
 ## Where is my data?
 
-Next to the program, in the `data` folder: `config.json`, `wow_stats*.db`, `stats*.html`, `stattracker.xlsx` and the `backups` folder. Back that folder up if you care about the history.
+Next to the program, in the `data` folder: `config.json`, `wow_stats*.db`, `stats*.html`, the `history` folder (`history_<version>` for the other game versions; it can be made again from the database), `stattracker.xlsx` and the `backups` folder. Back that folder up if you care about the history.
 
 Before an import writes to an existing database, StatTracker copies it into `data/backups/`:
 

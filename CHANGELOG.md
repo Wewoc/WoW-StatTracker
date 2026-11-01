@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- New: a history page for every character with at least two scans. Pick up to ten statistics and see them as lines over your scans, as absolute values or as an index (first value = 100); gold is shown in gold and played time in hours, a scan without a number leaves a gap. The stats page has a new *History* block that links the pages
+- Note: *2. Read data* writes the pages into `data/history/` (`data/history_<version>/` for the other game versions), only for characters with a new scan, a missing page, or after a program update. Everything in that folder can be made again from the database. The pages need no internet; the links on the stats page work while the folder lies next to it
+- Note: if a history page cannot be written (for example plotly.js is missing), the import still completes and the log shows a warning
+- Docs: both READMEs describe the history pages and credit plotly.js (MIT)
+
 ## 0.1.7
 
 - New: presets for the *Groups* block. A preset remembers the grouping, the figures shown and the added statistics under a name; choose one from the list to apply it, save the current setup under a name (an existing name is overwritten) or delete a preset. The characters and groups ticked are not part of a preset

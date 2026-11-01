@@ -7,19 +7,22 @@
 # Reads WTF/Account/<ACCOUNT>/SavedVariables/StatTracker.lua, stores every scan in
 # a SQLite database (with history) and builds a self-contained stats page from it
 # (data embedded, no web server needed). Before it writes to an existing database it takes a
-# copy of it (db_backup).
+# copy of it (db_backup). With --history-dir it also keeps the history pages of the characters
+# up to date (stat_history, imported late in update_history_pages) and links them from the page.
 #
 # Usage:
-#     python stat_parser.py --input PATH\StatTracker.lua [--db FILE] [--output FILE]
+#     python stat_parser.py --input PATH\StatTracker.lua [--db FILE] [--output FILE] [--history-dir DIR]
 # No external dependencies.
 
 import argparse
 import json
+import os
 import re
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 import app_info
 import db_backup
@@ -374,6 +377,8 @@ def _name_or_none(value):
 
 
 def import_data(conn, db):
+    """Stores the scans of the file. Returns (new, skipped, changed): the number of new scans, the
+    number already in the database, and the keys of the characters that got a new scan."""
     meta = db.get("meta")
     chars = db.get("chars")
     if not isinstance(meta, dict) or not isinstance(chars, dict) or not chars:
@@ -390,6 +395,7 @@ def import_data(conn, db):
                      (sid, name, cat))
 
     new = skipped = 0
+    changed = []
     for key, c in chars.items():
         stats = c.get("stats")
         if not isinstance(stats, dict) or not stats or "scannedAt" not in c:
@@ -418,8 +424,9 @@ def import_data(conn, db):
             conn.execute("INSERT INTO stat_values(scan_id,stat_id,value_text,value_num) VALUES(?,?,?,?)",
                          (scan_id, sid, fmt_duration(sec), int(sec)))
         new += 1
+        changed.append(key)
     conn.commit()
-    return new, skipped
+    return new, skipped, changed
 
 
 def refresh_numbers(conn):
@@ -451,7 +458,9 @@ def derived_payload(stats, chars, lang):
     return derived
 
 
-def build_payload(conn, lang=None):
+def build_payload(conn, lang=None, history=None):
+    """The data of the stats page. history: the links to the history pages (update_history_pages),
+    left out of the payload when there are none."""
     lang = lang or i18n.get_language()
     scans = conn.execute("""
         SELECT s.scan_id, s.char_key, s.scanned_at, s.class, s.level, s.faction,
@@ -477,15 +486,18 @@ def build_payload(conn, lang=None):
                 text = fmt_duration(num)
             defs[stat_id]["v"][scan_to_char[scan_id]] = [text, num]
 
-    return {"generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "lang": lang,
-            "ui": i18n.html_strings(lang),
-            "names": {"class": i18n.names("class_", lang), "race": i18n.names("race_", lang)},
-            "app": {"version": app_info.APP_VERSION, "copyright": app_info.COPYRIGHT,
-                    "license": app_info.LICENSE_NAME, "site": app_info.SITE_URL},
-            "chars": chars,
-            "stats": sorted(defs.values(), key=lambda d: (d["cat"], d["name"])),
-            "derived": derived_payload(list(defs.values()), chars, lang)}
+    payload = {"generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+               "lang": lang,
+               "ui": i18n.html_strings(lang),
+               "names": {"class": i18n.names("class_", lang), "race": i18n.names("race_", lang)},
+               "app": {"version": app_info.APP_VERSION, "copyright": app_info.COPYRIGHT,
+                       "license": app_info.LICENSE_NAME, "site": app_info.SITE_URL},
+               "chars": chars,
+               "stats": sorted(defs.values(), key=lambda d: (d["cat"], d["name"])),
+               "derived": derived_payload(list(defs.values()), chars, lang)}
+    if history:
+        payload["history"] = history
+    return payload
 
 
 def write_html(payload, out_path):
@@ -500,6 +512,35 @@ def write_html(payload, out_path):
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(tpl.replace(marker, data), encoding="utf-8")
+
+
+# ------------------------------------------------------------- history pages
+def update_history_pages(conn, history_dir, html_path, changed):
+    """Brings the history pages of the characters up to date (stat_history.write_pages) and returns
+    (links for the stats page or None, lines to print). A failure here never stops the import or the
+    stats page: it becomes a warning line, and the page then links only the pages that exist."""
+    import stat_history          # late: stat_history imports this module
+    folder, page = Path(history_dir), Path(html_path)
+    try:
+        rel = Path(os.path.relpath(folder, page.parent))
+        back = quote(Path(os.path.relpath(page, folder)).as_posix())
+    except ValueError:           # another drive: there is no relative link
+        rel = back = None
+    try:
+        result = stat_history.write_pages(conn, folder, changed, back)
+    except Exception as exc:     # not worth losing the import for: the pages are an extra
+        return None, [t("parse_warn_history", error=f"{type(exc).__name__}: {exc}")]
+    lines = []
+    if result["written"]:
+        lines.append(t("parse_out_history", count=len(result["written"]), path=folder))
+    for key, error in result["failed"]:
+        lines.append(t("parse_warn_history", error=error) if key is None
+                     else t("parse_warn_history_char", key=key, error=error))
+    if rel is None or not result["links"]:
+        return None, lines
+    links = {key: {"href": quote((rel / item["file"]).as_posix()), "scans": item["scans"]}
+             for key, item in result["links"].items()}
+    return {"dir": rel.as_posix(), "links": links}, lines
 
 
 # ---------------------------------------------------------------------- Main
@@ -522,6 +563,7 @@ def main(argv=None):
     ap.add_argument("--input", help="path to StatTracker.lua (SavedVariables)")
     ap.add_argument("--db", default=str(paths.data_dir() / "wow_stats.db"))
     ap.add_argument("--output", default=str(paths.data_dir() / "stats.html"))
+    ap.add_argument("--history-dir", help="folder for the history pages of the characters (no pages if not given)")
     a = ap.parse_args(argv)
 
     src = find_input(a.input)
@@ -535,9 +577,11 @@ def main(argv=None):
 
     conn = init_db(a.db)
     try:
-        new, skipped = import_data(conn, parsed["StatTrackerDB"])
+        new, skipped, changed = import_data(conn, parsed["StatTrackerDB"])
         fixed = refresh_numbers(conn)
-        payload = build_payload(conn)
+        history, history_lines = (update_history_pages(conn, a.history_dir, a.output, changed)
+                                  if a.history_dir else (None, []))
+        payload = build_payload(conn, history=history)
     finally:
         conn.close()
     write_html(payload, Path(a.output))
@@ -548,6 +592,8 @@ def main(argv=None):
         print(t("parse_out_numbers", count=fixed))
     print(t("parse_out_db", path=a.db))
     print(t("parse_out_html", path=a.output, chars=len(payload["chars"]), stats=len(payload["stats"])))
+    for line in history_lines:
+        print(line)
 
 
 if __name__ == "__main__":

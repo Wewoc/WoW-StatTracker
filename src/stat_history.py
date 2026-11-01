@@ -9,10 +9,13 @@
 # init_db, so no backup, no migration, no new file) after stat_parser.check_schema. Raw values
 # as stored (value_num), no rates, no reset detection, no smoothing.
 # write_page() puts the data and the pinned plotly.js (plotly_asset) into history.html and
-# writes that one file; it is the only writer of the history pages.
+# writes that one file; write_pages() decides which characters need a new page (a new scan, no
+# page yet, or pages from another program version). Both are the only writers of the history pages.
 # Needs stat_parser (schema check, names of the played-time statistics), plotly_asset, i18n,
-# paths and app_info.
+# paths and app_info. stat_parser imports this module late, inside main(), because it needs
+# stat_parser itself.
 
+import hashlib
 import json
 import os
 import re
@@ -34,6 +37,11 @@ RACE_COLUMNS = ("class_file", "race", "race_file")     # scans.* since schema 2
 PAGE_TEMPLATE = "history.html"                  # bundled next to template.html
 DATA_MARKER = "/*__DATA__*/null"                # replaced by the page data (JSON)
 PLOTLY_MARKER = "<!--__PLOTLY__-->"             # replaced by the inline plotly.js <script>
+
+PAGE_PREFIX = "history-"                        # file names: history-<name>-<hash>.html
+NAME_PART_MAX = 40
+GENERATOR_FILE = ".generator"                   # in the pages folder: the program version that wrote the pages
+MIN_SCANS = 2                                   # a character needs this many scans to get a page
 
 
 class HistoryPageError(Exception):
@@ -108,9 +116,10 @@ def build_history(conn, char_key):
             "stats": stats}
 
 
-def build_page_payload(conn, char_key):
+def build_page_payload(conn, char_key, back=None):
     """build_history() plus what the page needs besides the numbers: texts in the current language,
-    the program data for the footer, the plotly.js version. None if the database has no scan of the
+    the program data for the footer, the plotly.js version, and `back`, the link to the stats page
+    (relative, already URL-quoted; None = no link). None if the database has no scan of the
     character."""
     history = build_history(conn, char_key)
     if history is None:
@@ -122,7 +131,8 @@ def build_page_payload(conn, char_key):
             "ui": i18n.html_strings(lang),
             "app": {"version": app_info.APP_VERSION, "copyright": app_info.COPYRIGHT,
                     "license": app_info.LICENSE_NAME, "site": app_info.SITE_URL},
-            "plotly": plotly_asset.VERSION}
+            "plotly": plotly_asset.VERSION,
+            "back": back}
 
 
 def write_page(payload, out_path):
@@ -151,3 +161,63 @@ def write_page(payload, out_path):
     except OSError as exc:
         part.unlink(missing_ok=True)
         raise HistoryPageError(f"History page not writable: {out_path} ({exc})") from exc
+
+
+def history_counts(conn):
+    """{char_key: number of stored scans} for every character in the database."""
+    return dict(conn.execute("SELECT char_key, COUNT(*) FROM scans GROUP BY char_key"))
+
+
+def page_name(char_key):
+    """File name of the history page of a character: its name made safe for a file system, plus a
+    short hash of the exact key, so that names which differ only in case, an apostrophe or an umlaut
+    can never meet in one file."""
+    part = "".join(ch if ch.isalnum() else "_" for ch in char_key)[:NAME_PART_MAX]
+    return f"{PAGE_PREFIX}{part}-{hashlib.sha256(char_key.encode('utf-8')).hexdigest()[:8]}.html"
+
+
+def _generator_version(folder):
+    try:
+        return (Path(folder) / GENERATOR_FILE).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+
+
+def write_pages(conn, folder, changed, back_href=None):
+    """Brings the history pages in `folder` up to date. A character with at least MIN_SCANS scans
+    gets a page if it is in `changed` (a scan was imported just now), if its page is missing, or if
+    the pages were written by another program version (then all are written again). Nothing is
+    written for the rest, so an import that brings nothing new leaves every file alone.
+
+    Returns {"links": {char_key: {"file", "scans"}}   the pages that exist now (an old page stays linked
+                                                       if writing the new one failed)
+             "written": [char_key, ...],
+             "failed": [(char_key or None, message), ...]}   None: all pages (plotly.js is missing or wrong)
+    One character failing does not stop the others; a missing plotly.js stops all writing. Only the
+    expected errors of one page are caught here (HistoryPageError, OSError, sqlite3.Error); the caller
+    decides what a failure means for the import."""
+    folder = Path(folder)
+    changed = set(changed)
+    eligible = {key: n for key, n in history_counts(conn).items() if n >= MIN_SCANS}
+    everything = bool(eligible) and _generator_version(folder) != app_info.APP_VERSION
+    links, written, failed = {}, [], []
+    blocked = False
+    for key in sorted(eligible):
+        target = folder / page_name(key)
+        if not blocked and (everything or key in changed or not target.is_file()):
+            try:
+                write_page(build_page_payload(conn, key, back_href), target)
+                written.append(key)
+            except plotly_asset.PlotlyAssetError as exc:
+                failed.append((None, str(exc)))
+                blocked = True
+            except (HistoryPageError, OSError, sqlite3.Error) as exc:
+                failed.append((key, str(exc)))
+        if target.is_file():
+            links[key] = {"file": target.name, "scans": eligible[key]}
+    if everything and not failed:
+        try:
+            (folder / GENERATOR_FILE).write_text(app_info.APP_VERSION, encoding="utf-8")
+        except OSError as exc:
+            failed.append((None, str(exc)))
+    return {"links": links, "written": written, "failed": failed}
