@@ -39,12 +39,27 @@ USER_AGENT = app_info.APP_NAME
 ALLOWED_SCHEMES = ("https",)
 
 
-def _open(url: str, timeout: int):
-    scheme = urllib.parse.urlparse(url).scheme.lower()
-    if scheme not in ALLOWED_SCHEMES:
+def _check_scheme(url: str) -> None:
+    if urllib.parse.urlparse(url).scheme.lower() not in ALLOWED_SCHEMES:
         raise RuntimeError(t("err_bad_url", url=url))
+
+
+class _SchemeCheckedRedirects(urllib.request.HTTPRedirectHandler):
+    """urlopen follows a redirect to any scheme it knows (http, ftp), so the check of the first address
+    would not hold for the rest of the way: every hop gets the same check."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _check_scheme(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_SchemeCheckedRedirects)
+
+
+def _open(url: str, timeout: int):
+    _check_scheme(url)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    return urllib.request.urlopen(req, timeout=timeout)
+    return _OPENER.open(req, timeout=timeout)
 
 
 def fetch_latest_release(url: str = None, timeout: int = 5) -> dict:
