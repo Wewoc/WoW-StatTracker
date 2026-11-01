@@ -17,6 +17,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r requirements-dev.txt pyinstaller
+      - run: python compiler/plotly_fetch.py
       - run: python -m pytest -q
       - name: Tag must match APP_VERSION
         shell: python
@@ -28,8 +29,24 @@ jobs:
           if tag != app_info.APP_VERSION:
               sys.exit(f"tag {tag} != APP_VERSION {app_info.APP_VERSION}")
       - run: python compiler/build.py --no-venv
+      - name: Release title and notes from the tag message
+        shell: bash
+        run: |
+          # First line of the annotated tag message = title, the rest = notes.
+          tag="$GITHUB_REF_NAME"
+          git fetch --force origin "+refs/tags/${tag}:refs/tags/${tag}"
+          if [ "$(git cat-file -t "refs/tags/${tag}")" = "tag" ]; then
+            echo "RELEASE_NAME=$(git tag -l --format='%(contents:subject)' "$tag")" >> "$GITHUB_ENV"
+            git tag -l --format='%(contents:body)' "$tag" > release-notes.md
+          else
+            echo "::warning::${tag} is not an annotated tag, the release gets no title and no notes"
+            echo "RELEASE_NAME=${tag}" >> "$GITHUB_ENV"
+            : > release-notes.md
+          fi
       - uses: softprops/action-gh-release@v2
         with:
+          name: ${{ env.RELEASE_NAME }}
+          body_path: release-notes.md
           files: |
             dist/StatTracker.zip
             dist/StatTracker.zip.sha256

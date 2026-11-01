@@ -25,7 +25,7 @@ FORBIDDEN = {
     "local path (projects)": (r"[A-Z]:[\\/]+(?:Git" + r"hub|Spi" + r"ele|W" + r"oW)\b", 0),
 }
 
-NEVER_SHIPPED = ["wow_stats*.db", "stats*.html", "*.xlsx", "*.bak", "config.json", "gui_config.json",
+NEVER_SHIPPED = ["wow_stats*.db", "stats*.html", "history-*.html", "*.xlsx", "*.bak", "config.json", "gui_config.json",
                  "crash.log", "*.zip", "*.sha256"]
 SKIP_DIRS = {".git", ".venv-build", "build", "dist", "data", "__pycache__", ".pytest_cache"}
 

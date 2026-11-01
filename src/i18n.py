@@ -319,6 +319,15 @@ _STRINGS = {
         "de": "HTML:     {path}  ({chars} Charaktere, {stats} Statistiken)",
         "en": "HTML:     {path}  ({chars} characters, {stats} statistics)",
     },
+    "parse_out_history": {"de": "Verläufe: {count} geschrieben ({path})", "en": "History:  {count} written ({path})"},
+    "parse_warn_history": {
+        "de": "WARNUNG: Verlaufsseiten nicht geschrieben: {error}",
+        "en": "WARNING: history pages not written: {error}",
+    },
+    "parse_warn_history_char": {
+        "de": "WARNUNG: Verlaufsseite von {key} nicht geschrieben: {error}",
+        "en": "WARNING: history page of {key} not written: {error}",
+    },
 
     # ------------------------------------------------------------------- excel
     "xl_err_openpyxl": {
@@ -448,6 +457,57 @@ _STRINGS = {
     "html_faction_Alliance": {"de": "Allianz", "en": "Alliance"},
     "html_faction_Horde": {"de": "Horde", "en": "Horde"},
     "html_faction_Neutral": {"de": "Neutral", "en": "Neutral"},
+
+    # ------------------------------------------------------- history page of one character (history.html)
+    "html_hist_title": {"de": "Verlauf – {char}", "en": "History – {char}"},
+    "html_hist_sub": {"de": "Scans: {scans} · {first} bis {last}", "en": "Scans: {scans} · {first} to {last}"},
+    "html_hist_pick": {"de": "Statistiken (höchstens {n} gleichzeitig)", "en": "Statistics (at most {n} at a time)"},
+    "html_hist_only_changed": {"de": "nur veränderte", "en": "changed only"},
+    "html_hist_count": {"de": "{shown} von {total} Statistiken", "en": "{shown} of {total} statistics"},
+    "html_hist_mode_abs": {"de": "Absolut", "en": "Absolute"},
+    "html_hist_mode_index": {"de": "Index (erster Wert = 100)", "en": "Index (first value = 100)"},
+    "html_hist_limit": {"de": "Höchstens {n} Statistiken gleichzeitig.", "en": "At most {n} statistics at a time."},
+    "html_hist_none_selected": {
+        "de": "Wähle mindestens eine Statistik aus der Liste.",
+        "en": "Pick at least one statistic from the list.",
+    },
+    "html_hist_one_scan": {
+        "de": "Bisher gibt es nur einen Scan dieses Charakters: ein Punkt je Statistik, noch kein Verlauf.",
+        "en": "There is only one scan of this character so far: one point per statistic, no history yet.",
+    },
+    "html_hist_index_skipped": {
+        "de": "Im Index nicht dargestellt (der erste Wert ist 0): {names}",
+        "en": "Not shown in the index (the first value is 0): {names}",
+    },
+    "html_hist_note": {
+        "de": "Die Punkte sind die gespeicherten Scans. Dazwischen wird nichts aufgefüllt, ein Scan ohne Zahl "
+              "unterbricht die Linie. In der absoluten Darstellung teilen sich alle Linien eine Achse; bei sehr "
+              "verschiedenen Größenordnungen hilft der Index.",
+        "en": "The points are the stored scans. Nothing is filled in between them, and a scan without a number "
+              "breaks the line. In the absolute view all lines share one axis; the index helps when the "
+              "magnitudes differ a lot.",
+    },
+    "html_hist_level": {"de": "Level", "en": "Level"},
+    "html_hist_level_cat": {"de": "Charakter", "en": "Character"},
+    "html_hist_plotly": {"de": "Diagramme: plotly.js {version} (MIT-Lizenz)", "en": "Charts: plotly.js {version} (MIT license)"},
+    "html_hist_back": {"de": "← Übersicht", "en": "← Overview"},
+    "html_hist_links_title": {"de": "Verläufe", "en": "History"},
+    "html_hist_links_note": {
+        "de": "Pro Charakter eine eigene Seite mit dem Verlauf aller Statistiken; in Klammern die Zahl der Scans. "
+              "Die Seiten liegen im Ordner „{dir}“ neben dieser Seite. Gibst du diese Seite allein weiter, "
+              "funktionieren die Links nicht.",
+        "en": "One page per character with the history of all statistics; the number of scans in brackets. "
+              "The pages are in the folder \"{dir}\" next to this page. If you pass this page on by itself, "
+              "the links do not work.",
+    },
+    "html_hist_links_missing": {
+        "de": "Noch ohne Verlauf (nur ein Scan): {n}",
+        "en": "Without history yet (only one scan): {n}",
+    },
+    "html_hist_no_chart": {
+        "de": "Das Diagramm konnte nicht aufgebaut werden (plotly.js fehlt).",
+        "en": "The chart could not be built (plotly.js is missing).",
+    },
 
     # ------------------------------------------- class and race names for the groups on the stats page
     # Keyed by the language independent file name the game gives (UnitClass/UnitRace, second value):

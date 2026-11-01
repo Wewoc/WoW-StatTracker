@@ -11,6 +11,11 @@ import i18n
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 NAME_PREFIXES = ("class_", "race_")
+TEMPLATES = ("template.html", "history.html")          # the pages whose texts come from the html_* keys
+
+
+def _templates():
+    return {name: (SRC / name).read_text(encoding="utf-8") for name in TEMPLATES}
 
 
 def _fields(text):
@@ -48,7 +53,7 @@ def test_dynamic_unit_keys():
 
 def test_every_key_is_used_somewhere():
     code = "\n".join(p.read_text(encoding="utf-8") for p in _code_files())
-    template = (SRC / "template.html").read_text(encoding="utf-8")
+    template = "\n".join(_templates().values())
     unused = []
     for key in i18n._STRINGS:
         if key.startswith("html_"):
@@ -83,12 +88,12 @@ def test_unknown_language_falls_back_to_english():
     assert i18n.get_language() == "en"
 
 
-def test_html_strings_cover_the_template():
-    template = (SRC / "template.html").read_text(encoding="utf-8")
-    used = set(re.findall(r"UI\.(\w+)", template))
+@pytest.mark.parametrize("name", TEMPLATES)
+def test_html_strings_cover_the_template(name):
+    used = set(re.findall(r"UI\.(\w+)", _templates()[name]))
     for lang in ("de", "en"):
         provided = set(i18n.html_strings(lang))
-        assert used <= provided, (lang, used - provided)
+        assert used <= provided, (name, lang, used - provided)
 
 
 CLASS_FILES = {"WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "DEATHKNIGHT", "SHAMAN", "MAGE",
