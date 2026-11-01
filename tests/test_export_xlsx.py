@@ -77,6 +77,36 @@ def test_best_value_is_highlighted_only_when_all_numeric(populated):
     assert not deaths[4].fill.fgColor.rgb.endswith("C6EFCE")
 
 
+POISONED = """
+StatTrackerDB = {
+	["meta"] = {
+		[1] = { ["name"] = "=1+1", ["cat"] = "=Evil" },
+		[2] = { ["name"] = "Note", ["cat"] = "Misc" },
+	},
+	["chars"] = {
+		["=Evil-Realm"] = { ["scannedAt"] = "2026-10-01 10:00:00", ["class"] = "Mage", ["level"] = 80,
+			["stats"] = { [1] = "=SUM(A1:A2)", [2] = "=HYPERLINK(1)" },
+			["playedTotal"] = 7200, ["playedLevel"] = 60 },
+	},
+}
+"""
+
+
+def test_texts_from_the_game_file_never_become_formulas(instance, tmp_path):
+    """openpyxl stores a text that starts with '=' as a formula; the export only writes data."""
+    lua = tmp_path / "StatTracker.lua"
+    lua.write_text(POISONED, encoding="utf-8")
+    stat_parser.main(["--input", str(lua), "--db", str(instance / "data" / "wow_stats.db"),
+                      "--output", str(instance / "data" / "stats.html")])
+    export_xlsx.export()
+    ws = openpyxl.load_workbook(instance / "data" / "stattracker.xlsx")["Retail"]
+    cells = [c for row in ws.iter_rows() for c in row if c.value is not None]
+    assert [c.coordinate for c in cells if c.data_type == "f"] == []
+    values = {c.value for c in cells}
+    assert {"=1+1", "=Evil", "=SUM(A1:A2)", "=HYPERLINK(1)"} <= values       # kept as they are, as text
+    assert any(str(v).startswith("=Evil-Realm") for v in values)             # the column header
+
+
 def test_export_without_databases_is_a_clear_error(instance):
     with pytest.raises(SystemExit) as exc:
         export_xlsx.export()
