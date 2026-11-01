@@ -1,9 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.7
 
 - New: presets for the *Groups* block. A preset remembers the grouping, the figures shown and the added statistics under a name; choose one from the list to apply it, save the current setup under a name (an existing name is overwritten) or delete a preset. The characters and groups ticked are not part of a preset
 - Note: presets are kept in the browser (local storage), not in the page and not in `data/`. They apply to all StatTracker pages opened in that browser, and a page you pass on does not carry them. Where the browser blocks local storage the row is hidden and the block works as before
+- Changed: the addon itself is unchanged, but its version follows the program version, so after updating from 0.1.6 the window asks once to run *1. Install / update addon*
 
 ## 0.1.6
 
