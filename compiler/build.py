@@ -26,15 +26,29 @@ import zipfile
 from pathlib import Path
 
 import build_manifest as manifest
+import plotly_asset  # noqa: E402  (build_manifest puts src/ on the path)
+import plotly_fetch
 
 
 def check_source(root: Path):
     required = [manifest.ENTRY_POINT, "requirements.txt", manifest.LICENSE_FILE,
-                manifest.ADDON_SRC, *manifest.INFO_FILES, *(src for src, _ in manifest.DATA_FILES)]
+                manifest.ADDON_SRC, *manifest.INFO_FILES,
+                *(src for src, _ in manifest.DATA_FILES), *(src for src, _ in manifest.FETCHED_FILES)]
     missing = [name for name in required if not (root / name).exists()]
     if missing:
         print(f"  [build] Not a StatTracker checkout (missing {', '.join(missing)}): {root}")
         raise SystemExit(1)
+
+
+def ensure_plotly():
+    """The pinned plotly.js bundle must be in src/ (fetched and hash-checked if missing)."""
+    print("\n[0/4] Checking the Plotly bundle ...")
+    try:
+        downloaded = plotly_fetch.ensure()
+    except plotly_asset.PlotlyAssetError as exc:
+        print(f"  [build] {exc}")
+        raise SystemExit(1)
+    print(f"  plotly.js {plotly_asset.VERSION} {'fetched and verified' if downloaded else 'present and verified'}.")
 
 
 def ensure_build_venv(root: Path) -> Path:
@@ -63,7 +77,7 @@ def build_exe(root: Path, python: Path, dist_dir: Path):
 
     sep = ";" if sys.platform == "win32" else ":"
     args = []
-    for src, dest in manifest.DATA_FILES:
+    for src, dest in (*manifest.DATA_FILES, *manifest.FETCHED_FILES):
         args += ["--add-data", f"{root / src}{sep}{dest}"]
     for h in manifest.HIDDEN_IMPORTS:
         args += ["--hidden-import", h]
@@ -128,6 +142,7 @@ def main():
     args = ap.parse_args()
 
     root = Path(__file__).resolve().parent.parent
+    ensure_plotly()
     check_source(root)
     python = Path(sys.executable) if args.no_venv else ensure_build_venv(root)
 

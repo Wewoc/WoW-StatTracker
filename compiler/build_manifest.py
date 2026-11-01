@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import app_info  # noqa: E402
+import plotly_asset  # noqa: E402
 
 APP_NAME = app_info.APP_NAME
 ENTRY_POINT = "src/start.py"
@@ -25,6 +26,12 @@ EXTRA_PATHS = ["src"]
 DATA_FILES = [
     ("src/template.html", "."),
     ("src/updater_helper.ps1", "."),
+]
+
+# Bundled like DATA_FILES but not in the repository: compiler/plotly_fetch.py puts them in
+# place (the build runs it first).
+FETCHED_FILES = [
+    ("src/" + plotly_asset.FILENAME, "."),
 ]
 
 # Modules that are only imported inside functions or try/except (found anyway,

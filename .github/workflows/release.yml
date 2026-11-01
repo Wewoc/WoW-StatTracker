@@ -17,6 +17,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r requirements-dev.txt pyinstaller
+      - run: python compiler/plotly_fetch.py
       - run: python -m pytest -q
       - name: Tag must match APP_VERSION
         shell: python

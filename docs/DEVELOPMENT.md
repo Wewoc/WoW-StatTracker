@@ -20,10 +20,16 @@ All data goes to `data/` in the repository root (git-ignored): `config.json`,
 `wow_stats*.db`, `stats*.html`, `stattracker.xlsx`, `crash.log`, `backups/` (copies of the
 database: `daily/` rotates, `migration/` stays).
 
+plotly.js (for the history pages) is not part of the repository. `python compiler/plotly_fetch.py`
+downloads the pinned version from `cdn.plot.ly` into `src/plotly.min.js` (git-ignored) and checks
+its SHA-256 (`src/plotly_asset.py` holds version and hash; change them together). Run it once
+before using the history pages from source. The program itself never downloads it.
+
 ## Tests
 
 ```bash
 pip install -r requirements-dev.txt
+python compiler/plotly_fetch.py       # optional: lets the test for the real Plotly file run
 python -m pytest -q
 ```
 
@@ -38,6 +44,9 @@ python compiler/build.py              # exe + release ZIP + .sha256
 python compiler/build.py --no-zip
 python compiler/build.py --no-venv    # current Python instead of .venv-build/ (CI)
 ```
+
+The build first runs `compiler/plotly_fetch.py` itself (a missing `src/plotly.min.js` is downloaded
+and hash-checked, a mismatch aborts), so it needs network access once.
 
 Output: `dist/StatTracker/` (disposable), `dist/StatTracker.zip` and
 `dist/StatTracker.zip.sha256`. Upload **both** files to the GitHub release - the

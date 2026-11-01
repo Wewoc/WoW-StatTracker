@@ -3,8 +3,11 @@
 
 from pathlib import Path
 
+import pytest
+
 import app_info
 import build_manifest as manifest
+import plotly_asset
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -30,5 +33,17 @@ def test_every_release_item_is_produced_by_the_build():
 
 
 def test_runtime_files_are_bundled():
-    bundled = {Path(src).name for src, _ in manifest.DATA_FILES}
-    assert {"template.html", "updater_helper.ps1"} <= bundled
+    bundled = {Path(src).name for src, _ in manifest.DATA_FILES + manifest.FETCHED_FILES}
+    assert {"template.html", "updater_helper.ps1", plotly_asset.FILENAME} <= bundled
+
+
+def test_fetched_files_are_kept_apart_from_the_checked_in_ones():
+    fetched = {Path(src).name for src, _ in manifest.FETCHED_FILES}
+    assert fetched == {plotly_asset.FILENAME}
+    assert not fetched & {Path(src).name for src, _ in manifest.DATA_FILES}
+
+
+def test_fetched_files_exist_once_they_were_fetched():
+    missing = [src for src, _ in manifest.FETCHED_FILES if not (ROOT / src).is_file()]
+    if missing:
+        pytest.skip(f"not fetched yet ({', '.join(missing)}): python compiler/plotly_fetch.py")

@@ -12,6 +12,9 @@ dist/
 *.spec
 .venv-build/
 
+# plotly.js is fetched by compiler/plotly_fetch.py (pinned hash), not checked in
+src/plotly.min.js*
+
 # Instance data (portable mode: lives in data/, never checked in)
 data/
 config.json
