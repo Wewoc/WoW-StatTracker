@@ -4,12 +4,12 @@
 
 StatTracker reads the **game statistics** of your World of Warcraft characters through a small addon, keeps every scan in a local database (with history) and lets you **compare your characters** on a page in your browser or in an Excel file. Everything stays on your computer.
 
-- Windows program with a small window - no Python needed (release download)
-- English and German interface (dropdown in the window)
+![The StatTracker stats page: a table comparing five characters, the best value of each row highlighted in green.](docs/images/stats-en.png)
+
+- Windows program with a small window, English and German interface
 - Rates per hour played (kills, deaths, gold) for each character and as a total; if a number cannot be worked out, the page says why
+- Groups your characters by class, race, faction or realm
 - Works per game version; by default only **Retail** is enabled
-- Installs and uninstalls its addon for you
-- Checks GitHub for new versions and can update itself (verified by checksum, with rollback)
 
 ## Quick start (release download)
 
@@ -22,9 +22,11 @@ StatTracker reads the **game statistics** of your World of Warcraft characters t
 
 Repeat step 5/6 whenever you want fresh numbers. Old scans stay in the database.
 
-The addon also records each character's class (as a language-independent name) and race with every scan. Scans taken with an older addon have no race, and it is never filled in afterwards: run *1. Install / update addon* and scan the character again to get it.
+The addon also records each character's class (as a language-independent name) and race with every scan. Scans taken with an older addon lack this data and it is never filled in afterwards: those characters are listed under "unknown" for class and race in the Groups block - nothing is guessed. Run *1. Install / update addon* and scan the character again to get it.
 
-The stats page shows race, class and level under each name. Its collapsible *Groups* block groups the characters ticked above by class, race, faction or realm and shows per group the number of characters, the average level, the total played time and the four rates per hour; any other statistic with a number can be added as a column (sum, average or maximum). Class and race are grouped by the language-independent name from the game, so a character that has not been scanned again since the addon update is listed under "unknown" until you do - nothing is guessed. The Excel export has no groups.
+The stats page shows race, class and level under each name. Its collapsible *Groups* block sums up the characters ticked above by class, race, faction or realm: number of characters, average level, played time and the rates per hour. Any other statistic with a number can be added as a column (sum, average or maximum). The Excel export has no groups.
+
+![The Groups block: characters grouped by faction with number of characters, average level, played time, rates per hour and two added statistics.](docs/images/groups-en.png)
 
 ## Game versions
 

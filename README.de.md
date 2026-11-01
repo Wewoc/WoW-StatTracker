@@ -4,12 +4,12 @@
 
 StatTracker liest die **Spielstatistiken** deiner World-of-Warcraft-Charaktere über ein kleines Addon aus, speichert jeden Scan in einer lokalen Datenbank (mit Historie) und lässt dich deine **Charaktere vergleichen** - auf einer Seite im Browser oder in einer Excel-Datei. Alles bleibt auf deinem Rechner.
 
-- Windows-Programm mit kleinem Fenster - kein Python nötig (Release-Download)
-- Deutsche und englische Oberfläche (Dropdown im Fenster)
+![Die StatTracker-Statistikseite: eine Tabelle vergleicht fünf Charaktere, der beste Wert jeder Zeile ist grün hervorgehoben.](docs/images/stats-de.png)
+
+- Windows-Programm mit kleinem Fenster, deutsche und englische Oberfläche
 - Raten pro Spielstunde (Kills, Tode, Gold) je Charakter und insgesamt; lässt sich eine Zahl nicht berechnen, nennt die Seite den Grund
+- Gruppiert deine Charaktere nach Klasse, Rasse, Fraktion oder Realm
 - Arbeitet pro Spielversion; standardmäßig ist nur **Retail** aktiviert
-- Installiert und deinstalliert sein Addon für dich
-- Sucht auf GitHub nach neuen Versionen und kann sich selbst aktualisieren (Prüfsumme, mit Rollback)
 
 ## Schnellstart (Release-Download)
 
@@ -22,9 +22,11 @@ StatTracker liest die **Spielstatistiken** deiner World-of-Warcraft-Charaktere �
 
 Schritt 5/6 wiederholen, wenn du frische Zahlen willst. Alte Scans bleiben in der Datenbank.
 
-Das Addon speichert bei jedem Scan auch die Klasse (als sprachunabhängigen Namen) und die Rasse des Charakters. Scans eines älteren Addons haben keine Rasse, sie wird nie nachgetragen: *1. Addon installieren / aktualisieren* ausführen und den Charakter erneut scannen.
+Das Addon speichert bei jedem Scan auch die Klasse (als sprachunabhängigen Namen) und die Rasse des Charakters. Scans eines älteren Addons haben diese Angaben nicht, sie werden nie nachgetragen: Solche Charaktere stehen im Gruppen-Block bei Klasse und Rasse unter „unbekannt“ - es wird nichts geraten. *1. Addon installieren / aktualisieren* ausführen und den Charakter erneut scannen, um sie zu bekommen.
 
-Die Statistik-Seite zeigt Rasse, Klasse und Level unter jedem Namen. Ihr ausklappbarer Block *Gruppen* fasst die oben angehakten Charaktere nach Klasse, Rasse, Fraktion oder Realm zusammen und zeigt je Gruppe Anzahl, Durchschnittslevel, gesamte Spielzeit und die vier Raten pro Stunde; jede andere Statistik mit Zahl lässt sich als Spalte hinzufügen (Summe, Durchschnitt oder Maximum). Klasse und Rasse werden über den sprachunabhängigen Namen aus dem Spiel gruppiert: Ein Charakter, der seit dem Addon-Update nicht neu gescannt wurde, steht unter „unbekannt“, bis du das nachholst - es wird nichts geraten. Der Excel-Export hat keine Gruppen.
+Die Statistik-Seite zeigt Rasse, Klasse und Level unter jedem Namen. Ihr ausklappbarer Block *Gruppen* fasst die oben angehakten Charaktere nach Klasse, Rasse, Fraktion oder Realm zusammen: Anzahl, Durchschnittslevel, Spielzeit und die Raten pro Stunde. Jede weitere Statistik mit Zahl lässt sich als Spalte hinzufügen (Summe, Durchschnitt oder Maximum). Der Excel-Export hat keine Gruppen.
+
+![Der Gruppen-Block: Charaktere nach Fraktion gruppiert mit Anzahl, Durchschnittslevel, Spielzeit, Raten pro Stunde und zwei hinzugefügten Statistiken.](docs/images/groups-de.png)
 
 ## Spielversionen
 
