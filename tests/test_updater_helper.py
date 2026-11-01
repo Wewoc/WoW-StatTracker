@@ -3,8 +3,10 @@
 # Runs the REAL updater_helper.ps1 against temporary folders. The point of these
 # tests: the swap replaces the program items and never touches data/.
 
+import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -33,12 +35,15 @@ def write_tree(root: Path, content: str, items=ITEMS):
             p.write_text(content, encoding="utf-8")
 
 
+def helper_command(exe_dir, payload, items, extra=()):
+    return [POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(HELPER),
+            "-ExeDir", str(exe_dir), "-PayloadDir", str(payload),
+            "-PendingRoot", str(exe_dir / "_update_pending"), "-Items", ",".join(items), *extra]
+
+
 def run_helper(exe_dir, payload, items, extra=(), timeout=120):
-    cmd = [POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(HELPER),
-           "-ExeDir", str(exe_dir), "-PayloadDir", str(payload),
-           "-PendingRoot", str(exe_dir / "_update_pending"), "-Items", ",".join(items), *extra]
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                          timeout=timeout, stdin=subprocess.DEVNULL)
+    return subprocess.run(helper_command(exe_dir, payload, items, extra), capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=timeout, stdin=subprocess.DEVNULL)
 
 
 @pytest.fixture
@@ -118,6 +123,91 @@ def test_restart_with_handshake_succeeds(tmp_path):
     assert (exe_dir / "_internal" / "file.txt").read_text(encoding="utf-8") == "new"
     assert not (exe_dir / "_update_success.flag").exists()      # consumed by the helper
     assert (exe_dir / "data" / "wow_stats.db").read_text(encoding="utf-8") == "history"
+
+
+@pytestmark_ps
+@pytest.mark.parametrize("folder", ["WoW [Retail]", "O'Brien", "Grüße [1]"])
+def test_swap_and_restart_work_in_a_folder_with_brackets_quotes_and_umlauts(tmp_path, folder):
+    """Square brackets are wildcards for -Path; every path of the helper must be taken literally."""
+    exe_dir = tmp_path / folder
+    write_gui_tree(exe_dir, FAKE_BROKEN, "old")
+    payload = exe_dir / "_update_pending" / "StatTracker"
+    write_gui_tree(payload, FAKE_OK, "new")
+
+    res = run_helper(exe_dir, payload, ["fake.bat", "_internal"],
+                     extra=["-RestartGui", "-GuiExeName", "fake.bat", "-HideGuiWindow",
+                            "-SuccessTimeoutSeconds", "20", "-MaxLaunchAttempts", "2"])
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert (exe_dir / "_internal" / "file.txt").read_text(encoding="utf-8") == "new"
+    assert (exe_dir / "_update_backup" / "_internal" / "file.txt").read_text(encoding="utf-8") == "old"
+    assert not (exe_dir / "_update_pending").exists()
+    assert not (exe_dir / "_update_helper.lock").exists()
+
+
+@pytestmark_ps
+def test_a_stale_lock_of_an_unrelated_process_does_not_block_the_update(instance_dirs):
+    """The lock holds a PID; a dead helper's PID can be taken over by any program."""
+    exe_dir, payload = instance_dirs
+    (exe_dir / "_update_helper.lock").write_text(str(os.getpid()), encoding="ascii")    # alive, but not a helper
+    res = run_helper(exe_dir, payload, ITEMS)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert (exe_dir / "LICENSE").read_text(encoding="utf-8") == "new"
+
+
+@pytestmark_ps
+def test_a_lock_held_by_a_running_helper_blocks_the_update(instance_dirs):
+    exe_dir, payload = instance_dirs
+    other = subprocess.Popen([POWERSHELL, "-NoProfile", "-Command", "Start-Sleep -Seconds 60"],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        (exe_dir / "_update_helper.lock").write_text(str(other.pid), encoding="ascii")
+        res = run_helper(exe_dir, payload, ITEMS)
+    finally:
+        other.kill()
+    assert res.returncode != 0
+    assert "already in progress" in (res.stdout + res.stderr)
+    assert (exe_dir / "LICENSE").read_text(encoding="utf-8") == "old"
+
+
+FAKE_SLOW_BROKEN = "@echo off\r\nping -n 30 127.0.0.1 >nul\r\nexit /b 3\r\n"
+
+
+@pytestmark_ps
+def test_a_rollback_that_cannot_remove_the_new_files_says_so_and_does_not_nest_the_old_ones(tmp_path):
+    """A new file held open by another program stops the removal of the new folder. Moving the old folder
+    onto the remaining one would bury it inside (_internal/_internal) and still report a restore."""
+    exe_dir = tmp_path / "app"
+    write_gui_tree(exe_dir, FAKE_OK, "old")
+    payload = exe_dir / "_update_pending" / "StatTracker"
+    write_gui_tree(payload, FAKE_SLOW_BROKEN, "new")           # the new gui hangs without a flag
+    cmd = helper_command(exe_dir, payload, ["fake.bat", "_internal"],
+                         extra=["-RestartGui", "-GuiExeName", "fake.bat", "-HideGuiWindow",
+                                "-SuccessTimeoutSeconds", "4", "-MaxLaunchAttempts", "1"])
+    helper = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
+                              text=True, encoding="utf-8", errors="replace")
+    held = None
+    try:
+        target = exe_dir / "_internal" / "file.txt"
+        deadline = time.time() + 30
+        while held is None and time.time() < deadline:
+            try:
+                if target.read_text(encoding="utf-8") == "new":
+                    held = open(target, "rb")                  # blocks deleting the file and its folder
+            except OSError:
+                pass
+            time.sleep(0.05)
+        assert held is not None, "the swap never happened"
+        out, err = helper.communicate(timeout=120)
+    finally:
+        if held:
+            held.close()
+        if helper.poll() is None:
+            helper.kill()
+    text = out + err
+    assert helper.returncode != 0
+    assert "Rollback incomplete" in text and "_internal" in text
+    assert not (exe_dir / "_internal" / "_internal").exists()
+    assert (exe_dir / "_update_backup" / "_internal" / "file.txt").read_text(encoding="utf-8") == "old"
 
 
 @pytestmark_ps

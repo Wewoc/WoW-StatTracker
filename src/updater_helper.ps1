@@ -50,26 +50,42 @@ $itemList = @($Items -split "," | ForEach-Object { $_.Trim() } | Where-Object { 
 $guiStartArgs = @{}
 if ($HideGuiWindow) { $guiStartArgs["WindowStyle"] = "Hidden" }
 
+# NOTE: every path below is passed with -LiteralPath. With -Path, square brackets in
+# a folder name (D:\Games\WoW [Retail]) are read as a wildcard pattern.
+
 # -- 0. Is another helper already running? ---------------------------------
-if (Test-Path $lockPath) {
-    $existingPid = Get-Content $lockPath -ErrorAction SilentlyContinue
-    if ($existingPid -and (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
+# The lock holds a PID. A helper that died leaves it behind, and any program can get
+# that PID later, so the process must also be a PowerShell.
+if (Test-Path -LiteralPath $lockPath) {
+    $existingPid = Get-Content -LiteralPath $lockPath -ErrorAction SilentlyContinue
+    $holder = $null
+    if ($existingPid) { $holder = Get-Process -Id $existingPid -ErrorAction SilentlyContinue }
+    if ($holder -and ($holder.ProcessName -match '^(powershell|pwsh)')) {
         Write-Host "UPDATE FAILED: another update is already in progress (PID $existingPid)." -ForegroundColor Red
         Read-Host "Press Enter to close"
         exit 1
     }
 }
-$PID | Out-File -FilePath $lockPath -Encoding ascii
+$PID | Out-File -LiteralPath $lockPath -Encoding ascii
 
 $restored = $false
 function Restore-Backup {
-    # Remove the (new) items, move the backed-up (old) ones back.
+    # Remove the (new) items, move the backed-up (old) ones back. An item whose new version
+    # cannot be removed (a file held open by another program) is left alone: moving the old
+    # folder onto it would bury the old one inside the new one.
     $script:restored = $true
+    $notRestored = @()
     foreach ($name in $itemList) {
         $target = Join-Path $ExeDir $name
-        if (Test-Path $target) { Remove-Item $target -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $target) {
+            Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path -LiteralPath $target) { $notRestored += $name; continue }
         $saved = Join-Path $backupDir $name
-        if (Test-Path $saved) { Move-Item $saved $target -Force }
+        if (Test-Path -LiteralPath $saved) { Move-Item -LiteralPath $saved -Destination $target -Force }
+    }
+    if ($notRestored.Count -gt 0) {
+        throw "Rollback incomplete - could not replace: $($notRestored -join ', '). The previous version is in $backupDir."
     }
 }
 
@@ -93,33 +109,33 @@ try {
 
     # -- 2. Check the payload BEFORE touching anything ----------------------
     foreach ($name in $itemList) {
-        if (-not (Test-Path (Join-Path $PayloadDir $name))) {
+        if (-not (Test-Path -LiteralPath (Join-Path $PayloadDir $name))) {
             throw "Update package is incomplete (missing: $name) - nothing changed."
         }
     }
 
     # -- 3. Back up the old items, move the new ones into place -------------
-    if (Test-Path $backupDir) { Remove-Item $backupDir -Recurse -Force }
+    if (Test-Path -LiteralPath $backupDir) { Remove-Item -LiteralPath $backupDir -Recurse -Force }
     New-Item -ItemType Directory -Path $backupDir | Out-Null
     $swapStarted = $true
     foreach ($name in $itemList) {
         $live = Join-Path $ExeDir $name
-        if (Test-Path $live) { Move-Item $live (Join-Path $backupDir $name) -Force }
+        if (Test-Path -LiteralPath $live) { Move-Item -LiteralPath $live -Destination (Join-Path $backupDir $name) -Force }
     }
     foreach ($name in $itemList) {
-        Move-Item (Join-Path $PayloadDir $name) (Join-Path $ExeDir $name) -Force
+        Move-Item -LiteralPath (Join-Path $PayloadDir $name) -Destination (Join-Path $ExeDir $name) -Force
     }
-    if ($PendingRoot -and (Test-Path $PendingRoot)) {
-        Remove-Item $PendingRoot -Recurse -Force -ErrorAction SilentlyContinue
+    if ($PendingRoot -and (Test-Path -LiteralPath $PendingRoot)) {
+        Remove-Item -LiteralPath $PendingRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     # -- 4. Strip Mark-of-the-Web from the new files (SmartScreen friction) -
     foreach ($name in $itemList) {
         $target = Join-Path $ExeDir $name
-        if (Test-Path $target) {
-            Get-ChildItem $target -Recurse -File -ErrorAction SilentlyContinue |
+        if (Test-Path -LiteralPath $target) {
+            Get-ChildItem -LiteralPath $target -Recurse -File -ErrorAction SilentlyContinue |
                 Unblock-File -ErrorAction SilentlyContinue
-            if (-not (Get-Item $target).PSIsContainer) { Unblock-File $target -ErrorAction SilentlyContinue }
+            if (-not (Get-Item -LiteralPath $target).PSIsContainer) { Unblock-File -LiteralPath $target -ErrorAction SilentlyContinue }
         }
     }
 
@@ -129,15 +145,15 @@ try {
         $launchSucceeded = $false
 
         for ($attempt = 1; $attempt -le $MaxLaunchAttempts; $attempt++) {
-            Remove-Item $successFlag -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $successFlag -Force -ErrorAction SilentlyContinue
             $newGui = Start-Process (Join-Path $ExeDir $GuiExeName) -PassThru @guiStartArgs
 
             $deadline = (Get-Date).AddSeconds($SuccessTimeoutSeconds)
-            while ((-not (Test-Path $successFlag)) -and ((Get-Date) -lt $deadline) -and (-not $newGui.HasExited)) {
+            while ((-not (Test-Path -LiteralPath $successFlag)) -and ((Get-Date) -lt $deadline) -and (-not $newGui.HasExited)) {
                 Start-Sleep -Milliseconds 500
             }
-            if (Test-Path $successFlag) {
-                Remove-Item $successFlag -Force -ErrorAction SilentlyContinue
+            if (Test-Path -LiteralPath $successFlag) {
+                Remove-Item -LiteralPath $successFlag -Force -ErrorAction SilentlyContinue
                 $launchSucceeded = $true
                 break
             }
@@ -174,7 +190,7 @@ catch {
     }
 }
 finally {
-    Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
 }
 
 if ($exitCode -ne 0) {
