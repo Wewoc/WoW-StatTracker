@@ -77,6 +77,13 @@ Chrome in headless mode, 1280 x 760 at scale 1.5 (= 1920 x 1140; the groups pict
 and copy them to `docs/images/` as `stats-`, `rates-`, `compare-` and `groups-` plus `en`/`de`.
 `app-*.png` (the program window) is taken by hand.
 
+For the history page add `--snapshots 12`: every character then gets 12 scans three days apart (the
+last one is exactly the single scan of the default run, so the pictures above stay the same), the
+import writes `<folder>/<lang>/history/` and the stats page gets its *History* block. The picture of
+the history page is `history/shot-history.html` (one character, four statistics as an index), 1280 x 900
+at scale 1.5, saved as `history-en.png` / `history-de.png`. It needs plotly.js: run
+`python compiler/plotly_fetch.py` once before.
+
 ## Layout
 
 ```

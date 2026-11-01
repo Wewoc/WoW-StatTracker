@@ -14,21 +14,39 @@ on it and also writes four variants of the page for the screenshots:
   shot-compare.html  one character deselected, sorted by the first character
   shot-groups.html   the Groups block opened: by faction, two more statistics added
 
+With --snapshots N (N > 1) every character gets N scans, three days apart, the last one being
+exactly the single scan of the default run. They are imported one after the other like the program
+does, so the page also gets its History block and <folder>/<lang>/history/ holds the history pages,
+plus
+  history/shot-history.html   the history page of one character, four statistics as an index
+The counters grow along curves of their own, so the lines on a history page differ. The default
+(--snapshots 1) makes no history and the same pages as before.
+
 Usage (from the repository root):
   python tools/make_demo.py --out <folder>             # both languages
   python tools/make_demo.py --out <folder> --lang de
-Then one picture per page, 1920 x 1140 (see docs/DEVELOPMENT.md, "Landing page").
+  python tools/make_demo.py --out <folder> --snapshots 12
+Then one picture per page, 1920 x 1140 (see docs/DEVELOPMENT.md, "Landing page"). The history pages
+need plotly.js: run python compiler/plotly_fetch.py once.
 """
 import argparse
+import contextlib
+import io
 import random
+import shutil
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import i18n  # noqa: E402
+import stat_history  # noqa: E402
 import stat_parser  # noqa: E402
 
 LANGS = ("en", "de")
+MAX_SNAPSHOTS = 60
+SNAPSHOT_DAYS = 3                  # between two scans of the history demo
+HISTORY_CHAR = "Mirella-Dawnspire"
 
 # Invented characters. 'weight' scales the generic counters, 'played' is the total played time
 # in seconds; the last one has too little played time on purpose (the page then says why
@@ -100,6 +118,9 @@ COMPARE_JS = ('$("chk_Selwyn-Moonvale").checked = false; '
 GROUPS_JS = ('$("groups").open = true; $("groupBy").value = "faction"; '
              '[["9003", "sum"], ["328", "avg"]].forEach(p => { $("xstat").value = p[0]; $("xagg").value = p[1]; '
              '$("xadd").click(); }); renderGroups();')
+# on the history page: Creatures killed (107), Total deaths (60), Total gold acquired (328) and Jumps (9003), as an index
+HISTORY_JS = ('chosen.clear(); [107, 60, 328, 9003].forEach(id => chosen.add(id)); '
+              '$("mode").value = "index"; renderList(); renderChart();')
 
 
 def _number(n, i):
@@ -121,21 +142,44 @@ def _jitter(stat_id, char_index):
     return random.Random(f"{stat_id}:{char_index}").uniform(0.8, 1.25)
 
 
-def _tables(i):
-    """(meta, stats): meta = {id: (name, category)}, stats = [{id: text}] per character."""
+def _share(stat_id, char_index, k, snapshots):
+    """Fraction of its final value a counter has reached at snapshot k (0-based) of `snapshots`. The last
+    snapshot is the final value; before it every counter grows along a curve of its own (a fixed exponent
+    per statistic and character), so the lines on a history page differ."""
+    if k == snapshots - 1:
+        return 1.0
+    exponent = random.Random(f"grow:{stat_id}:{char_index}").uniform(0.8, 1.4)
+    return ((k + 1) / snapshots) ** exponent
+
+
+def _scan_values(c, k, snapshots):
+    """(scanned_at, epoch, level, played, level_played) of character c at snapshot k; the last snapshot
+    is its final scan, the ones before lie SNAPSHOT_DAYS apart and have less played time."""
+    back = snapshots - 1 - k
+    if back == 0:
+        return c["at"], c["epoch"], c["level"], c["played"], c["level_played"]
+    share = (k + 1) / snapshots
+    at = datetime.strptime(c["at"], "%Y-%m-%d %H:%M:%S") - timedelta(days=SNAPSHOT_DAYS * back)
+    return (at.strftime("%Y-%m-%d %H:%M:%S"), c["epoch"] - 86400 * SNAPSHOT_DAYS * back,
+            max(1, c["level"] - back // 4), max(1, round(c["played"] * share)),
+            max(1, round(c["level_played"] * share)))
+
+
+def _tables(i, k=0, snapshots=1):
+    """(meta, stats): meta = {id: (name, category)}, stats = [{id: text}] per character, as of snapshot k."""
     meta = {}
     stats = [{} for _ in CHARS]
     for sid, kind, en, de, cat_en, cat_de, rates in RATE_STATS:
         meta[sid] = ((en, de)[i], (cat_en, cat_de)[i])
         for n, c in enumerate(CHARS):
-            amount = rates[n] * c["played"] / 3600
+            amount = rates[n] * c["played"] / 3600 * _share(sid, n, k, snapshots)
             stats[n][sid] = (_gold_text(round(amount * 10000), i) if kind == "gold"
                              else _count_text(round(amount), i))
-    for k, (kind, en, de, cat_en, cat_de, base) in enumerate(GENERIC):
-        sid = GENERIC_FIRST_ID + k
+    for j, (kind, en, de, cat_en, cat_de, base) in enumerate(GENERIC):
+        sid = GENERIC_FIRST_ID + j
         meta[sid] = ((en, de)[i], (cat_en, cat_de)[i])
         for n, c in enumerate(CHARS):
-            value = base * c["weight"] * _jitter(sid, n)
+            value = base * c["weight"] * _jitter(sid, n) * _share(sid, n, k, snapshots)
             stats[n][sid] = (_gold_text(round(value * 10000), i) if kind == "gold"
                              else _count_text(round(value), i))
     sid = GENERIC_FIRST_ID + len(GENERIC)
@@ -150,25 +194,28 @@ def _lua_str(text):
     return f'"{text}"'
 
 
-def build_lua(lang):
-    """The demo SavedVariables file (StatTrackerDB) for one language."""
+def build_lua(lang, k=None, snapshots=1):
+    """The demo SavedVariables file (StatTrackerDB) for one language: snapshot k (0-based) of `snapshots`,
+    by default the final one, which is the single scan of a run without --snapshots."""
     i = LANGS.index(lang)
-    meta, stats = _tables(i)
+    k = snapshots - 1 if k is None else k
+    meta, stats = _tables(i, k, snapshots)
     out = ["StatTrackerDB = {", '\t["version"] = 3,', '\t["auto"] = true,', '\t["meta"] = {']
     for sid, (name, cat) in meta.items():
         out.append(f'\t\t[{sid}] = {{ ["name"] = {_lua_str(name)}, ["cat"] = {_lua_str(cat)} }},')
     out += ["\t},", '\t["chars"] = {']
     for c, values in zip(CHARS, stats):
+        at, epoch, level, played, level_played = _scan_values(c, k, snapshots)
         out += [f'\t\t[{_lua_str(c["key"])}] = {{',
-                f'\t\t\t["scannedAt"] = {_lua_str(c["at"])}, ["scannedEpoch"] = {c["epoch"]},',
-                f'\t\t\t["class"] = {_lua_str(c["cls"][i])}, ["level"] = {c["level"]}, '
+                f'\t\t\t["scannedAt"] = {_lua_str(at)}, ["scannedEpoch"] = {epoch},',
+                f'\t\t\t["class"] = {_lua_str(c["cls"][i])}, ["level"] = {level}, '
                 f'["faction"] = {_lua_str(c["faction"][i])},',
                 f'\t\t\t["classFile"] = {_lua_str(c["cls_file"])}, ["race"] = {_lua_str(c["race"][i])}, '
                 f'["raceFile"] = {_lua_str(c["race_file"])},',
                 '\t\t\t["stats"] = {']
         out += [f"\t\t\t\t[{sid}] = {_lua_str(text)}," for sid, text in values.items()]
         out += ["\t\t\t},",
-                f'\t\t\t["playedTotal"] = {c["played"]}, ["playedLevel"] = {c["level_played"]},',
+                f'\t\t\t["playedTotal"] = {played}, ["playedLevel"] = {level_played},',
                 "\t\t},"]
     out += ["\t},", "}", ""]
     return "\n".join(out)
@@ -185,24 +232,53 @@ def shot_variants(html):
             "shot-groups.html": groups}
 
 
-def make(out_dir, lang):
-    """Writes the demo for one language into <out_dir>/<lang>/ and returns that folder."""
+def history_shot(html):
+    """The history page of one character with four statistics picked, as an index (a copy for the
+    screenshot, the page itself is not touched)."""
+    tail = "init();\n</script>"
+    i = html.rindex(tail)
+    return html[:i] + f"init();\n{HISTORY_JS}\n</script>" + html[i + len(tail):]
+
+
+def _import(args, show_all):
+    """One normal import. The output is shown only for the last of several (and any warning)."""
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        stat_parser.main(args)
+    for line in buf.getvalue().splitlines():
+        if show_all or line.startswith(("WARNING", "WARNUNG")):
+            print(line)
+
+
+def make(out_dir, lang, snapshots=1):
+    """Writes the demo for one language into <out_dir>/<lang>/ and returns that folder. With snapshots > 1
+    the characters get that many scans, imported one after the other, and the history pages."""
     folder = Path(out_dir) / lang
     folder.mkdir(parents=True, exist_ok=True)
     lua = folder / "StatTracker.lua"
-    lua.write_text(build_lua(lang), encoding="utf-8")
     db = folder / "demo.db"
+    history = folder / "history"
     if db.exists():
         db.unlink()                     # always from scratch: same input, same pages
+    for leftover in (history, folder / "backups"):
+        shutil.rmtree(leftover, ignore_errors=True)
     page = folder / "stats.html"
     previous = i18n.get_language()
     i18n.set_language(lang)
     try:
-        stat_parser.main(["--input", str(lua), "--db", str(db), "--output", str(page)])
+        for k in range(snapshots):
+            lua.write_text(build_lua(lang, k, snapshots), encoding="utf-8")
+            args = ["--input", str(lua), "--db", str(db), "--output", str(page)]
+            if snapshots > 1:
+                args += ["--history-dir", str(history)]
+            _import(args, show_all=k == snapshots - 1)
     finally:
         i18n.set_language(previous)
     for name, text in shot_variants(page.read_text(encoding="utf-8")).items():
         (folder / name).write_text(text, encoding="utf-8")
+    shot_source = history / stat_history.page_name(HISTORY_CHAR)
+    if snapshots > 1 and shot_source.is_file():
+        (history / "shot-history.html").write_text(history_shot(shot_source.read_text(encoding="utf-8")), encoding="utf-8")
     return folder
 
 
@@ -210,9 +286,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", required=True, help="folder for the demo files (outside the repository)")
     ap.add_argument("--lang", choices=LANGS + ("both",), default="both")
+    ap.add_argument("--snapshots", type=int, default=1,
+                    help=f"scans per character, 1 to {MAX_SNAPSHOTS} (default 1; more also makes the history pages)")
     a = ap.parse_args(argv)
+    if not 1 <= a.snapshots <= MAX_SNAPSHOTS:
+        ap.error(f"--snapshots must be between 1 and {MAX_SNAPSHOTS}")
     for lang in (LANGS if a.lang == "both" else (a.lang,)):
-        print(make(a.out, lang))
+        print(make(a.out, lang, a.snapshots))
 
 
 if __name__ == "__main__":
