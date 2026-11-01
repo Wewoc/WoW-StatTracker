@@ -21,7 +21,7 @@ StatTracker reads the **game statistics** of your World of Warcraft characters t
 5. In game, once per character: `/statscan`. The scan takes about 10 seconds (spread out so the game does not freeze): chat shows "Stat sync started", then "Stat sync done" and "Played time ... recorded". Wait for that, then `/reload` (or log out). The addon also scans automatically 10 seconds after login.
 6. **2. Read data**, then **3. Open stats page** - or **Export to Excel**.
 
-Repeat step 5/6 whenever you want fresh numbers. Old scans stay in the database.
+Repeat step 5/6 whenever you want fresh numbers. Scans that were read stay in the database. The addon itself keeps only the latest scan per character, so a scan that was overwritten before you read the data is gone for good: read the data after every play session if the history matters to you. Every WoW account has its own file; choose the account in the program (the log names the other accounts that have data).
 
 The addon also records each character's class (as a language-independent name) and race with every scan. Scans taken with an older addon lack this data and it is never filled in afterwards: those characters are listed under "unknown" for class and race in the Groups block - nothing is guessed. Run *1. Install / update addon* and scan the character again to get it.
 

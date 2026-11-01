@@ -165,6 +165,48 @@ def test_network_errors_are_reported(app, monkeypatch):
     assert kind == "update_error" and "offline" in message
 
 
+@pytest.fixture
+def accounts_with_data(env):
+    """Gives the retail accounts the given names a StatTracker.lua; removes what it made afterwards."""
+    base = env.wow / "_retail_" / "WTF" / "Account"
+    made = []
+
+    def make(*names):
+        for name in names:
+            path = wow_install.saved_vars_path(env.wow / "_retail_", name)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("StatTrackerDB = {}", encoding="utf-8")
+            made.append(name)
+    yield make
+    for name in made:
+        if name == "ACC1":                         # made by make_fake_wow: only our file goes
+            wow_install.saved_vars_path(env.wow / "_retail_", name).unlink(missing_ok=True)
+        else:
+            shutil.rmtree(base / name, ignore_errors=True)
+
+
+def _parse_logging(app, monkeypatch, output=""):
+    app.refresh_variants(keep="_retail_")
+    app.var_acc.set("ACC1")
+    monkeypatch.setattr(gui_app, "run_parser", lambda *a, **k: (True, output))
+    lines = []
+    monkeypatch.setattr(app, "write", lambda text, tag=None: lines.append(text))
+    assert app.on_parse() is True
+    return lines
+
+
+def test_reading_one_account_names_the_other_accounts_with_data(app, accounts_with_data, monkeypatch):
+    """Every account has its own file; the others are not read and would silently lose their scans."""
+    accounts_with_data("ACC1", "ACC2", "ACC3")
+    note = [x for x in _parse_logging(app, monkeypatch) if x.startswith("Note:")]
+    assert len(note) == 1 and "ACC2" in note[0] and "ACC3" in note[0] and "ACC1" not in note[0]
+
+
+def test_no_account_note_when_there_is_only_one_account(app, accounts_with_data, monkeypatch):
+    accounts_with_data("ACC1")
+    assert not [x for x in _parse_logging(app, monkeypatch) if x.startswith("Note:")]
+
+
 def _downloaded(app, monkeypatch, prepare, asset=True):
     """Runs the update download worker with prepare_update replaced by `prepare`; returns the queued result."""
     monkeypatch.setattr(gui_app.updater, "resolve_release_asset",

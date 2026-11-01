@@ -382,6 +382,11 @@ class App(tk.Tk):
         for line in out.strip().splitlines():
             self.write(line, "err" if (not ok or line.startswith(("FEHLER", "WARNUNG", "ERROR", "WARNING"))) else None)
         self.write(t("log_parse_ok") if ok else t("log_parse_fail"), "ok" if ok else "err")
+        if ok:
+            others = [a for a in wow_install.list_accounts(root / variant)
+                      if a != acc and wow_install.saved_vars_path(root / variant, a).is_file()]
+            if others:
+                self.write(t("log_other_accounts", accounts=", ".join(others)))
         self.update_status()
         if ok and open_after:
             self.on_open()

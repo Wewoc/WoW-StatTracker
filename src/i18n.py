@@ -122,6 +122,10 @@ _STRINGS = {
     "err_toc_interface": {"de": "Keine '## Interface:'-Zeile in {path}", "en": "No '## Interface:' line in {path}"},
     "log_parse_ok": {"de": "Einlesen erfolgreich.", "en": "Read successfully."},
     "log_parse_fail": {"de": "Einlesen fehlgeschlagen.", "en": "Reading failed."},
+    "log_other_accounts": {
+        "de": "Hinweis:  Weitere Accounts mit Daten, nicht eingelesen: {accounts} (im Feld Account wählen). Jeder Account hat eine eigene Datei.",
+        "en": "Note:     More accounts with data, not read: {accounts} (choose them in the Account field). Every account has its own file.",
+    },
     "log_parse_unexpected": {"de": "Unerwarteter Fehler: {error}", "en": "Unexpected error: {error}"},
     "log_opened": {"de": "Geöffnet: {path}", "en": "Opened: {path}"},
     "log_browser_fail": {
@@ -309,6 +313,14 @@ _STRINGS = {
     "parse_err_no_db_var": {"de": "FEHLER: StatTrackerDB nicht in der Datei.", "en": "ERROR: StatTrackerDB not in the file."},
     "parse_out_source": {"de": "Quelle:   {path}", "en": "Source:   {path}"},
     "parse_out_scans": {"de": "Scans:    {new} neu, {skipped} bereits in der DB", "en": "Scans:    {new} new, {skipped} already in the DB"},
+    "parse_note_no_new": {
+        "de": "Hinweis:  Nichts Neues - der neueste Scan in der Datei ist vom {at} ({days} Tage alt). WoW schreibt die Datei erst bei /reload oder Abmelden.",
+        "en": "Note:     Nothing new - the newest scan in the file is from {at} ({days} days old). WoW writes the file only on /reload or logout.",
+    },
+    "parse_note_gap": {
+        "de": "Hinweis:  Zwischen dem vorigen Scan von {key} in der DB und dem neuesten ({at}) liegen {days} Tage. Scans dazwischen können fehlen: das Addon behält nur den letzten Scan je Charakter - am besten nach jeder Spielsitzung einlesen.",
+        "en": "Note:     {days} days lie between the previous scan of {key} in the DB and the newest one ({at}). Scans made in between may be missing: the addon keeps only the latest scan per character - best import after every play session.",
+    },
     "parse_out_numbers": {
         "de": "Zahlen:   {count} gespeicherte Werte nach neuer Regel korrigiert",
         "en": "Numbers:  {count} stored values corrected by the current rules",

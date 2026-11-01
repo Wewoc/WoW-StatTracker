@@ -445,6 +445,53 @@ def refresh_numbers(conn):
     return changed
 
 
+# The addon keeps only the latest scan per character, so a scan made between two imports is gone for good.
+# Which ones were lost cannot be known; from this many days between the previous scan in the database and
+# the newest one in the file the import says so.
+GAP_NOTE_DAYS = 2
+SCAN_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+def last_scan_times(conn):
+    """{char_key: time of the newest scan in the database}. Read before the import."""
+    return dict(conn.execute("SELECT char_key, MAX(scanned_at) FROM scans GROUP BY char_key"))
+
+
+def _scan_time(text):
+    try:
+        return datetime.strptime(str(text), SCAN_TIME_FORMAT)
+    except ValueError:
+        return None
+
+
+def import_notes(db, before, new, now=None):
+    """Lines about the age of the data after an import: how old the newest scan is when nothing new
+    came, or that scans may be missing when days lie between the previous scan of a character in the
+    database (`before`, from last_scan_times) and its newest one in the file. Anything odd in the data is
+    left to import_data to report: no note then."""
+    chars = db.get("chars") if isinstance(db, dict) else None
+    if not isinstance(chars, dict):
+        return []
+    times = {key: _scan_time(c.get("scannedAt")) for key, c in chars.items() if isinstance(c, dict)}
+    times = {key: at for key, at in times.items() if at}
+    if not times:
+        return []
+    if new == 0:
+        newest = max(times.values())
+        days = max(0, ((now or datetime.now()) - newest).days)
+        return [t("parse_note_no_new", at=newest.strftime(SCAN_TIME_FORMAT), days=days)]
+    worst = None
+    for key, at in times.items():
+        previous = _scan_time(before.get(key))
+        if previous and at > previous:
+            days = (at - previous).days
+            if worst is None or days > worst[0]:
+                worst = (days, key, at)
+    if worst and worst[0] >= GAP_NOTE_DAYS:
+        return [t("parse_note_gap", days=worst[0], key=worst[1], at=worst[2].strftime(SCAN_TIME_FORMAT))]
+    return []
+
+
 # ---------------------------------------------------------------------- HTML
 def derived_payload(stats, chars, lang):
     """Rates per played hour (stat_derive) with the display texts of `lang` filled in:
@@ -577,6 +624,7 @@ def main(argv=None):
 
     conn = init_db(a.db)
     try:
+        before = last_scan_times(conn)
         new, skipped, changed = import_data(conn, parsed["StatTrackerDB"])
         fixed = refresh_numbers(conn)
         history, history_lines = (update_history_pages(conn, a.history_dir, a.output, changed)
@@ -593,6 +641,8 @@ def main(argv=None):
     print(t("parse_out_db", path=a.db))
     print(t("parse_out_html", path=a.output, chars=len(payload["chars"]), stats=len(payload["stats"])))
     for line in history_lines:
+        print(line)
+    for line in import_notes(parsed["StatTrackerDB"], before, new):
         print(line)
 
 

@@ -4,6 +4,7 @@
 import json
 import re
 import sqlite3
+from datetime import datetime
 
 import pytest
 
@@ -96,6 +97,50 @@ def test_second_import_skips_known_scan(sv, tmp_path, capsys):
     capsys.readouterr()
     run(sv, tmp_path)
     assert "0 new, 1 already" in capsys.readouterr().out
+
+
+def _scan_at(sv, tmp_path, scanned_at):
+    sv.write_text(sample(scanned_at=scanned_at), encoding="utf-8")
+    run(sv, tmp_path)
+
+
+def test_a_gap_since_the_previous_scan_is_mentioned(sv, tmp_path, capsys):
+    _scan_at(sv, tmp_path, "2026-10-01 10:00:00")
+    assert "may be missing" not in capsys.readouterr().out          # first import: nothing to compare with
+    _scan_at(sv, tmp_path, "2026-10-10 10:00:00")
+    out = capsys.readouterr().out
+    assert "9 days" in out and "Alice-Realm" in out and "may be missing" in out
+    assert not any(line.startswith(("WARNING", "ERROR")) for line in out.splitlines())    # a note, not a failure
+
+
+def test_a_short_gap_is_not_mentioned(sv, tmp_path, capsys):
+    _scan_at(sv, tmp_path, "2026-10-01 10:00:00")
+    _scan_at(sv, tmp_path, "2026-10-02 22:00:00")
+    assert "may be missing" not in capsys.readouterr().out
+
+
+def test_an_import_without_a_new_scan_says_how_old_the_file_is(sv, tmp_path, capsys):
+    run(sv, tmp_path)
+    capsys.readouterr()
+    run(sv, tmp_path)
+    out = capsys.readouterr().out
+    assert "Nothing new" in out and "2026-10-01 10:00:00" in out and "/reload" in out
+
+
+def test_the_age_is_counted_in_whole_days_from_the_given_time():
+    db = {"chars": {"A-B": {"scannedAt": "2026-10-10 10:00:00"}}}
+    lines = stat_parser.import_notes(db, {}, 0, now=datetime(2026, 10, 13, 12, 0))
+    assert len(lines) == 1 and "3 days old" in lines[0]
+    behind = stat_parser.import_notes(db, {}, 0, now=datetime(2026, 10, 1))      # the clock is behind the scan
+    assert "0 days old" in behind[0]
+
+
+@pytest.mark.parametrize("db", [
+    {}, {"chars": []}, {"chars": {"A-B": "text"}}, {"chars": {"A-B": {}}}, {"chars": {"A-B": {"scannedAt": "yesterday"}}},
+])
+def test_odd_data_gives_no_notes_and_no_error(db):
+    assert stat_parser.import_notes(db, {"A-B": "2026-10-01 10:00:00"}, 1) == []
+    assert stat_parser.import_notes(db, {}, 0) == []
 
 
 def _payload_from_html(path):
