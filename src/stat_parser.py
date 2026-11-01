@@ -317,6 +317,8 @@ def _back_up(conn, path, found):
             made = db_backup.migration_backup(conn, path, SCHEMA_VERSION)
         else:
             made = db_backup.daily_backup(conn, path)
+    except db_backup.DamagedDatabase as exc:
+        sys.exit(t("parse_err_db_damaged", folder=db_backup.daily_dir(path).parent, found="; ".join(exc.problems)))
     except db_backup.BackupError as exc:
         sys.exit(t("parse_err_backup_failed", error=exc))
     if made:

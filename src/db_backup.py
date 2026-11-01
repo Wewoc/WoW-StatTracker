@@ -11,7 +11,8 @@
 # A copy is written through sqlite3's backup API into a .part file and renamed when complete,
 # so a file with the final name is always a whole database. Every failure to write a copy is a
 # BackupError (the caller stops before it changes anything); a failure to delete an old copy is
-# only reported (rotate).
+# only reported (rotate). Before a copy is written the database gets a quick integrity check; a
+# damaged one is a DamagedDatabase (a BackupError): no copy of the damage, no rotation of good ones.
 
 import glob
 import os
@@ -30,6 +31,25 @@ PART_SUFFIX = ".part"
 
 class BackupError(Exception):
     """A copy of the database could not be written; the message names the file and the cause."""
+
+
+class DamagedDatabase(BackupError):
+    """The database failed its integrity check, so no copy was made: a copy would hold the damage, and the
+    rotation that follows would push the last good copies out. `problems` are the lines of the check."""
+
+    def __init__(self, path, problems):
+        super().__init__(f"{path}: {'; '.join(problems)}")
+        self.problems = problems
+
+
+def damage(conn, limit=5):
+    """What PRAGMA quick_check finds in the open database: the first `limit` lines, [] if it is intact.
+    A database so damaged that the check itself fails is reported with that error."""
+    try:
+        rows = [str(row[0]) for row in conn.execute("PRAGMA quick_check")]
+    except sqlite3.DatabaseError as exc:
+        return [str(exc)]
+    return [] if rows == ["ok"] else rows[:limit]
 
 
 def daily_dir(db_path):
@@ -68,6 +88,12 @@ def _write_copy(conn, target):
         raise BackupError(f"{target}: {exc}") from exc
 
 
+def _require_intact(conn, db_path):
+    problems = damage(conn)
+    if problems:
+        raise DamagedDatabase(db_path, problems)
+
+
 def daily_backup(conn, db_path, today=None):
     """The copy of the day: <stem>.YYYY-MM-DD.bak in backups/daily/. Returns its path, or None if
     there already is one for this day (it holds the state before the first import of the day)."""
@@ -77,6 +103,7 @@ def daily_backup(conn, db_path, today=None):
     target = folder / f"{path.stem}.{(today or date.today()).isoformat()}{SUFFIX}"
     if target.exists():
         return None
+    _require_intact(conn, path)
     _write_copy(conn, target)
     return target
 
@@ -91,6 +118,7 @@ def migration_backup(conn, db_path, target_version, now=None):
     target = folder / f"{path.stem}.{stamp}.pre-v{target_version}{SUFFIX}"
     if target.exists():                 # same second: this is the copy of that very state
         return target
+    _require_intact(conn, path)
     _write_copy(conn, target)
     return target
 

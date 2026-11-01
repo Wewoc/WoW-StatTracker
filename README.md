@@ -69,7 +69,7 @@ Before an import writes to an existing database, StatTracker copies it into `dat
 - `daily/` holds one copy per day for the last 7 days; older ones are deleted automatically.
 - `migration/` holds one copy before every database upgrade (the file name says which version it leads to). These are never deleted automatically; delete them by hand once you no longer need them.
 
-To restore a copy: close StatTracker, copy a `.bak` file out of the folder, rename it to `wow_stats.db` (`wow_stats_<version>.db` for the other game versions) and put it into `data`. The copies lie on the same disk as the database: they protect against a faulty import or upgrade, not against a failing disk, so keep a backup of `data` somewhere else as well. If a copy cannot be written, the import stops and changes nothing.
+To restore a copy: close StatTracker, copy a `.bak` file out of the folder, rename it to `wow_stats.db` (`wow_stats_<version>.db` for the other game versions) and put it into `data`. The copies lie on the same disk as the database: they protect against a faulty import or upgrade, not against a failing disk, so keep a backup of `data` somewhere else as well. If a copy cannot be written, the import stops and changes nothing. Before a copy is made, the database gets a quick integrity check; if it fails, the import stops as well, so a damaged database is not copied over your good copies - restore one as described above.
 
 ## Run from source
 

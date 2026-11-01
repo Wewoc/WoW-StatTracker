@@ -305,6 +305,12 @@ _STRINGS = {
         "en": "ERROR: the backup of the database failed, nothing was changed. "
               "Check the free space and write permission in the database folder. {error}",
     },
+    "parse_err_db_damaged": {
+        "de": "FEHLER: Die Datenbank besteht die Integritätsprüfung nicht. Es wurde nichts geändert und kein Backup "
+              "überschrieben oder gelöscht. Eine Sicherung aus {folder} zurückspielen (siehe README). Befund: {found}",
+        "en": "ERROR: the database fails its integrity check. Nothing was changed and no backup was replaced or "
+              "deleted. Restore a copy from {folder} (see the README). Found: {found}",
+    },
     "parse_warn_backup_rotate": {
         "de": "WARNUNG: Alte Backups konnten nicht gelöscht werden: {paths}",
         "en": "WARNING: old backups could not be deleted: {paths}",
