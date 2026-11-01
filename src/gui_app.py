@@ -461,7 +461,8 @@ class App(tk.Tk):
                     self._apply_update(item[1])
         except queue.Empty:
             pass
-        self.after(200, self._poll_queue)
+        finally:
+            self.after(200, self._poll_queue)   # a failing handler is reported by Tk, but must not end the polling
 
     def _on_release(self, data, manual):
         tag = str(data.get("tag_name", "")).strip()
@@ -489,17 +490,19 @@ class App(tk.Tk):
         self.write(t("update_downloading", version=tag))
 
         def worker():
-            zip_url = updater.resolve_release_asset(data, app_info.ZIP_ASSET_NAME)
-            checksum_url = updater.resolve_release_asset(data, app_info.ZIP_CHECKSUM_ASSET_NAME)
-            if not zip_url:
-                self._queue.put(("update_failed", t("update_no_asset", asset=app_info.ZIP_ASSET_NAME)))
-                return
             try:
+                zip_url = updater.resolve_release_asset(data, app_info.ZIP_ASSET_NAME)
+                checksum_url = updater.resolve_release_asset(data, app_info.ZIP_CHECKSUM_ASSET_NAME)
+                if not zip_url:
+                    self._queue.put(("update_failed", t("update_no_asset", asset=app_info.ZIP_ASSET_NAME)))
+                    return
                 payload = updater.prepare_update(paths.base_dir(), zip_url, checksum_url)
             except (RuntimeError, OSError) as exc:
                 self._queue.put(("update_failed", str(exc)))
-                return
-            self._queue.put(("apply", payload))
+            except Exception as exc:  # thread boundary: a worker that dies silently leaves the update flag set
+                self._queue.put(("update_failed", f"{type(exc).__name__}: {exc}"))
+            else:
+                self._queue.put(("apply", payload))
 
         threading.Thread(target=worker, daemon=True).start()
 
