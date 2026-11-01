@@ -31,6 +31,8 @@ The stats page shows race, class and level under each name. Its collapsible *Gro
 
 Every character with at least two scans also gets a **history page**, linked from the *History* block of the stats page: pick up to ten statistics and see them as lines over your scans, as absolute values or as an index (first value = 100). A scan without a number leaves a gap, nothing is filled in. *2. Read data* makes the pages (only for characters with a new scan) and needs no internet; the links work as long as the `history` folder lies next to the stats page.
 
+![The history page of one character: four statistics shown as an index over twelve scans, with the list of all statistics on the left.](docs/images/history-en.png)
+
 ## Game versions
 
 Only game versions you enabled show up in the dropdown. The default is **Retail** only. Open *Settings ...* to enable others. Every game version gets its own database and page (`wow_stats.db` / `stats.html` for Retail, `wow_stats_<version>.db` / `stats_<version>.html` for the others).

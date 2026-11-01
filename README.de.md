@@ -31,6 +31,8 @@ Die Statistik-Seite zeigt Rasse, Klasse und Level unter jedem Namen. Ihr ausklap
 
 Jeder Charakter mit mindestens zwei Scans bekommt außerdem eine **Verlaufsseite**, verlinkt im Block *Verläufe* der Statistik-Seite: bis zu zehn Statistiken auswählen und als Linien über deine Scans ansehen, absolut oder als Index (erster Wert = 100). Ein Scan ohne Zahl hinterlässt eine Lücke, es wird nichts aufgefüllt. *2. Daten einlesen* erzeugt die Seiten (nur für Charaktere mit neuem Scan) und braucht kein Internet; die Links funktionieren, solange der Ordner `history` neben der Statistik-Seite liegt.
 
+![Die Verlaufsseite eines Charakters: vier Statistiken als Index über zwölf Scans, links die Liste aller Statistiken.](docs/images/history-de.png)
+
 ## Spielversionen
 
 Im Dropdown erscheinen nur Spielversionen, die du aktiviert hast. Standard ist nur **Retail**. Unter *Einstellungen ...* lassen sich weitere aktivieren. Jede Spielversion hat eigene Datenbank und Seite (`wow_stats.db` / `stats.html` für Retail, `wow_stats_<Version>.db` / `stats_<Version>.html` für die anderen).
