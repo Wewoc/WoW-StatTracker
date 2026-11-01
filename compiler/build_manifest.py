@@ -25,6 +25,7 @@ EXTRA_PATHS = ["src"]
 # Read-only assets bundled into the build (PyInstaller --add-data): (source, target folder inside the bundle).
 DATA_FILES = [
     ("src/template.html", "."),
+    ("src/history.html", "."),
     ("src/updater_helper.ps1", "."),
 ]
 

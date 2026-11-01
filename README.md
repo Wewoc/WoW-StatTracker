@@ -86,3 +86,5 @@ StatTracker installs and removes files in your WoW folder, replaces its own prog
 ## License
 
 Copyright (C) 2026 Wewoc. GNU General Public License v3.0 or later - see [LICENSE](LICENSE). This is a fan tool; World of Warcraft is a trademark of Blizzard Entertainment, which is not affiliated with this project.
+
+Third-party software: the history pages embed [plotly.js](https://github.com/plotly/plotly.js) 2.27.0, Copyright 2012-2023 Plotly, Inc., MIT license. It is not part of this repository: the build downloads it once and checks it against a fixed SHA-256, and its license notice stays in the header of the embedded file. The pages make no network requests.

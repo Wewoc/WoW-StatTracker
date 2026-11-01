@@ -34,7 +34,7 @@ def test_every_release_item_is_produced_by_the_build():
 
 def test_runtime_files_are_bundled():
     bundled = {Path(src).name for src, _ in manifest.DATA_FILES + manifest.FETCHED_FILES}
-    assert {"template.html", "updater_helper.ps1", plotly_asset.FILENAME} <= bundled
+    assert {"template.html", "history.html", "updater_helper.ps1", plotly_asset.FILENAME} <= bundled
 
 
 def test_fetched_files_are_kept_apart_from_the_checked_in_ones():

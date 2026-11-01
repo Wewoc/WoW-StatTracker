@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StatTracker</title>
+<style>
+  :root { --bg:#121212; --panel:#1b1b1b; --line:#2e2e2e; --fg:#e0e0e0; --dim:#8a8a8a; --gold:#f4c430; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { font-family: system-ui, Arial, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 16px; }
+  h1 { color: var(--gold); margin: 0 0 4px; font-size: 1.4rem; }
+  .sub { color: var(--dim); font-size: .85rem; margin-bottom: 4px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; background: var(--panel);
+         border: 1px solid var(--line); padding: 10px 12px; border-radius: 6px; margin: 12px 0 8px; }
+  input[type=search], select { background: #101010; color: var(--fg); border: 1px solid var(--line);
+         padding: 6px 8px; border-radius: 4px; font-size: .9rem; }
+  input[type=search] { min-width: 220px; }
+  button { background: #101010; color: var(--fg); border: 1px solid var(--line); padding: 4px 10px;
+           border-radius: 4px; font-size: .85rem; cursor: pointer; }
+  button:hover { border-color: var(--gold); color: var(--gold); }
+  label { font-size: .85rem; cursor: pointer; }
+  .count { color: var(--dim); font-size: .85rem; }
+  .main { display: grid; grid-template-columns: minmax(240px, 340px) 1fr; gap: 8px; align-items: start; }
+  @media (max-width: 800px) { .main { grid-template-columns: 1fr; } }
+  .lead { color: var(--dim); font-size: .8rem; margin: 0 0 6px; }
+  .list { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; max-height: 560px;
+          overflow: auto; padding: 6px 10px; }
+  .list label { display: block; padding: 3px 0; }
+  .list label.off { opacity: .45; cursor: default; }
+  .list .cat { display: block; margin-left: 22px; color: var(--dim); font-size: .72rem; }
+  .chartbox { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; min-height: 120px; }
+  #chart { width: 100%; height: 480px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .chip { background: #101010; border: 1px solid var(--line); padding: 3px 8px; border-radius: 12px; font-size: .85rem; }
+  .chip button { border: 0; background: none; padding: 0 0 0 6px; font-size: .95rem; }
+  .chip i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  .hint { padding: 24px 8px; color: var(--dim); font-size: .9rem; }
+  .note { color: var(--dim); font-size: .78rem; margin-top: 6px; }
+  .empty { padding: 24px; color: var(--dim); }
+  .foot { color: var(--dim); font-size: .8rem; margin: 12px 2px 0; }
+  .foot a { color: var(--dim); }
+  .foot a:hover { color: var(--gold); }
+</style>
+<!--__PLOTLY__-->
+</head>
+<body>
+<h1 id="title"></h1>
+<div class="sub" id="who"></div>
+<div class="sub" id="span"></div>
+
+<div class="bar">
+  <input type="search" id="q">
+  <select id="cat"></select>
+  <label><input type="checkbox" id="changed"> <span id="lblChanged"></span></label>
+  <select id="mode"></select>
+  <span class="count" id="count"></span>
+</div>
+<div class="main">
+  <div>
+    <div class="lead" id="lead"></div>
+    <div class="list" id="list"></div>
+  </div>
+  <div class="chartbox">
+    <div class="chips" id="chips"></div>
+    <div id="chart"></div>
+    <div class="hint" id="hint" hidden></div>
+    <div class="note" id="skipped" hidden></div>
+    <div class="note" id="oneScan" hidden></div>
+  </div>
+</div>
+<div class="note" id="note"></div>
+<div class="foot" id="foot"></div>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+const $ = id => document.getElementById(id);
+
+// UI texts come from the generator (src/i18n.py, html_* keys); {name} marks a value to fill in.
+const UI = (DATA && DATA.ui) || {};
+const fmt = (s, vals) => (s || "").replace(/\{(\w+)\}/g, (_, k) => (k in vals ? vals[k] : ""));
+
+const MAX_LINES = 10;
+const COLORS = ["#f4c430", "#5dd16b", "#4fa3ff", "#ff7a59", "#c792ea", "#2ec4b6", "#ff5d8f", "#b5cf6b", "#e0b080", "#8ab4f8"];
+const FACTOR = {gold: 1 / 10000, seconds: 1 / 3600, number: 1};   // stored value -> shown value (copper -> gold, seconds -> hours)
+
+const isNum = v => typeof v === "number" && isFinite(v);
+const num = (v, digits) => v.toLocaleString(DATA.lang, {minimumFractionDigits: digits, maximumFractionDigits: digits});
+
+let ALL = [];                 // the statistics that can be drawn (level first, then the numeric ones)
+const BY_ID = new Map();
+const chosen = new Set();     // ids, in the order they were picked
+
+function shown(s) {
+  const f = FACTOR[s.unit] || 1;
+  return s.v.map(x => (isNum(x) ? x * f : null));
+}
+
+function valueText(s, x) {
+  if (s.unit === "gold") return fmt(UI.groups_gold, {n: num(x, 2)});
+  if (s.unit === "seconds") return fmt(UI.groups_hours, {n: num(x, 1)});
+  return num(x, Number.isInteger(x) ? 0 : 2);
+}
+
+function changed(s) { return new Set(s.v.filter(isNum)).size > 1; }
+
+function init() {
+  document.documentElement.lang = (DATA && DATA.lang) || "en";
+  document.title = UI.title || "StatTracker";
+  if (!DATA || !DATA.char || !DATA.scans || !DATA.scans.length) {
+    document.body.insertAdjacentHTML("beforeend", '<div class="empty"></div>');
+    document.querySelector(".empty").textContent = UI.no_data || "";
+    return;
+  }
+  const c = DATA.char;
+  document.title = fmt(UI.hist_title, {char: c.key});
+  $("title").textContent = document.title;
+  $("who").textContent = [c.race, c.class, c.level].filter(Boolean).join(" · ");
+  $("span").textContent = fmt(UI.hist_sub, {scans: DATA.scans.length, first: DATA.scans[0], last: DATA.scans[DATA.scans.length - 1]});
+
+  if ((DATA.level || []).some(isNum)) ALL.push({id: "level", name: UI.hist_level || "", cat: UI.hist_level_cat || "", unit: "number", v: DATA.level});
+  ALL = ALL.concat(DATA.stats);
+  ALL.forEach(s => BY_ID.set(s.id, s));
+
+  $("q").placeholder = UI.search || "";
+  $("lblChanged").textContent = UI.hist_only_changed || "";
+  $("lead").textContent = fmt(UI.hist_pick, {n: MAX_LINES});
+  $("note").textContent = UI.hist_note || "";
+  const sel = $("cat");
+  sel.add(new Option(UI.all_cats || "", ""));
+  [...new Set(ALL.map(s => s.cat))].sort().forEach(k => sel.add(new Option(k, k)));
+  const mode = $("mode");
+  mode.add(new Option(UI.hist_mode_abs || "", "abs"));
+  mode.add(new Option(UI.hist_mode_index || "", "index"));
+
+  ["q", "cat", "changed"].forEach(id => $(id).addEventListener("input", renderList));
+  mode.addEventListener("input", renderChart);
+
+  if (BY_ID.has(-1)) chosen.add(-1);   // total played time: a first line to look at
+  $("oneScan").textContent = DATA.scans.length < 2 ? (UI.hist_one_scan || "") : "";
+  $("oneScan").hidden = DATA.scans.length >= 2;
+  renderFoot();
+  renderList();
+  renderChart();
+}
+
+function renderList() {
+  const q = $("q").value.trim().toLowerCase();
+  const cat = $("cat").value;
+  const only = $("changed").checked;
+  const rows = ALL.filter(s => {
+    if (cat && s.cat !== cat) return false;
+    if (q && !(s.name.toLowerCase().includes(q) || s.cat.toLowerCase().includes(q))) return false;
+    return !only || changed(s) || chosen.has(s.id);
+  });
+  $("count").textContent = fmt(UI.hist_count, {shown: rows.length, total: ALL.length});
+  const list = $("list");
+  list.textContent = "";
+  const frag = document.createDocumentFragment();
+  rows.forEach(s => {
+    const l = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = chosen.has(s.id); cb.dataset.id = String(s.id);
+    cb.addEventListener("change", () => {
+      if (cb.checked) chosen.add(s.id); else chosen.delete(s.id);
+      syncLimit();
+      renderChart();
+    });
+    const k = document.createElement("span");
+    k.className = "cat"; k.textContent = s.cat;
+    l.append(cb, " " + s.name, k);
+    frag.append(l);
+  });
+  list.append(frag);
+  syncLimit();
+}
+
+// At the limit the boxes that are not ticked are locked; ticked ones can always be unticked.
+function syncLimit() {
+  const full = chosen.size >= MAX_LINES;
+  $("list").querySelectorAll("input").forEach(cb => {
+    const off = full && !cb.checked;
+    cb.disabled = off;
+    cb.parentElement.classList.toggle("off", off);
+    cb.title = off ? fmt(UI.hist_limit, {n: MAX_LINES}) : "";
+  });
+}
+
+function renderChips(picked) {
+  const box = $("chips");
+  box.textContent = "";
+  picked.forEach((s, i) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    const dot = document.createElement("i");
+    dot.style.background = COLORS[i % COLORS.length];
+    const rm = document.createElement("button");
+    rm.type = "button"; rm.textContent = "×"; rm.title = UI.groups_remove || "";
+    rm.addEventListener("click", () => { chosen.delete(s.id); renderList(); renderChart(); });
+    chip.append(dot, s.name, rm);
+    box.append(chip);
+  });
+}
+
+// One scan only: a window of a day around it, instead of the sub-second axis Plotly would pick.
+function singleScanRange() {
+  const t = new Date(DATA.scans[0].replace(" ", "T"));
+  if (isNaN(t.getTime())) return undefined;
+  const p = n => String(n).padStart(2, "0");
+  const stamp = d => d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  return [stamp(new Date(t.getTime() - 43200000)), stamp(new Date(t.getTime() + 43200000))];
+}
+
+function renderChart() {
+  const picked = [...chosen].map(id => BY_ID.get(id)).filter(Boolean);
+  renderChips(picked);
+  const index = $("mode").value === "index";
+  const skipped = [];
+  const traces = [];
+  picked.forEach((s, i) => {
+    const vals = shown(s);
+    let y = vals;
+    if (index) {
+      const first = vals.findIndex(isNum);
+      const base = first < 0 ? 0 : vals[first];
+      if (base === 0) { skipped.push(s.name); return; }   // no 100 % to measure against: not drawn, not guessed
+      y = vals.map(x => (isNum(x) ? x / base * 100 : null));
+    }
+    traces.push({
+      x: DATA.scans, y: y, name: s.name, mode: "lines+markers", connectgaps: false,
+      line: {color: COLORS[i % COLORS.length], width: 2}, marker: {size: 6},
+      customdata: vals.map(x => (isNum(x) ? valueText(s, x) : "")),
+      hovertemplate: "%{customdata}<extra>%{fullData.name}</extra>"
+    });
+  });
+
+  $("skipped").hidden = !skipped.length;
+  $("skipped").textContent = skipped.length ? fmt(UI.hist_index_skipped, {names: skipped.join(", ")}) : "";
+  const chart = $("chart");
+  if (typeof Plotly === "undefined") {
+    chart.hidden = true;
+    $("hint").hidden = false; $("hint").textContent = UI.hist_no_chart || "";
+    return;
+  }
+  if (!traces.length) {
+    Plotly.purge(chart);
+    chart.hidden = true;
+    $("hint").hidden = !!picked.length; $("hint").textContent = picked.length ? "" : (UI.hist_none_selected || "");
+    return;
+  }
+  $("hint").hidden = true;
+  chart.hidden = false;
+  Plotly.react(chart, traces, {
+    paper_bgcolor: "#1b1b1b", plot_bgcolor: "#101010", font: {color: "#e0e0e0"},
+    margin: {l: 64, r: 24, t: 16, b: 48}, height: 480, hovermode: "x unified",
+    legend: {orientation: "h", y: -0.2},
+    xaxis: {type: "date", gridcolor: "#2e2e2e", hoverformat: "%Y-%m-%d %H:%M", range: DATA.scans.length === 1 ? singleScanRange() : undefined},
+    yaxis: {gridcolor: "#2e2e2e", zeroline: false, hoverformat: ",.2f"}
+  }, {responsive: true, displaylogo: false});
+}
+
+// Version, link to the project page and copyright (values from src/app_info.py via the generator), and the
+// chart library the page carries.
+function renderFoot() {
+  const A = DATA.app;
+  if (!A) return;
+  const link = document.createElement("a");
+  link.href = A.site; link.target = "_blank"; link.rel = "noopener noreferrer";
+  link.textContent = A.site.replace(/^https:\/\//, "").replace(/\/$/, "");
+  $("foot").append(fmt(UI.footer_version, {version: A.version}), " · ", link, " · " + A.copyright + " · " + A.license,
+    " · " + fmt(UI.hist_plotly, {version: DATA.plotly}));
+}
+
+init();
+</script>
+</body>
+</html>
