@@ -429,6 +429,22 @@ _STRINGS = {
         "en": "A sum only makes sense for counters. Characters for which the statistic has no number "
               "(duration, percent, text) are left out; gold is shown in gold.",
     },
+    "html_groups_preset": {"de": "Voreinstellung", "en": "Preset"},
+    "html_groups_preset_none": {"de": "– keine –", "en": "– none –"},
+    "html_groups_preset_name": {"de": "Name", "en": "Name"},
+    "html_groups_preset_save": {"de": "Speichern", "en": "Save"},
+    "html_groups_preset_delete": {"de": "Löschen", "en": "Delete"},
+    "html_groups_preset_note": {
+        "de": "Eine Voreinstellung merkt sich die Gruppierung, die Kennzahlen und die weiteren Statistiken, nicht "
+              "die Auswahl der Charaktere oder der Gruppen. Sie wird nur in diesem Browser gespeichert und gilt für "
+              "alle StatTracker-Seiten.",
+        "en": "A preset remembers the grouping, the figures and the added statistics, not the characters or groups "
+              "ticked. It is stored in this browser only and applies to all StatTracker pages.",
+    },
+    "html_groups_preset_failed": {
+        "de": "Konnte nicht gespeichert werden (Browser-Speicher gesperrt oder voll).",
+        "en": "Could not be saved (browser storage blocked or full).",
+    },
     "html_faction_Alliance": {"de": "Allianz", "en": "Alliance"},
     "html_faction_Horde": {"de": "Horde", "en": "Horde"},
     "html_faction_Neutral": {"de": "Neutral", "en": "Neutral"},
