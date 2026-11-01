@@ -24,7 +24,7 @@ Repeat step 5/6 whenever you want fresh numbers. Old scans stay in the database.
 
 The addon also records each character's class (as a language-independent name) and race with every scan. Scans taken with an older addon lack this data and it is never filled in afterwards: those characters are listed under "unknown" for class and race in the Groups block - nothing is guessed. Run *1. Install / update addon* and scan the character again to get it.
 
-The stats page shows race, class and level under each name. Its collapsible *Groups* block sums up the characters ticked above by class, race, faction or realm: number of characters, average level, played time and the rates per hour. Any other statistic with a number can be added as a column (sum, average or maximum). The Excel export has no groups.
+The stats page shows race, class and level under each name. Its collapsible *Groups* block sums up the characters ticked above by class, race, faction or realm: number of characters, average level, played time and the rates per hour. Any other statistic with a number can be added as a column (sum, average or maximum). A preset saves the grouping, the figures and the added statistics under a name; it is kept in your browser, not in the page. The Excel export has no groups.
 
 ![The Groups block: characters grouped by faction with number of characters, average level, played time, rates per hour and two added statistics.](docs/images/groups-en.png)
 

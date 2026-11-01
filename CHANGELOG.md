@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- New: presets for the *Groups* block. A preset remembers the grouping, the figures shown and the added statistics under a name; choose one from the list to apply it, save the current setup under a name (an existing name is overwritten) or delete a preset. The characters and groups ticked are not part of a preset
+- Note: presets are kept in the browser (local storage), not in the page and not in `data/`. They apply to all StatTracker pages opened in that browser, and a page you pass on does not carry them. Where the browser blocks local storage the row is hidden and the block works as before
+
 ## 0.1.6
 
 - New: the stats page shows the race next to class and level of each character, in the rates block and in the column header. The scan date moves to a line of its own in the column header

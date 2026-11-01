@@ -18,6 +18,7 @@
   button { background: #101010; color: var(--fg); border: 1px solid var(--line); padding: 4px 10px;
            border-radius: 4px; font-size: .85rem; cursor: pointer; }
   button:hover { border-color: var(--gold); color: var(--gold); }
+  button:disabled { color: var(--dim); border-color: var(--line); opacity: .5; cursor: default; }
   label { font-size: .85rem; cursor: pointer; white-space: nowrap; }
   .chars label { background:#101010; border:1px solid var(--line); padding:3px 8px; border-radius:12px; }
   .count { color: var(--dim); font-size: .85rem; margin: 6px 2px; }
@@ -68,6 +69,17 @@
 </details>
 <details class="rates groups" id="groups">
   <summary id="groupsTitle"></summary>
+  <div id="presetBox" hidden>
+    <div class="gbar">
+      <span class="lbl" id="lblPreset"></span>
+      <select id="presetSel"></select>
+      <input type="search" id="presetName" maxlength="40">
+      <button type="button" id="presetSave"></button>
+      <button type="button" id="presetDel"></button>
+      <span class="lbl" id="presetMsg"></span>
+    </div>
+    <div class="note" id="presetNote"></div>
+  </div>
   <div class="gbar"><span class="lbl" id="lblGroupBy"></span><select id="groupBy"></select></div>
   <div class="gbar" id="groupPick"></div>
   <div class="gbar" id="figures"></div>
@@ -149,6 +161,7 @@ function init() {
 
   ["q", "cat", "diff", "hideEmpty"].forEach(id => $(id).addEventListener("input", render));
   setupGroups();
+  setupPresets();
   renderRates();
   renderFoot();
   render();
@@ -366,7 +379,7 @@ function setupGroups() {
   figureList().forEach(f => {
     const l = document.createElement("label");
     const cb = document.createElement("input");
-    cb.type = "checkbox"; cb.checked = true;
+    cb.type = "checkbox"; cb.checked = true; cb.id = "fig_" + f.id;
     cb.addEventListener("change", () => { if (cb.checked) figureOff.delete(f.id); else figureOff.add(f.id); renderGroups(); });
     l.append(cb, " " + f.label);
     bar.append(l);
@@ -386,6 +399,100 @@ function setupGroups() {
     renderGroups();
   });
   $("extraNote").textContent = UI.groups_extra_note || "";
+}
+
+// Presets of the Groups block: the grouping, the figures and the added statistics (not the characters or
+// groups ticked, they change with every scan). They live in the localStorage of the browser, which all local
+// pages share; where the storage is blocked the row is hidden and the block works as before.
+const PRESET_KEY = "stattracker.groupPresets";
+const PRESET_NAME_MAX = 40;
+let presets = [];
+
+function storageUsable() {
+  try { localStorage.getItem(PRESET_KEY); return true; } catch (e) { return false; }
+}
+
+// Read from the storage every time (another page may have changed it); whatever is not shaped like a preset is dropped.
+function readPresets() {
+  let raw;
+  try { raw = JSON.parse(localStorage.getItem(PRESET_KEY) || "[]"); } catch (e) { return []; }
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  return raw.filter(p => {
+    const ok = p && typeof p.name === "string" && p.name !== "" && p.name.length <= PRESET_NAME_MAX && !seen.has(p.name)
+      && typeof p.by === "string" && Array.isArray(p.off) && Array.isArray(p.extras);
+    if (ok) seen.add(p.name);
+    return ok;
+  });
+}
+
+function writePresets() {
+  try { localStorage.setItem(PRESET_KEY, JSON.stringify(presets)); return true; } catch (e) { return false; }
+}
+
+function renderPresetSel(keep) {
+  const sel = $("presetSel");
+  sel.textContent = "";
+  sel.add(new Option(UI.groups_preset_none || "", ""));
+  presets.forEach(p => sel.add(new Option(p.name, p.name)));
+  sel.value = presets.some(p => p.name === keep) ? keep : "";
+  $("presetDel").disabled = sel.value === "";
+}
+
+// Figures and statistics this page does not have are skipped; the groups ticked stay as they are.
+function applyPreset(p) {
+  if (GROUP_BY.includes(p.by)) $("groupBy").value = p.by;
+  const off = new Set(p.off);
+  figureOff.clear();
+  figureList().forEach(f => {
+    if (off.has(f.id)) figureOff.add(f.id);
+    $("fig_" + f.id).checked = !off.has(f.id);
+  });
+  extras.length = 0;
+  p.extras.forEach(e => {
+    if (!e || !isNum(e.id) || e.id < 0 || !STATS.has(e.id) || typeof e.agg !== "string" || !own(AGG, e.agg)) return;
+    if (!extras.some(x => x.id === e.id && x.agg === e.agg)) extras.push({id: e.id, agg: e.agg});
+  });
+  renderGroups();
+}
+
+function setupPresets() {
+  if (!storageUsable()) return;
+  $("presetBox").hidden = false;
+  $("lblPreset").textContent = UI.groups_preset || "";
+  $("presetName").placeholder = UI.groups_preset_name || "";
+  $("presetSave").textContent = UI.groups_preset_save || "";
+  $("presetDel").textContent = UI.groups_preset_delete || "";
+  $("presetNote").textContent = UI.groups_preset_note || "";
+  presets = readPresets();
+  renderPresetSel("");
+
+  $("presetSel").addEventListener("change", () => {
+    const name = $("presetSel").value;
+    $("presetMsg").textContent = "";
+    presets = readPresets();
+    const p = presets.find(x => x.name === name);
+    if (p) applyPreset(p);
+    renderPresetSel(p ? name : "");
+  });
+  $("presetSave").addEventListener("click", () => {
+    const name = $("presetName").value.trim().slice(0, PRESET_NAME_MAX);
+    if (!name) return;
+    const entry = {name, by: $("groupBy").value, off: [...figureOff], extras: extras.map(e => ({id: e.id, agg: e.agg}))};
+    presets = readPresets();
+    const i = presets.findIndex(p => p.name === name);
+    if (i >= 0) presets[i] = entry; else presets.push(entry);
+    if (writePresets()) { $("presetMsg").textContent = ""; } else { $("presetMsg").textContent = UI.groups_preset_failed || ""; presets = readPresets(); }
+    renderPresetSel(name);
+  });
+  $("presetDel").addEventListener("click", () => {
+    const name = $("presetSel").value;
+    if (name === "") return;
+    presets = readPresets().filter(p => p.name !== name);
+    $("presetMsg").textContent = writePresets() ? "" : (UI.groups_preset_failed || "");
+    presets = readPresets();
+    renderPresetSel("");
+  });
 }
 
 function renderGroups() {
