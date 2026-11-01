@@ -21,7 +21,7 @@ StatTracker reads the **game statistics** of your World of Warcraft characters t
 5. In game, once per character: `/statscan`. The scan takes about 10 seconds (spread out so the game does not freeze): chat shows "Stat sync started", then "Stat sync done" and "Played time ... recorded". Wait for that, then `/reload` (or log out). The addon also scans automatically 10 seconds after login.
 6. **2. Read data**, then **3. Open stats page** - or **Export to Excel**.
 
-Repeat step 5/6 whenever you want fresh numbers. Old scans stay in the database.
+Repeat step 5/6 whenever you want fresh numbers. Scans that were read stay in the database. The addon itself keeps only the latest scan per character, so a scan that was overwritten before you read the data is gone for good: read the data after every play session if the history matters to you. Every WoW account has its own file; choose the account in the program (the log names the other accounts that have data).
 
 The addon also records each character's class (as a language-independent name) and race with every scan. Scans taken with an older addon lack this data and it is never filled in afterwards: those characters are listed under "unknown" for class and race in the Groups block - nothing is guessed. Run *1. Install / update addon* and scan the character again to get it.
 
@@ -69,7 +69,7 @@ Before an import writes to an existing database, StatTracker copies it into `dat
 - `daily/` holds one copy per day for the last 7 days; older ones are deleted automatically.
 - `migration/` holds one copy before every database upgrade (the file name says which version it leads to). These are never deleted automatically; delete them by hand once you no longer need them.
 
-To restore a copy: close StatTracker, copy a `.bak` file out of the folder, rename it to `wow_stats.db` (`wow_stats_<version>.db` for the other game versions) and put it into `data`. The copies lie on the same disk as the database: they protect against a faulty import or upgrade, not against a failing disk, so keep a backup of `data` somewhere else as well. If a copy cannot be written, the import stops and changes nothing.
+To restore a copy: close StatTracker, copy a `.bak` file out of the folder, rename it to `wow_stats.db` (`wow_stats_<version>.db` for the other game versions) and put it into `data`. The copies lie on the same disk as the database: they protect against a faulty import or upgrade, not against a failing disk, so keep a backup of `data` somewhere else as well. If a copy cannot be written, the import stops and changes nothing. Before a copy is made, the database gets a quick integrity check; if it fails, the import stops as well, so a damaged database is not copied over your good copies - restore one as described above.
 
 ## Run from source
 

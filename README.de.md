@@ -21,7 +21,7 @@ StatTracker liest die **Spielstatistiken** deiner World-of-Warcraft-Charaktere �
 5. Im Spiel, einmal pro Charakter: `/statscan`. Der Scan dauert etwa 10 Sekunden (gestreckt, damit das Spiel nicht einfriert): Im Chat erscheinen „Stat-Sync gestartet“, dann „Stat-Sync fertig“ und „Spielzeit ... erfasst“. Darauf warten, dann `/reload` (oder ausloggen). Das Addon scannt auch automatisch 10 Sekunden nach dem Einloggen.
 6. **2. Daten einlesen**, dann **3. Statistik-Seite öffnen** - oder **Excel exportieren**.
 
-Schritt 5/6 wiederholen, wenn du frische Zahlen willst. Alte Scans bleiben in der Datenbank.
+Schritt 5/6 wiederholen, wenn du frische Zahlen willst. Eingelesene Scans bleiben in der Datenbank. Das Addon selbst behält nur den letzten Scan je Charakter: Ein Scan, der überschrieben wurde, bevor du die Daten eingelesen hast, ist endgültig weg - lies die Daten nach jeder Spielsitzung ein, wenn dir der Verlauf wichtig ist. Jeder WoW-Account hat eine eigene Datei; wähle den Account im Programm (das Protokoll nennt die anderen Accounts mit Daten).
 
 Das Addon speichert bei jedem Scan auch die Klasse (als sprachunabhängigen Namen) und die Rasse des Charakters. Scans eines älteren Addons haben diese Angaben nicht, sie werden nie nachgetragen: Solche Charaktere stehen im Gruppen-Block bei Klasse und Rasse unter „unbekannt“ - es wird nichts geraten. *1. Addon installieren / aktualisieren* ausführen und den Charakter erneut scannen, um sie zu bekommen.
 
@@ -69,7 +69,7 @@ Bevor ein Einlesen in eine vorhandene Datenbank schreibt, kopiert StatTracker si
 - `daily/` enthält eine Kopie pro Tag für die letzten 7 Tage; ältere werden automatisch gelöscht.
 - `migration/` enthält eine Kopie vor jedem Datenbank-Upgrade (der Dateiname nennt die Version, zu der es führt). Diese werden nie automatisch gelöscht; lösche sie von Hand, wenn du sie nicht mehr brauchst.
 
-So stellst du eine Kopie wieder her: StatTracker schließen, eine `.bak`-Datei aus dem Ordner kopieren, in `wow_stats.db` umbenennen (`wow_stats_<Version>.db` bei den anderen Spielversionen) und in `data` legen. Die Kopien liegen auf derselben Platte wie die Datenbank: sie schützen vor einem fehlerhaften Einlesen oder Upgrade, nicht vor einer defekten Platte - sichere `data` zusätzlich an anderer Stelle. Lässt sich eine Kopie nicht schreiben, bricht das Einlesen ab und ändert nichts.
+So stellst du eine Kopie wieder her: StatTracker schließen, eine `.bak`-Datei aus dem Ordner kopieren, in `wow_stats.db` umbenennen (`wow_stats_<Version>.db` bei den anderen Spielversionen) und in `data` legen. Die Kopien liegen auf derselben Platte wie die Datenbank: sie schützen vor einem fehlerhaften Einlesen oder Upgrade, nicht vor einer defekten Platte - sichere `data` zusätzlich an anderer Stelle. Lässt sich eine Kopie nicht schreiben, bricht das Einlesen ab und ändert nichts. Vor jeder Kopie bekommt die Datenbank eine schnelle Integritätsprüfung; fällt sie durch, bricht das Einlesen ebenfalls ab, damit eine beschädigte Datenbank nicht über deine guten Kopien kopiert wird - spiele dann eine Kopie zurück, wie oben beschrieben.
 
 ## Aus dem Quellcode starten
 

@@ -2,6 +2,9 @@
 # Copyright (C) 2026 Wewoc (github.com/wewoc)
 
 import hashlib
+import http.server
+import threading
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -123,6 +126,56 @@ def test_only_https_is_accepted_by_default(tmp_path):
     assert not (base / "_update_pending").exists()
     with pytest.raises(RuntimeError):
         updater.fetch_latest_release("http://example.invalid/x")
+
+
+class _Redirects(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/to-ftp":
+            self.send_response(302)
+            self.send_header("Location", "ftp://127.0.0.1/payload")
+            self.end_headers()
+        elif self.path == "/to-final":
+            self.send_response(302)
+            self.send_header("Location", "/final")
+            self.end_headers()
+        else:
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+    def log_message(self, *_args):
+        pass
+
+
+@pytest.fixture
+def local_server(monkeypatch):
+    """A local server; http is allowed for the first address here, a real release needs https."""
+    server = http.server.HTTPServer(("127.0.0.1", 0), _Redirects)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setattr(updater, "ALLOWED_SCHEMES", ("http",))
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+    server.server_close()
+
+
+def test_a_redirect_to_a_scheme_that_is_not_allowed_is_refused(local_server):
+    """urlopen would follow it to ftp: the check of the first address has to hold for every hop."""
+    with pytest.raises(RuntimeError, match="Refused download address"):
+        updater._open(local_server + "/to-ftp", 5)
+
+
+def test_a_redirect_to_an_allowed_address_is_followed(local_server):
+    with updater._open(local_server + "/to-final", 5) as response:
+        assert response.read() == b"ok"
+
+
+def test_a_redirect_from_https_to_http_is_refused_by_default():
+    handler = updater._SchemeCheckedRedirects()
+    request = urllib.request.Request("https://example.invalid/a")
+    with pytest.raises(RuntimeError, match="Refused download address"):
+        handler.redirect_request(request, None, 302, "Found", {}, "http://example.invalid/b")
+    followed = handler.redirect_request(request, None, 302, "Found", {}, "https://example.invalid/b")
+    assert followed.full_url == "https://example.invalid/b"
 
 
 def test_user_data_is_never_in_the_release_items():

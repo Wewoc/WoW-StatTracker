@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.9
+
+- New: *2. Read data* says when scans may be missing. The addon keeps only the latest scan per character, so a scan made between two reads is gone for good; when two or more days lie between the previous scan in the database and the newest one in the file, the log says so. When a read brings nothing new it shows how old the newest scan in the file is. Reading one WoW account now also names the other accounts that have data (every account has its own file)
+- New: before a copy of the database is made, it gets a quick integrity check. If it fails, the read stops before anything is changed, no copy is made and no old copy is deleted, so a damaged database can no longer replace your good copies. Restore one as described in the README
+- Fixed: an error while downloading an update (an interrupted download, a damaged archive) is now always shown. Before, some errors ended the download silently and every later update check did nothing until the program was restarted
+- Fixed: the update helper takes every path literally. An install folder with square brackets in its name (for example `D:\Games\WoW [Retail]\StatTracker`) made the update stop with a wrong message. A rollback that cannot remove the new files now says so instead of reporting a restore, and a leftover lock file of an earlier helper no longer blocks an update when its number now belongs to another program
+- Fixed: the updater refuses a redirect to an address that is not https, not only a first address that is not
+- Fixed: in the Excel export a name or value from the game file that starts with `=` stays text; it was stored as a formula
+- Note: the fixes to the update helper and to the download only apply to updates that start from 0.1.9 or later, because the running version supplies them. Updating from 0.1.8 still uses the old ones
+- Changed: the addon itself is unchanged, but its version follows the program version, so after updating from 0.1.8 the window asks once to run *1. Install / update addon*
+- Docs: both READMEs say that the addon keeps only the latest scan per character and mention the integrity check
+- Developer: the build checks the finished bundle (the data files in `_internal` and every module of `src/`) and stops if something is missing; new tests guard the data version of the addon, the asset names of the release workflow, the imports of the leaf modules and which module may write files
+
 ## 0.1.8
 
 - New: a history page for every character with at least two scans. Pick up to ten statistics and see them as lines over your scans, as absolute values or as an index (first value = 100); gold is shown in gold and played time in hours, a scan without a number leaves a gap. The stats page has a new *History* block that links the pages

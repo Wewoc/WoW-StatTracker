@@ -117,6 +117,15 @@ def build_rows(chars, stats):
     return rows
 
 
+def keep_as_text(ws):
+    """The export writes data only, never a formula. openpyxl stores a text that starts with '=' as a
+    formula, and names and values come from a file anybody can edit: turn such cells back into text."""
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.data_type == "f":
+                cell.data_type = "s"
+
+
 def export(out_path=None, folder=None):
     """Writes the workbook. Returns a list of info lines. Raises SystemExit(str) on errors."""
     out_path = Path(out_path) if out_path else default_out()
@@ -170,6 +179,7 @@ def export(out_path=None, folder=None):
                         cell.fill = best_fill
                         cell.font = Font(bold=True)
 
+        keep_as_text(ws)
         widths = {"A": 30, "B": 52, "C": 9, "D": 12}
         for col, w in widths.items():
             ws.column_dimensions[col].width = w

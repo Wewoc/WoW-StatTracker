@@ -18,6 +18,7 @@
 #     python compiler/build.py --no-venv     # use the current Python (CI installs the requirements itself)
 
 import argparse
+import ast
 import hashlib
 import shutil
 import subprocess
@@ -28,6 +29,48 @@ from pathlib import Path
 import build_manifest as manifest
 import plotly_asset  # noqa: E402  (build_manifest puts src/ on the path)
 import plotly_fetch
+
+
+# PyInstaller 6 puts --add-data files and libraries into this folder inside the onedir.
+CONTENTS_DIR = "_internal"
+# Imported inside a function (config.default_language): PyInstaller finds it, the bundle check makes sure.
+LAZY_STDLIB = ("ctypes",)
+
+
+def expected_modules(root: Path) -> set:
+    """Modules the bundle has to hold: every module of src/ except the entry script, the hidden imports of
+    the manifest and the standard library modules that are only imported inside a function."""
+    own = {p.stem for p in (root / "src").glob("*.py")} - {Path(manifest.ENTRY_POINT).stem}
+    return own | set(manifest.HIDDEN_IMPORTS) | set(LAZY_STDLIB)
+
+
+def bundle_problems(root: Path, dist_dir: Path, toc_path: Path) -> list:
+    """What the finished PyInstaller folder lacks, as readable lines (empty: complete). Looks for the bundled
+    data files in _internal and for the modules in the module table PyInstaller leaves in its work folder
+    (PYZ-00.toc): an import inside a function is the kind PyInstaller can miss, and a bundle without it
+    starts normally and fails when the function runs."""
+    problems = []
+    for src, dest in (*manifest.DATA_FILES, *manifest.FETCHED_FILES):
+        target = dist_dir / CONTENTS_DIR / dest / Path(src).name
+        if not target.is_file():
+            problems.append(f"data file {Path(src).name} is not in the bundle (expected {target})")
+    try:
+        table = ast.literal_eval(toc_path.read_text(encoding="utf-8"))
+        in_bundle = {name for name, _path, kind in table[1] if kind == "PYMODULE"}
+    except (OSError, ValueError, SyntaxError, IndexError, TypeError) as exc:
+        return problems + [f"module table {toc_path} cannot be read ({exc}); PyInstaller may have changed its format"]
+    problems += [f"module {name} is not in the bundle" for name in sorted(expected_modules(root) - in_bundle)]
+    return problems
+
+
+def check_bundle(root: Path, dist_dir: Path):
+    problems = bundle_problems(root, dist_dir, root / "build" / manifest.APP_NAME / "PYZ-00.toc")
+    if problems:
+        print("  [build] The bundle is incomplete:")
+        for line in problems:
+            print(f"    - {line}")
+        raise SystemExit(1)
+    print("  bundle checked: data files and modules are present.")
 
 
 def check_source(root: Path):
@@ -118,6 +161,7 @@ def copy_extras(root: Path, dist_dir: Path):
         print(f"  [build] Release is missing {', '.join(missing)} (manifest vs. build output).")
         raise SystemExit(1)
     print("  addon/, info/, LICENSE copied; all release items present.")
+    check_bundle(root, dist_dir)
 
 
 def build_zip(dist_dir: Path):

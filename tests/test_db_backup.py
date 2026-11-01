@@ -322,6 +322,81 @@ def test_a_backup_that_cannot_be_written_stops_the_import_before_any_change(tmp_
     assert content_scans(db) == 1
 
 
+# ------------------------------------------------------------- integrity check before a copy
+def damage_file(path, page=2, size=4096):
+    """Overwrites the head of a page after the first one: the file still opens, its content is damaged."""
+    data = bytearray(path.read_bytes())
+    start = (page - 1) * size
+    data[start:start + 64] = b"\xff" * 64
+    path.write_bytes(bytes(data))
+
+
+def test_an_intact_database_has_no_damage(tmp_path):
+    db = existing_db(tmp_path)
+    conn = sqlite3.connect(db)
+    try:
+        assert db_backup.damage(conn) == []
+    finally:
+        conn.close()
+
+
+def test_a_damaged_database_is_found_even_when_it_still_opens(tmp_path):
+    db = existing_db(tmp_path)
+    damage_file(db)
+    conn = sqlite3.connect(db)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == stat_parser.SCHEMA_VERSION    # opens fine
+        problems = db_backup.damage(conn)
+    finally:
+        conn.close()
+    assert problems and all(isinstance(p, str) for p in problems)
+
+
+def test_an_error_of_the_check_itself_counts_as_damage():
+    class Broken:
+        def execute(self, *_a):
+            raise sqlite3.DatabaseError("database disk image is malformed")
+    assert db_backup.damage(Broken()) == ["database disk image is malformed"]
+
+
+def test_a_damaged_database_stops_the_import_and_leaves_the_copies_alone(tmp_path):
+    db = existing_db(tmp_path)
+    daily = tmp_path / "backups" / "daily"
+    daily.mkdir(parents=True)
+    old = [f"wow_stats.2020-01-{d:02d}.bak" for d in range(1, 9)]      # more than rotation keeps
+    for name in old:
+        (daily / name).write_bytes(b"x")
+    damage_file(db)
+    before = digest(db)
+    with pytest.raises(SystemExit) as exc:
+        stat_parser.init_db(db)
+    message = str(exc.value)
+    assert message.startswith("ERROR: the database fails its integrity check")
+    assert "Nothing was changed" in message and str(tmp_path / "backups") in message
+    assert digest(db) == before
+    assert names(daily) == sorted(old)                    # no new copy, nothing rotated away
+
+
+def test_a_damaged_database_is_not_migrated(tmp_path, monkeypatch):
+    db = existing_db(tmp_path)
+    damage_file(db)
+    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", stat_parser.SCHEMA_VERSION + 1)
+    monkeypatch.setattr(stat_parser, "MIGRATIONS",
+                        {**stat_parser.MIGRATIONS, stat_parser.SCHEMA_VERSION: lambda conn: pytest.fail("migrated")})
+    with pytest.raises(SystemExit) as exc:
+        stat_parser.init_db(db)
+    assert "integrity check" in str(exc.value)
+    assert names(tmp_path / "backups" / "migration") == []
+
+
+def test_the_check_runs_when_a_copy_is_due_not_at_every_import(tmp_path):
+    """Once a day (with the copy of the day) is enough to guard the copies and costs a scan of the file."""
+    db = existing_db(tmp_path)
+    stat_parser.init_db(db).close()                       # the copy of the day exists now
+    damage_file(db)
+    stat_parser.init_db(db).close()                       # same day: no copy due, no check, no error
+
+
 def test_the_first_import_into_a_new_database_and_a_repeat_work_as_before(tmp_path):
     db = tmp_path / "wow_stats.db"
     page = tmp_path / "stats.html"
