@@ -86,6 +86,10 @@ const fmt = (s, vals) => (s || "").replace(/\{(\w+)\}/g, (_, k) => (k in vals ? 
 
 const MAX_LINES = 10;
 const COLORS = ["#f4c430", "#5dd16b", "#4fa3ff", "#ff7a59", "#c792ea", "#2ec4b6", "#ff5d8f", "#b5cf6b", "#e0b080", "#8ab4f8"];
+const DATE_TICKS = [   // tick labels of the time axis by tick distance (ms): with the time of day below a day, as stored
+  {dtickrange: [null, 86400000], value: "%Y-%m-%d %H:%M"},
+  {dtickrange: [86400000, null], value: "%Y-%m-%d"}
+];
 const FACTOR = {gold: 1 / 10000, seconds: 1 / 3600, number: 1};   // stored value -> shown value (copper -> gold, seconds -> hours)
 
 const isNum = v => typeof v === "number" && isFinite(v);
@@ -261,7 +265,9 @@ function renderChart() {
     paper_bgcolor: "#1b1b1b", plot_bgcolor: "#101010", font: {color: "#e0e0e0"},
     margin: {l: 64, r: 24, t: 16, b: 48}, height: 480, hovermode: "x unified",
     legend: {orientation: "h", y: -0.2},
-    xaxis: {type: "date", gridcolor: "#2e2e2e", hoverformat: "%Y-%m-%d %H:%M", range: DATA.scans.length === 1 ? singleScanRange() : undefined},
+    xaxis: {type: "date", gridcolor: "#2e2e2e", hoverformat: "%Y-%m-%d %H:%M",
+            tickformatstops: DATE_TICKS,   // numbers only: Plotly would name the months in English on every page
+            range: DATA.scans.length === 1 ? singleScanRange() : undefined},
     yaxis: {gridcolor: "#2e2e2e", zeroline: false, hoverformat: ",.2f"}
   }, {responsive: true, displaylogo: false});
 }

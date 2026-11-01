@@ -147,6 +147,12 @@ def test_the_template_asks_for_nothing_from_the_network():
     assert not re.search(r"<script[^>]*\ssrc=", text)
 
 
+def test_the_time_axis_is_numeric_so_no_month_is_named_in_the_wrong_language():
+    text = (SRC / stat_history.PAGE_TEMPLATE).read_text(encoding="utf-8")
+    assert "tickformatstops" in text and "hoverformat" in text
+    assert "%b" not in text and "%B" not in text and "%a" not in text and "%A" not in text
+
+
 def test_the_real_bundle_goes_into_a_real_page(payload, tmp_path, monkeypatch):
     if not (SRC / plotly_asset.FILENAME).is_file():
         pytest.skip("src/plotly.min.js not fetched (python compiler/plotly_fetch.py)")
