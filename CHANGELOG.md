@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.1.8
 
 - New: a history page for every character with at least two scans. Pick up to ten statistics and see them as lines over your scans, as absolute values or as an index (first value = 100); gold is shown in gold and played time in hours, a scan without a number leaves a gap. The stats page has a new *History* block that links the pages
 - Note: *2. Read data* writes the pages into `data/history/` (`data/history_<version>/` for the other game versions), only for characters with a new scan, a missing page, or after a program update. Everything in that folder can be made again from the database. The pages need no internet; the links on the stats page work while the folder lies next to it
 - Note: if a history page cannot be written (for example plotly.js is missing), the import still completes and the log shows a warning
+- Changed: the addon itself is unchanged, but its version follows the program version, so after updating from 0.1.7 the window asks once to run *1. Install / update addon*
 - Docs: both READMEs and the landing page describe the history pages with a picture (invented demo data) and credit plotly.js (MIT)
 - Developer tool: `tools/make_demo.py --snapshots N` makes a demo with N scans per character and the history pages, for the screenshots
 
