@@ -69,6 +69,20 @@ def test_demo_characters_carry_class_file_and_race(tmp_path, lang):
         assert demo["faction"][0] == demo["faction"][1]     # the addon stores the English faction name, whatever the client
 
 
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_demo_reputation_is_invented_and_leaves_the_last_character_without(tmp_path, lang):
+    rep = _data(make_demo.make(tmp_path, lang))["rep"]
+    last = make_demo.CHARS[-1]["key"]
+    assert last not in rep["chars"] and len(rep["chars"]) == len(make_demo.CHARS) - 1
+    index = make_demo.LANGS.index(lang)
+    assert rep["defs"] == {str(fid): names[index] for fid, _kind, _aw, *names in make_demo.REP_DEMO}
+    wide = [[e for e in entries if e.get("aw")] for entries in rep["chars"].values()]
+    assert wide[0] and all(w == wide[0] for w in wide)                  # account-wide: the same for every character
+    assert len({len(entries) for entries in rep["chars"].values()}) > 1  # the others differ per character
+    kinds = {e.get("kind") for entries in rep["chars"].values() for e in entries}
+    assert kinds == {None, "std", "friend", "major"} and any("par" in e for es in rep["chars"].values() for e in es)
+
+
 def test_demo_is_deterministic():
     assert make_demo.build_lua("en") == make_demo.build_lua("en")
     assert make_demo.build_lua("de") != make_demo.build_lua("en")
