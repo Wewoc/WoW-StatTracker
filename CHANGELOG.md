@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.10
+
+- New: a collapsible *Reputation* block on the stats page shows the reputation of the ticked characters: every faction in the order of the game, grouped by category, with the level and a bar to the next one. Friendships and renown are shown with their own levels, paragon progress and a waiting reward are marked. Account-wide reputation appears once per faction. A character whose last scan does not contain reputation yet (scanned with an older addon) is listed under the block as without reputation data; it needs one new scan
+- New: the addon now keeps the last five scans of each character instead of only the latest one. *2. Read data* reads all of them, so a scan made between two reads is no longer lost as long as no more than five scans lie between them. The note about missing scans now compares with the oldest scan in the file
+- New: each scan also records the character's specialization, its average item level, the equipped items (name, item level, stats, enchantment, upgrade level, sockets, gem ids) and the reputation list. They are stored in the database; only the reputation is shown so far
+- Changed: on the stats page the character selection now sits directly above the parts it controls (Reputation and the statistics table); Rates, Groups and History stay above it
+- Note: the database is updated to a new layout (schema 3) on the first read; a permanent copy of it is made first (`data/backups/migration/`). Older scans have no gear or reputation, nothing is filled in afterwards
+- Note: the data file of the addon grows with the new parts: 1.2 MB with three characters scanned (before: 1.0 MB for 19 characters); about 6 MB with 19 characters is calculated, not measured in the game
+- Note: gem sockets are recorded as gem ids (0 = empty), without name or values
+- Changed: the addon changed, so its version follows the program version: after updating the window asks once to run *1. Install / update addon*
+- Docs: both READMEs describe the last five scans and the Reputation block; the pictures of the landing page show the new order of the stats page
+- Developer: tests for the ring of scans, the gear and reputation reading (with a faked game interface), the reading of `history`, schema 3, the gap note, the reputation in the page data, the order of the blocks and the version `0.1.10` in the update check; the demo data (`tools/make_demo.py`) carries an invented reputation
+
 ## 0.1.9
 
 - New: *2. Read data* says when scans may be missing. The addon keeps only the latest scan per character, so a scan made between two reads is gone for good; when two or more days lie between the previous scan in the database and the newest one in the file, the log says so. When a read brings nothing new it shows how old the newest scan in the file is. Reading one WoW account now also names the other accounts that have data (every account has its own file)
