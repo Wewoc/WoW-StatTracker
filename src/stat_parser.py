@@ -704,9 +704,10 @@ def refresh_numbers(conn):
     return changed
 
 
-# The addon keeps only the latest scan per character, so a scan made between two imports is gone for good.
-# Which ones were lost cannot be known; from this many days between the previous scan in the database and
-# the newest one in the file the import says so.
+# The addon keeps only a limited number of the latest scans per character (one in a file of version 3, a ring of
+# them since version 4), so a scan made between two imports can be gone for good. Which ones were lost cannot be
+# known; from this many days between the previous scan in the database and the oldest scan in the file that is newer
+# the import says so. A file that reaches back to the previous scan (or beyond) proves nothing is missing.
 GAP_NOTE_DAYS = 2
 SCAN_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -723,29 +724,43 @@ def _scan_time(text):
         return None
 
 
+def _file_scan_times(db):
+    """{char key: [time of every scan of the file, oldest first]}: the newest one of `chars` and the older ones of
+    `history`. What is not a scan with a readable time is left out (import_data reports it)."""
+    chars = db.get("chars") if isinstance(db, dict) else None
+    if not isinstance(chars, dict):
+        return {}
+    history = db.get("history")
+    found = {}
+    for key, c in chars.items():
+        entries = [c] + (_sequence((history or {}).get(key)) or [] if isinstance(history, dict) else [])
+        times = sorted(at for at in (_scan_time(e.get("scannedAt")) for e in entries if isinstance(e, dict)) if at)
+        if times:
+            found[key] = times
+    return found
+
+
 def import_notes(db, before, new, now=None):
     """Lines about the age of the data after an import: how old the newest scan is when nothing new
     came, or that scans may be missing when days lie between the previous scan of a character in the
-    database (`before`, from last_scan_times) and its newest one in the file. Anything odd in the data is
+    database (`before`, from last_scan_times) and the oldest scan of the file that is newer. A file that reaches
+    back to the previous scan or beyond has nothing missing in between. Anything odd in the data is
     left to import_data to report: no note then."""
-    chars = db.get("chars") if isinstance(db, dict) else None
-    if not isinstance(chars, dict):
-        return []
-    times = {key: _scan_time(c.get("scannedAt")) for key, c in chars.items() if isinstance(c, dict)}
-    times = {key: at for key, at in times.items() if at}
+    times = _file_scan_times(db)
     if not times:
         return []
     if new == 0:
-        newest = max(times.values())
+        newest = max(at[-1] for at in times.values())
         days = max(0, ((now or datetime.now()) - newest).days)
         return [t("parse_note_no_new", at=newest.strftime(SCAN_TIME_FORMAT), days=days)]
     worst = None
-    for key, at in times.items():
+    for key, scans in times.items():
         previous = _scan_time(before.get(key))
-        if previous and at > previous:
-            days = (at - previous).days
-            if worst is None or days > worst[0]:
-                worst = (days, key, at)
+        if not previous or scans[0] <= previous:
+            continue
+        days = (scans[0] - previous).days
+        if worst is None or days > worst[0]:
+            worst = (days, key, scans[0])
     if worst and worst[0] >= GAP_NOTE_DAYS:
         return [t("parse_note_gap", days=worst[0], key=worst[1], at=worst[2].strftime(SCAN_TIME_FORMAT))]
     return []

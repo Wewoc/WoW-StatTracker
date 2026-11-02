@@ -340,8 +340,8 @@ _STRINGS = {
         "en": "Note:     Nothing new - the newest scan in the file is from {at} ({days} days old). WoW writes the file only on /reload or logout.",
     },
     "parse_note_gap": {
-        "de": "Hinweis:  Zwischen dem vorigen Scan von {key} in der DB und dem neuesten ({at}) liegen {days} Tage. Scans dazwischen können fehlen: das Addon behält nur den letzten Scan je Charakter - am besten nach jeder Spielsitzung einlesen.",
-        "en": "Note:     {days} days lie between the previous scan of {key} in the DB and the newest one ({at}). Scans made in between may be missing: the addon keeps only the latest scan per character - best import after every play session.",
+        "de": "Hinweis:  Zwischen dem vorigen Scan von {key} in der DB und dem ältesten Scan in der Datei ({at}) liegen {days} Tage. Scans dazwischen können fehlen: das Addon behält nur eine begrenzte Zahl der letzten Scans je Charakter - am besten nach jeder Spielsitzung einlesen.",
+        "en": "Note:     {days} days lie between the previous scan of {key} in the DB and the oldest scan in the file ({at}). Scans made in between may be missing: the addon keeps only a limited number of the latest scans per character - best import after every play session.",
     },
     "parse_out_numbers": {
         "de": "Zahlen:   {count} gespeicherte Werte nach neuer Regel korrigiert",

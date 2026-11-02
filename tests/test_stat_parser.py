@@ -119,6 +119,88 @@ def test_a_short_gap_is_not_mentioned(sv, tmp_path, capsys):
     assert "may be missing" not in capsys.readouterr().out
 
 
+# --- the gap note with the older scans of a version 4 file (history)
+def _scan(at):
+    return {"scannedAt": at, "stats": {1: "5"}}
+
+
+def _ring(*ats):
+    """A history table as LuaReader returns it: newest first, keys 1..n."""
+    return {i: _scan(at) for i, at in enumerate(ats, 1)}
+
+
+PREVIOUS = {"A-B": "2026-10-01 10:00:00"}
+
+
+def test_the_gap_is_measured_to_the_oldest_scan_of_the_file_that_is_newer():
+    db = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}, "history": {"A-B": _ring("2026-10-09 10:00:00", "2026-10-08 10:00:00")}}
+    (line,) = stat_parser.import_notes(db, PREVIOUS, 3)
+    assert "7 days" in line and "2026-10-08 10:00:00" in line and "A-B" in line     # not the 9 days to the newest scan
+
+
+def test_a_file_that_reaches_back_to_the_previous_scan_has_no_gap():
+    db = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}, "history": {"A-B": _ring("2026-10-05 10:00:00", "2026-10-01 10:00:00")}}
+    assert stat_parser.import_notes(db, PREVIOUS, 2) == []
+    older = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}, "history": {"A-B": _ring("2026-09-20 10:00:00")}}      # beyond it
+    assert stat_parser.import_notes(older, PREVIOUS, 2) == []
+
+
+def test_the_order_in_the_history_does_not_matter_for_the_gap():
+    db = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}, "history": {"A-B": _ring("2026-10-08 10:00:00", "2026-10-09 10:00:00")}}
+    assert "7 days" in stat_parser.import_notes(db, PREVIOUS, 3)[0]
+
+
+def test_a_file_of_version_3_behaves_as_before():
+    db = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}}
+    assert "9 days" in stat_parser.import_notes(db, PREVIOUS, 1)[0]
+
+
+def test_the_largest_gap_of_all_characters_is_named():
+    db = {"chars": {"A-B": _scan("2026-10-04 10:00:00"), "C-D": _scan("2026-10-12 10:00:00")}}
+    before = {"A-B": "2026-10-01 10:00:00", "C-D": "2026-10-01 10:00:00"}
+    (line,) = stat_parser.import_notes(db, before, 2)
+    assert "C-D" in line and "11 days" in line
+
+
+def test_odd_history_gives_no_error_and_changes_nothing_for_the_gap():
+    for history in ("text", 5, {"A-B": "text"}, {"A-B": {"x": _scan("2026-10-01 10:00:00")}}, {"A-B": {1: "text", 2: {}, 3: _scan("later")}}):
+        db = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}, "history": history}
+        assert "9 days" in stat_parser.import_notes(db, PREVIOUS, 1)[0]
+
+
+def test_nothing_new_still_names_the_newest_scan_of_the_file():
+    db = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}, "history": {"A-B": _ring("2026-10-09 10:00:00")}}
+    (line,) = stat_parser.import_notes(db, PREVIOUS, 0, now=datetime(2026, 10, 13, 12, 0))
+    assert "2026-10-10 10:00:00" in line and "3 days old" in line
+
+
+def _file_with_ring(sv, tmp_path, newest, older=()):
+    def scan(at):
+        return f'{{ ["scannedAt"] = "{at}", ["level"] = 80, ["stats"] = {{ [1] = "5" }}, ["playedTotal"] = 1, ["playedLevel"] = 1 }}'
+
+    ring = ", ".join(scan(at) for at in older)
+    sv.write_text('StatTrackerDB = { ["version"] = 4, ["meta"] = { [1] = { ["name"] = "Total deaths", ["cat"] = "Combat" } }, '
+                  f'["history"] = {{ ["Alice-Realm"] = {{ {ring} }} }}, ["chars"] = {{ ["Alice-Realm"] = {scan(newest)} }} }}',
+                  encoding="utf-8")
+    run(sv, tmp_path)
+
+
+def test_gap_note_over_two_real_imports_with_a_ring(sv, tmp_path, capsys):
+    _scan_at(sv, tmp_path, "2026-10-01 10:00:00")
+    capsys.readouterr()
+    _file_with_ring(sv, tmp_path, "2026-10-10 10:00:00", older=["2026-10-09 10:00:00", "2026-10-08 10:00:00"])
+    out = capsys.readouterr().out
+    assert "7 days" in out and "2026-10-08 10:00:00" in out and "3 new" in out
+    _file_with_ring(sv, tmp_path, "2026-10-12 10:00:00", older=["2026-10-11 10:00:00", "2026-10-10 10:00:00"])
+    assert "may be missing" not in capsys.readouterr().out                           # reaches back to 10-10, the last one stored
+
+
+def test_the_gap_note_no_longer_claims_the_addon_keeps_a_single_scan():
+    for lang, word in (("en", "limited number"), ("de", "begrenzte Zahl")):
+        text = i18n.raw("parse_note_gap", lang)
+        assert word in text and "only the latest scan" not in text and "nur den letzten Scan" not in text
+
+
 def test_an_import_without_a_new_scan_says_how_old_the_file_is(sv, tmp_path, capsys):
     run(sv, tmp_path)
     capsys.readouterr()
