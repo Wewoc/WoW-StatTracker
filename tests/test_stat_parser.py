@@ -374,9 +374,9 @@ def test_localized_race_and_stable_file_are_kept_apart(sv, tmp_path):
 
 
 def test_template_puts_what_the_character_selection_drives_below_it():
-    """Rule of the page: blocks with no bearing on the selection (rates, history links) above it, everything it drives
-    (Groups, Reputation, the table) below it."""
+    """Rule of the page: blocks with a selection of their own or none (rates, Groups, history links) above the character
+    selection, what it drives (Reputation, the table) below it."""
     from pathlib import Path
     html = (Path(__file__).resolve().parent.parent / "src" / "template.html").read_text(encoding="utf-8")
-    order = [html.index(f'id="{name}"') for name in ("rates", "history", "chars", "groups", "rep", "count", "t")]
+    order = [html.index(f'id="{name}"') for name in ("rates", "groups", "history", "chars", "rep", "count", "t")]
     assert order == sorted(order)
