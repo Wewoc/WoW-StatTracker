@@ -453,11 +453,11 @@ _STRINGS = {
     "html_groups_note": {
         "de": "Klasse und Rasse stammen aus dem Scan: Charaktere, die seit dem Addon-Update nicht neu gescannt wurden, "
               "stehen unter „unbekannt“. Raten = Summe der Zähler / Summe der Stunden der Gruppe, ohne Charaktere mit "
-              "weniger als {hours} Std. Spielzeit. Gesamt gilt für die angezeigten Gruppen; es zählen die oben "
+              "weniger als {hours} Std. Spielzeit. Gesamt gilt für die angezeigten Gruppen; es zählen die "
               "angehakten Charaktere.",
         "en": "Class and race come from the scan: characters not scanned again since the addon update are listed "
               "under “unknown”. Rates = sum of counters / sum of hours of the group, leaving out characters with "
-              "less than {hours} h played. Total covers the groups shown; the characters ticked above are counted.",
+              "less than {hours} h played. Total covers the groups shown; the ticked characters are counted.",
     },
     "html_groups_extra": {"de": "Weitere Statistik", "en": "More statistics"},
     "html_groups_agg_sum": {"de": "Summe", "en": "Sum"},
