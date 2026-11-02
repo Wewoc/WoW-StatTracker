@@ -358,7 +358,7 @@ def init_db(path):
 # StatTracker.lua). The addon writes it for the whole file, so it is a ceiling, not a mark on
 # a single scan: a file with a higher number than DATA_VERSION is refused, a missing number is
 # accepted (hand-made files, older tests). Raising it goes with the change of the fields.
-DATA_VERSION = 3
+DATA_VERSION = 4
 
 
 def check_data_version(db, path):

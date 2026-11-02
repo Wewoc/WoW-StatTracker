@@ -6,6 +6,8 @@
 # Skipped without lupa (pip install lupa; listed in requirements-dev.txt).
 # Note: lupa embeds Lua 5.4, WoW runs 5.1 - the addon only uses constructs common to both.
 
+import re
+import time
 from pathlib import Path
 
 import pytest
@@ -125,12 +127,12 @@ def test_everything_is_stored_with_the_played_time(en):
     assert db.meta[1030700].cat == "Cat101 > Cat103"
 
 
-def test_class_file_race_and_race_file_are_stored_and_the_contract_version_is_3(en):
+def test_class_file_race_and_race_file_are_stored_and_the_contract_version_is_4(en):
     db = en.StatTrackerDB
     rec = db.chars["Alice-Realm"]
     assert (rec.classFile, rec.race, rec.raceFile) == ("MAGE", "Human", "Human")
     assert rec["class"] == "Mage"                            # the localized class name stays as it was
-    assert db.version == 3
+    assert db.version == 4
 
 
 def test_the_file_names_do_not_depend_on_the_client_language():
@@ -179,3 +181,125 @@ def test_german_client_gets_german_messages():
     assert "Stat-Sync gestartet" in texts[0]
     assert any("Stat-Sync fertig" in t for t in texts)
     assert any("laeuft bereits" in t for t in texts)
+
+
+# ------------------------------------------------------------------ the ring of older scans (history)
+# Several scans one after the other in ONE runtime, each at a clock of its own (UTC, so the texts do not
+# depend on the machine). run_addon() above starts a fresh runtime for a single scan and cannot do this.
+
+CLOCK_LUA = '''
+CLOCK = 0
+time = function() return CLOCK end
+date = function(f) return os.date("!" .. f, CLOCK) end
+'''
+BASE_EPOCH = 1_790_000_000
+DAY = 86_400
+
+
+def at(epoch):
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(epoch))
+
+
+def run_scans(scans, locale="enUS", tweak="", before_load=""):
+    """scans: a list of dicts {"epoch": ..., "played": seconds, "name": character name (default Alice)}.
+    before_load: Lua run before the addon loads (to pre-fill StatTrackerDB like a file from an earlier session)."""
+    lua = lupa.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute(f'LOCALE = "{locale}"')
+    lua.execute(FAKE_WOW)
+    lua.execute(CLOCK_LUA)
+    if tweak:
+        lua.execute(tweak)
+    if before_load:
+        lua.execute(before_load)
+    loaded = lua.eval("function(src) return load(src, '=StatTracker.lua') end")(ADDON.read_text(encoding="utf-8"))
+    assert not isinstance(loaded, tuple), f"Lua syntax error: {loaded}"
+    loaded("StatTracker")
+    lua.execute('Fire("ADDON_LOADED", "StatTracker")')
+    for scan in scans:
+        lua.execute(f'CLOCK = {scan["epoch"]}; REQUESTED = false; '
+                    f'function UnitName() return "{scan.get("name", "Alice")}" end')
+        lua.execute('SlashCmdList["STATTRACKER"]("")')
+        lua.execute("RunTimers(true)")
+        lua.execute(f'Fire("TIME_PLAYED_MSG", {scan["played"]}, 60)')
+        lua.execute("RunTimers()")
+    return lua.globals()
+
+
+def history_max():
+    found = re.findall(r"^local HISTORY_MAX = (\d+)\b", ADDON.read_text(encoding="utf-8"), re.MULTILINE)
+    assert len(found) == 1
+    return int(found[0])
+
+
+def history_of(g, key="Alice-Realm"):
+    """The history entries of a character as a list of (scannedAt, playedTotal), newest first."""
+    entries = g.StatTrackerDB.history[key]
+    return [(str(entries[i].scannedAt), entries[i].playedTotal) for i in range(1, len(entries) + 1)]
+
+
+def test_the_database_has_the_tables_of_version_4_after_loading():
+    g = run_scans([])
+    db = g.StatTrackerDB
+    assert db.version == 4
+    assert list(db.history.keys()) == [] and list(db.repMeta.keys()) == []
+
+
+def test_each_scan_moves_the_one_before_into_the_history_with_its_played_time():
+    scans = [{"epoch": BASE_EPOCH + i * DAY, "played": 1000 * (i + 1)} for i in range(3)]
+    g = run_scans(scans)
+    db = g.StatTrackerDB
+    assert str(db.chars["Alice-Realm"].scannedAt) == at(scans[2]["epoch"]) and db.chars["Alice-Realm"].playedTotal == 3000
+    assert history_of(g) == [(at(scans[1]["epoch"]), 2000), (at(scans[0]["epoch"]), 1000)]    # newest first
+    assert len(list(db.history["Alice-Realm"][1].stats.keys())) == TOTAL                      # the full scan moved
+
+
+def test_the_history_is_cut_to_one_less_than_the_ring_size():
+    n = history_max() + 3
+    scans = [{"epoch": BASE_EPOCH + i * DAY, "played": 100 * (i + 1)} for i in range(n)]
+    g = run_scans(scans)
+    kept = history_of(g)
+    assert len(kept) == history_max() - 1
+    assert kept[0] == (at(scans[n - 2]["epoch"]), 100 * (n - 1))        # the one before the newest comes first
+    assert kept[-1][0] == at(scans[n - history_max()]["epoch"])         # the older ones fell off the end
+    assert str(g.StatTrackerDB.chars["Alice-Realm"].scannedAt) == at(scans[n - 1]["epoch"])
+
+
+def test_a_scan_in_the_same_second_replaces_the_one_before_instead_of_doubling_it():
+    g = run_scans([{"epoch": BASE_EPOCH, "played": 1}, {"epoch": BASE_EPOCH, "played": 2}])
+    db = g.StatTrackerDB
+    assert list(db.history.keys()) == []
+    assert db.chars["Alice-Realm"].playedTotal == 2
+
+
+def test_an_entry_already_first_in_the_history_is_not_pushed_again():
+    key = '"Alice-Realm"'
+    before = (f'StatTrackerDB = {{ version = 4, meta = {{}}, chars = {{ [{key}] = {{ scannedAt = "{at(BASE_EPOCH)}", stats = {{}} }} }}, '
+              f'history = {{ [{key}] = {{ {{ scannedAt = "{at(BASE_EPOCH)}", stats = {{}} }} }} }} }}')
+    g = run_scans([{"epoch": BASE_EPOCH + DAY, "played": 5}], before_load=before)
+    assert history_of(g) == [(at(BASE_EPOCH), None)]
+
+
+def test_characters_keep_separate_histories():
+    scans = [{"epoch": BASE_EPOCH, "played": 1, "name": "Alice"}, {"epoch": BASE_EPOCH + DAY, "played": 2, "name": "Bob"},
+             {"epoch": BASE_EPOCH + 2 * DAY, "played": 3, "name": "Alice"}]
+    g = run_scans(scans)
+    assert history_of(g, "Alice-Realm") == [(at(BASE_EPOCH), 1)]
+    assert list(g.StatTrackerDB.history.keys()) == ["Alice-Realm"]       # Bob has only one scan, so no history yet
+    assert g.StatTrackerDB.chars["Bob-Realm"].playedTotal == 2
+
+
+def test_a_file_of_version_3_is_kept_and_its_scan_becomes_the_first_history_entry():
+    old = (f'StatTrackerDB = {{ version = 3, auto = false, meta = {{ [7] = {{ name = "x", cat = "y" }} }}, chars = {{ ["Alice-Realm"] = '
+           f'{{ scannedAt = "{at(BASE_EPOCH)}", stats = {{ [7] = "5" }}, playedTotal = 99 }} }} }}')
+    g = run_scans([{"epoch": BASE_EPOCH + DAY, "played": 100}], before_load=old)
+    db = g.StatTrackerDB
+    assert db.version == 4 and db.auto is False and db.meta[7].name == "x"
+    assert history_of(g) == [(at(BASE_EPOCH), 99)]
+    assert db.history["Alice-Realm"][1].stats[7] == "5"
+
+
+def test_a_broken_earlier_entry_is_not_moved_into_the_history():
+    broken = 'StatTrackerDB = { meta = {}, chars = { ["Alice-Realm"] = "not a table" } }'
+    g = run_scans([{"epoch": BASE_EPOCH, "played": 1}], before_load=broken)
+    assert list(g.StatTrackerDB.history.keys()) == []
+    assert g.StatTrackerDB.chars["Alice-Realm"].playedTotal == 1

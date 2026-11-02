@@ -12,10 +12,13 @@
 -- Chat messages are German on a German client (deDE), English otherwise.
 --
 -- Data structure (account-wide):
---   StatTrackerDB.version            = 3
+--   StatTrackerDB.version            = 4
 --   StatTrackerDB.auto               = true/false
 --   StatTrackerDB.meta[statID]       = { name = "...", cat = "category > subcategory" }
---   StatTrackerDB.chars["Name-Realm"] = {
+--   StatTrackerDB.repMeta[factionID] = { name = "..." }       -- last known (localized) faction name
+--   StatTrackerDB.history["Name-Realm"] = { <scan>, <scan>, ... }
+--       the scans before the newest one, newest first, at most HISTORY_MAX - 1 of them
+--   StatTrackerDB.chars["Name-Realm"] = <scan>, the newest scan:
 --       scannedAt = "YYYY-MM-DD HH:MM:SS", scannedEpoch = time(),
 --       class = "...", level = N, faction = "...",
 --       classFile = "MAGE", race = "...", raceFile = "Human",   -- classFile/raceFile are language independent
@@ -30,6 +33,7 @@ local AUTO_DELAY = 10       -- seconds after login until the auto-scan
 local AUTO_MIN_AGE = 600    -- seconds: skip the auto-scan if the last scan is younger
 local SCAN_SECONDS = 10     -- the scan is spread over about this many seconds (no game freeze)
 local SCAN_TICK = 0.1       -- seconds between two slices
+local HISTORY_MAX = 5       -- scans kept per character: the newest one plus HISTORY_MAX - 1 older ones
 
 local IS_DE = (GetLocale() == "deDE")
 local function Tr(de, en) if IS_DE then return de end return en end
@@ -41,9 +45,11 @@ loader:RegisterEvent("ADDON_LOADED")
 loader:SetScript("OnEvent", function(self, _, name)
     if name ~= ADDON then return end
     StatTrackerDB = StatTrackerDB or {}
-    StatTrackerDB.version = 3
+    StatTrackerDB.version = 4
     StatTrackerDB.meta = StatTrackerDB.meta or {}
+    StatTrackerDB.repMeta = StatTrackerDB.repMeta or {}
     StatTrackerDB.chars = StatTrackerDB.chars or {}
+    StatTrackerDB.history = StatTrackerDB.history or {}
     if StatTrackerDB.auto == nil then StatTrackerDB.auto = true end
     self:UnregisterEvent("ADDON_LOADED")
 end)
@@ -131,10 +137,27 @@ played:SetScript("OnEvent", function(_, _, total, levelTime)
            "Played time for " .. key .. " recorded. Data is written on /reload or logout."))
 end)
 
+-- The scan that is about to be replaced moves to the front of the character's history, which is cut to
+-- HISTORY_MAX - 1 entries. A scan with the same time as the new one (or as the first history entry) is not kept twice.
+local function PushHistory(key, old, newAt)
+    if type(old) ~= "table" or not old.scannedAt or old.scannedAt == newAt then return end
+    StatTrackerDB.history = StatTrackerDB.history or {}
+    local list = StatTrackerDB.history[key]
+    if type(list) ~= "table" then
+        list = {}
+        StatTrackerDB.history[key] = list
+    end
+    if list[1] and list[1].scannedAt == old.scannedAt then return end
+    table.insert(list, 1, old)
+    for i = #list, HISTORY_MAX, -1 do list[i] = nil end
+end
+
 -- Store the finished scan, then ask for the played time (TIME_PLAYED_MSG).
 local function FinishScan(key, st)
+    local scannedAt = date("%Y-%m-%d %H:%M:%S")
+    PushHistory(key, StatTrackerDB.chars[key], scannedAt)
     StatTrackerDB.chars[key] = {
-        scannedAt = date("%Y-%m-%d %H:%M:%S"),
+        scannedAt = scannedAt,
         scannedEpoch = time(),
         class = st.class,
         level = st.level,
