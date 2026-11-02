@@ -495,13 +495,15 @@ def _item_stats(value):
 
 def _read_gear(value):
     """(rows, skipped): the equipped items of a scan. A slot outside 1..19, an entry that is not a table or has no item id
-    is skipped and counted; a field of the wrong type is NULL."""
+    is skipped and counted (a nil gap is no entry); a field of the wrong type is NULL."""
     if value is None:
         return [], 0
     if not isinstance(value, dict):
         return [], 1
     rows, skipped = [], 0
     for slot, item in sorted(value.items(), key=lambda kv: str(kv[0])):
+        if item is None:
+            continue                                        # WoW writes a gap in the table as "nil,": an empty slot, not an error
         item_id = _int_or_none(item.get("itemID")) if isinstance(item, dict) else None
         if _int_or_none(slot) not in GEAR_SLOTS or item_id is None:
             skipped += 1

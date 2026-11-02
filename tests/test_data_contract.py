@@ -284,6 +284,26 @@ def test_unusable_gear_and_reputation_entries_are_skipped_and_counted():
     assert scan["skipped"] == 6 + 6                                               # six gear entries, six reputation entries
 
 
+def test_an_empty_slot_written_by_wow_as_a_nil_gap_is_no_entry_and_no_warning(tmp_path, capsys):
+    # What WoW really wrote for a character without a shirt: the slots 1..3 and 5 as positional entries with
+    # "nil," in the gap of slot 4, and slot 19 behind them with its key.
+    gear = """{
+        { itemID = 1, name = "A" },
+        { itemID = 2, name = "B" },
+        { itemID = 3, name = "C" },
+        nil,
+        { itemID = 5, name = "E" },
+        [19] = { itemID = 19, name = "Tabard" } }"""
+    scan = read('{ scannedAt = "x", stats = { [1] = "5" }, gear = ' + gear + ' }')
+    assert sorted(row["slot"] for row in scan["gear"]) == [1, 2, 3, 5, 19] and scan["skipped"] == 0
+    lua = file_lua(tmp_path, scan_lua("2026-10-03 10:00:00", extra=" gear = " + gear + ","))
+    import_file(tmp_path, lua)
+    assert "(gear, reputation)" not in capsys.readouterr().out
+    conn = sqlite3.connect(tmp_path / "wow_stats.db")
+    assert conn.execute("SELECT slot FROM scan_gear ORDER BY slot").fetchall() == [(1,), (2,), (3,), (5,), (19,)]
+    conn.close()
+
+
 def test_reputation_that_is_not_a_positional_table_counts_as_one_skipped_part():
     scan = read('{ scannedAt = "x", stats = { [1] = "5" }, rep = { a = { id = 1, ord = 1 } }, gear = "text" }')
     assert scan["rep"] == [] and scan["gear"] == [] and scan["skipped"] == 2
