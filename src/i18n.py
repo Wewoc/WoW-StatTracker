@@ -265,6 +265,22 @@ _STRINGS = {
         "de": "FEHLER: Charakter {key!r} hat ein unvollständiges Format.",
         "en": "ERROR: character {key!r} has an incomplete format.",
     },
+    "parse_err_history_table": {
+        "de": "FEHLER: 'history' in der Datei hat ein ungültiges Format.",
+        "en": "ERROR: 'history' in the file has an invalid format.",
+    },
+    "parse_err_history_list": {
+        "de": "FEHLER: Die Liste älterer Scans von {key!r} hat ein ungültiges Format.",
+        "en": "ERROR: the list of older scans of {key!r} has an invalid format.",
+    },
+    "parse_err_incomplete_history": {
+        "de": "FEHLER: Älterer Scan Nr. {n} von {key!r} hat ein unvollständiges Format.",
+        "en": "ERROR: older scan no. {n} of {key!r} has an incomplete format.",
+    },
+    "parse_warn_scan_details": {
+        "de": "WARNUNG: {key}: {count} Angaben (Ausrüstung, Ruf) im Scan vom {at} sind unbekannt oder unvollständig und wurden übersprungen.",
+        "en": "WARNING: {key}: {count} details (gear, reputation) in the scan from {at} are unknown or incomplete and were skipped.",
+    },
     "parse_warn_no_played": {
         "de": "WARNUNG: {key}: keine Spielzeit im Scan vom {at} (im Spiel /statscan wiederholen und auf die Spielzeit-Meldung warten).",
         "en": "WARNING: {key}: no played time in the scan from {at} (repeat /statscan in game and wait for the played-time message).",
