@@ -24,7 +24,11 @@
 --       classFile = "MAGE", race = "...", raceFile = "Human",   -- classFile/raceFile are language independent
 --       stats = { [statID] = "value as text" },
 --       playedTotal = seconds, playedLevel = seconds,   -- arrives shortly after the scan (TIME_PLAYED_MSG)
---   }
+--       -- all of the following are optional: a part that cannot be read is left out, the scan stays valid
+--       specID = 72, specName = "...", role = "DAMAGER",
+--       ilvlTotal = N, ilvlEquipped = N,                -- GetAverageItemLevel()
+--       gear = { [slot 1..19] = { itemID, name, quality, ilvl, iconID, stats = { ITEM_MOD_... = N },
+--                 enchantID, enchantText, upgrade = { trackID, track, level, max }, sockets, gems = { id or 0 } } },
 
 local ADDON = ...
 local PREFIX = "|cff00ff00[StatTracker]|r "
@@ -34,6 +38,10 @@ local AUTO_MIN_AGE = 600    -- seconds: skip the auto-scan if the last scan is y
 local SCAN_SECONDS = 10     -- the scan is spread over about this many seconds (no game freeze)
 local SCAN_TICK = 0.1       -- seconds between two slices
 local HISTORY_MAX = 5       -- scans kept per character: the newest one plus HISTORY_MAX - 1 older ones
+local NAME_WAIT = 5         -- seconds to wait at most for item names the game has not loaded yet
+local NAME_POLL = 0.5       -- seconds between two looks at those names
+local ENCHANT_LINE = 15     -- tooltip line type of the enchantment line (seen in game, 12.1.5)
+local GEAR_SLOTS = 19       -- inventory slots 1..19 (18 is unused); empty ones are left out
 
 local IS_DE = (GetLocale() == "deDE")
 local function Tr(de, en) if IS_DE then return de end return en end
@@ -152,13 +160,189 @@ local function PushHistory(key, old, newAt)
     for i = #list, HISTORY_MAX, -1 do list[i] = nil end
 end
 
--- Store the finished scan, then ask for the played time (TIME_PLAYED_MSG).
-local function FinishScan(key, st)
-    local scannedAt = date("%Y-%m-%d %H:%M:%S")
-    PushHistory(key, StatTrackerDB.chars[key], scannedAt)
-    StatTrackerDB.chars[key] = {
-        scannedAt = scannedAt,
-        scannedEpoch = time(),
+local scanning = false   -- true from the start of a scan until it is stored; a second scan is refused
+
+-- Everything below that reads more than the statistics (specialization, item level, gear) is optional: a function
+-- the game version does not have is skipped without a word, an error in one part is reported in chat and the part
+-- is left out. The statistics are never lost because of it.
+local function Collect(de, en, fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok then
+        Say("|cffff0000" .. Tr(de .. " nicht gelesen:", en .. " not read:") .. "|r " .. tostring(err) .. " " ..
+            Tr("Statistiken sind gespeichert.", "Statistics are saved."))
+    end
+end
+
+local function NonEmpty(value)
+    if type(value) == "string" and value ~= "" then return value end
+end
+
+-- Specialization: the id comes from PlayerUtil if there, else from the specialization info of the active index.
+local function CollectSpec(into)
+    local getIndex = GetSpecialization or (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization)
+    local getInfo = GetSpecializationInfo or (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo)
+    if type(getIndex) ~= "function" or type(getInfo) ~= "function" then return end
+    local index = getIndex()
+    if type(index) ~= "number" then return end
+    local id, name, _, _, role = getInfo(index)
+    local current = PlayerUtil and PlayerUtil.GetCurrentSpecID and PlayerUtil.GetCurrentSpecID()
+    if type(current) == "number" and current > 0 then id = current end
+    if type(id) == "number" and id > 0 then into.specID = id end
+    into.specName = NonEmpty(name)
+    into.role = NonEmpty(role)
+end
+
+local function CollectItemLevel(into)
+    if type(GetAverageItemLevel) ~= "function" then return end
+    local total, equipped = GetAverageItemLevel()
+    if type(total) == "number" then into.ilvlTotal = total end
+    if type(equipped) == "number" then into.ilvlEquipped = equipped end
+end
+
+-- The fields of the item string of a link (between "|Hitem:" and "|h"), empty fields included:
+-- 1 = item id, 2 = enchantment id.
+local function ItemFields(link)
+    local fields = {}
+    local text = link:match("|Hitem:([^|]*)|h")
+    if text then
+        for part in (text .. ":"):gmatch("([^:]*):") do fields[#fields + 1] = part end
+    end
+    return fields
+end
+
+local function ItemInfo(link)
+    local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    if type(fn) ~= "function" then return end
+    return fn(link)
+end
+
+local function Trim(text)
+    return (text:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+-- The text of the enchantment line of the equipped item ("Enchanted: Shoulders - X" without the prefix), if any.
+local function EnchantText(slot)
+    if not (C_TooltipInfo and type(C_TooltipInfo.GetInventoryItem) == "function") then return end
+    local data = C_TooltipInfo.GetInventoryItem("player", slot)
+    if type(data) ~= "table" or type(data.lines) ~= "table" then return end
+    local surface = TooltipUtil and TooltipUtil.SurfaceArgs
+    if surface then pcall(surface, data) end
+    for _, line in ipairs(data.lines) do
+        if surface then pcall(surface, line) end
+        if line.type == ENCHANT_LINE and type(line.leftText) == "string" then
+            local text = line.leftText
+            text = (text:gsub("|A:[^|]*|a", ""))               -- inline icons
+            text = (text:gsub("|cn[^:]*:", ""))                -- named colour codes
+            text = (text:gsub("|c%x%x%x%x%x%x%x%x", ""))       -- colour codes
+            text = (text:gsub("|r", ""))
+            text = (text:gsub("^[^:]*:%s*", ""))               -- the localized prefix "Enchanted:"
+            return NonEmpty(Trim(text))
+        end
+    end
+end
+
+-- Everything about one equipped item. Each value is taken only if it has the expected type; an item the game
+-- has not loaded yet has no name and goes on the waiting list.
+local function ReadItem(item, slot)
+    local texture = GetInventoryItemTexture and GetInventoryItemTexture("player", slot)
+    if type(texture) == "number" then item.iconID = texture end
+    local link = GetInventoryItemLink and GetInventoryItemLink("player", slot)
+    if type(link) ~= "string" then return end
+    item.link = link                                          -- removed before the scan is stored
+
+    local name, _, quality, baseLevel = ItemInfo(link)
+    item.name = NonEmpty(name)
+    if type(quality) == "number" then item.quality = quality end
+    local level = C_Item and C_Item.GetDetailedItemLevelInfo and C_Item.GetDetailedItemLevelInfo(link)
+    if type(level) ~= "number" then level = baseLevel end
+    if type(level) == "number" then item.ilvl = level end
+
+    if C_Item and C_Item.GetItemStats then
+        local stats = C_Item.GetItemStats(link)
+        if type(stats) == "table" then
+            local copy = {}
+            for k, v in pairs(stats) do
+                if type(k) == "string" and type(v) == "number" then copy[k] = v end
+            end
+            if next(copy) then item.stats = copy end
+        end
+    end
+
+    local enchant = tonumber(ItemFields(link)[2])
+    if enchant and enchant > 0 then
+        item.enchantID = enchant
+        item.enchantText = EnchantText(slot)
+    end
+
+    local upgrade = C_Item and C_Item.GetItemUpgradeInfo and C_Item.GetItemUpgradeInfo(link)
+    if type(upgrade) == "table" and type(upgrade.maxLevel) == "number" and upgrade.maxLevel > 0
+       and type(upgrade.currentLevel) == "number" then
+        item.upgrade = { trackID = upgrade.trackStringID, track = NonEmpty(upgrade.trackString),
+                         level = upgrade.currentLevel, max = upgrade.maxLevel }
+    end
+
+    local sockets = C_Item and C_Item.GetItemNumSockets and C_Item.GetItemNumSockets(link)
+    if type(sockets) == "number" and sockets > 0 then
+        item.sockets = sockets
+        item.gems = {}                                         -- gem ids, 0 = empty (not yet seen filled in game)
+        local gemId = C_Item.GetItemGemID
+        for i = 1, sockets do
+            local id = gemId and gemId(link, i)
+            item.gems[i] = (type(id) == "number") and id or 0
+        end
+    end
+end
+
+-- Reads the 19 slots. Items without a name yet are added to `waiting` and asked for again later.
+local function CollectGear(into, waiting)
+    if type(GetInventoryItemID) ~= "function" then return end
+    local gear, failed = {}, nil
+    for slot = 1, GEAR_SLOTS do
+        local id = GetInventoryItemID("player", slot)
+        if type(id) == "number" then
+            local item = { itemID = id }
+            local ok, err = pcall(ReadItem, item, slot)
+            if ok then
+                gear[slot] = item
+                if not item.name and item.link then
+                    waiting[#waiting + 1] = item
+                    if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
+                end
+            else
+                failed = failed or err                         -- this slot is left out, the others stay
+            end
+        end
+    end
+    if next(gear) then into.gear = gear end
+    if failed then error(failed, 0) end
+end
+
+-- One look at the items that still have no name; the ones that have one now leave the list.
+local function FillNames(waiting)
+    for i = #waiting, 1, -1 do
+        local name = ItemInfo(waiting[i].link)
+        if NonEmpty(name) then
+            waiting[i].name = name
+            table.remove(waiting, i)
+        end
+    end
+end
+
+local function DropLinks(into)
+    if into.gear then
+        for _, item in pairs(into.gear) do item.link = nil end
+    end
+end
+
+-- Store the finished scan, then ask for the played time (TIME_PLAYED_MSG). The record exists before the request,
+-- because the answer is written into it.
+local function StoreScan(key, st, extra)
+    scanning = false
+    DropLinks(extra)
+    PushHistory(key, StatTrackerDB.chars[key], st.scannedAt)
+    local rec = {
+        scannedAt = st.scannedAt,
+        scannedEpoch = st.scannedEpoch,
         class = st.class,
         level = st.level,
         faction = st.faction,
@@ -167,6 +351,8 @@ local function FinishScan(key, st)
         raceFile = st.raceFile,
         stats = st.stats,
     }
+    for field, value in pairs(extra) do rec[field] = value end
+    StatTrackerDB.chars[key] = rec
     for id, m in pairs(st.meta) do
         StatTrackerDB.meta[id] = m
     end
@@ -187,7 +373,32 @@ local function FinishScan(key, st)
     end)
 end
 
-local scanning = false   -- true while a (spread-out) scan is running; a second one is refused
+-- The statistics are read. Collect the rest; if item names are missing wait for them up to NAME_WAIT seconds
+-- (`scanning` stays true, a /reload during the wait loses the scan, like one during the scan itself), then store.
+local function FinishScan(key, st)
+    st.scannedAt = date("%Y-%m-%d %H:%M:%S")
+    st.scannedEpoch = time()
+    local extra, waiting = {}, {}
+    Collect("Spezialisierung", "Specialization", CollectSpec, extra)
+    Collect("Itemlevel", "Item level", CollectItemLevel, extra)
+    Collect("Ausruestung", "Gear", CollectGear, extra, waiting)
+
+    if #waiting == 0 then
+        StoreScan(key, st, extra)
+        return
+    end
+    local waited = 0
+    local function look()
+        pcall(FillNames, waiting)
+        waited = waited + NAME_POLL
+        if #waiting == 0 or waited >= NAME_WAIT then
+            StoreScan(key, st, extra)                          -- names still missing stay nil, never ""
+        else
+            C_Timer.After(NAME_POLL, look)
+        end
+    end
+    C_Timer.After(NAME_POLL, look)
+end
 
 local function ScanAllStats()
     if not StatTrackerDB or not StatTrackerDB.chars then
@@ -231,13 +442,17 @@ local function ScanAllStats()
             C_Timer.After(SCAN_TICK, tick)
             return
         end
-        scanning = false
         if st.count == 0 then
+            scanning = false
             Say("|cffff0000" .. Tr("Scan fehlgeschlagen:", "Scan failed:") .. "|r " ..
                 Tr("keine Statistik gelesen (0 Eintraege)", "no statistic read (0 entries)"))
             return
         end
-        FinishScan(key, st)
+        local finishOk, finishErr = pcall(FinishScan, key, st)
+        if not finishOk then
+            scanning = false
+            Say("|cffff0000" .. Tr("Scan fehlgeschlagen:", "Scan failed:") .. "|r " .. tostring(finishErr))
+        end
     end
     C_Timer.After(SCAN_TICK, tick)
 end

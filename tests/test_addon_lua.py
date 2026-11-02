@@ -303,3 +303,192 @@ def test_a_broken_earlier_entry_is_not_moved_into_the_history():
     g = run_scans([{"epoch": BASE_EPOCH, "played": 1}], before_load=broken)
     assert list(g.StatTrackerDB.history.keys()) == []
     assert g.StatTrackerDB.chars["Alice-Realm"].playedTotal == 1
+
+
+# ------------------------------------------------------------------ specialization, item level, gear
+# A faked part of the retail API. Not in FAKE_WOW on purpose: the scans above run against a game that has none of
+# it, which must stay as good as before (a missing function is no error and no chat line).
+GEAR_API = r'''
+GetSpecialization = function() return 2 end
+GetSpecializationInfo = function(index) return 72, "Fury", "text", 132347, "DAMAGER", 1 end
+PlayerUtil = { GetCurrentSpecID = function() return 72 end }
+GetAverageItemLevel = function() return 276.5, 275.25, 270 end
+TooltipUtil = { SurfaceArgs = function() end }
+
+ITEMS = {
+  [3]  = { id = 209894, name = "Mantle of Embers", quality = 4, ilvl = 269, icon = 5178362, enchant = 8028,
+           enchantLine = "Enchanted: Shoulders - Thalassian Recovery |A:Professions-ChatIcon-Quality-12-Tier1:20:20|a",
+           stats = { ITEM_MOD_STAMINA_SHORT = 1374, RESISTANCE0_NAME = 52, ITEM_MOD_HASTE_RATING_SHORT = 63 },
+           upgrade = { trackStringID = 971, trackString = "Adventurer", currentLevel = 2, maxLevel = 6 } },
+  [11] = { id = 100011, name = "Ring of Sockets", quality = 3, ilvl = 279, icon = 111, sockets = 1, gems = { 213743 },
+           stats = { ITEM_MOD_STAMINA_SHORT = 1159, EMPTY_SOCKET_PRISMATIC = 1 } },
+  [12] = { id = 100012, name = "Second Ring", quality = 2, ilvl = 270, icon = 112, sockets = 2, gems = { nil, 5 } },
+  [19] = { id = 5976, name = "Guild Tabard", quality = 1, ilvl = 1, icon = 113 },
+}
+BY_ID = {}
+for slot, it in pairs(ITEMS) do BY_ID[it.id] = it end
+function ItemOfLink(link) return BY_ID[tonumber(link:match("item:(%d+)"))] end
+
+GetInventoryItemID = function(unit, slot) return ITEMS[slot] and ITEMS[slot].id end
+GetInventoryItemTexture = function(unit, slot) return ITEMS[slot] and ITEMS[slot].icon end
+GetInventoryItemLink = function(unit, slot)
+    local it = ITEMS[slot]
+    if not it then return nil end
+    return "|cnIQ" .. it.quality .. ":|Hitem:" .. it.id .. ":" .. (it.enchant or "") .. "::::::::83:103|h[" .. it.name .. "]|h|r"
+end
+LOAD_AT = 0          -- virtual second from which item names are known
+C_Item = {
+  GetItemInfo = function(link)
+      local it = ItemOfLink(link)
+      if not it or NOW < LOAD_AT then return nil end
+      return it.name, link, it.quality, it.ilvl
+  end,
+  GetDetailedItemLevelInfo = function(link) local it = ItemOfLink(link); return it and it.ilvl end,
+  GetItemStats = function(link) local it = ItemOfLink(link); return it and it.stats or {} end,
+  GetItemUpgradeInfo = function(link) local it = ItemOfLink(link); return it and it.upgrade end,
+  GetItemNumSockets = function(link) local it = ItemOfLink(link); return it and it.sockets or 0 end,
+  GetItemGemID = function(link, i) local it = ItemOfLink(link); return it and it.gems and it.gems[i] end,
+}
+C_TooltipInfo = {
+  GetInventoryItem = function(unit, slot)
+      local it = ITEMS[slot]
+      local lines = { { type = 22, leftText = it.name } }
+      if it.enchantLine then lines[#lines + 1] = { type = 15, leftText = it.enchantLine } end
+      return { lines = lines }
+  end,
+}
+'''
+ONE_SCAN = [{"epoch": BASE_EPOCH, "played": 1}]
+
+
+def newest(g):
+    return g.StatTrackerDB.chars["Alice-Realm"]
+
+
+def chat_texts(g):
+    return [t for _at, t in chat(g)]
+
+
+def test_a_game_without_these_functions_stores_the_scan_as_before_and_says_nothing():
+    g = run_scans(ONE_SCAN)
+    rec = newest(g)
+    assert len(list(rec.stats.keys())) == TOTAL and rec.playedTotal == 1
+    assert all(rec[field] is None for field in ("specID", "specName", "role", "ilvlTotal", "ilvlEquipped", "gear"))
+    assert not any("not read" in t for t in chat_texts(g))
+
+
+def test_specialization_and_item_level_are_stored():
+    rec = newest(run_scans(ONE_SCAN, tweak=GEAR_API))
+    assert (rec.specID, rec.specName, rec.role) == (72, "Fury", "DAMAGER")
+    assert (rec.ilvlTotal, rec.ilvlEquipped) == (276.5, 275.25)
+
+
+def test_the_specialization_id_falls_back_to_the_info_of_the_active_index():
+    rec = newest(run_scans(ONE_SCAN, tweak=GEAR_API + "PlayerUtil = nil"))
+    assert rec.specID == 72 and rec.role == "DAMAGER"
+
+
+def test_only_equipped_slots_are_stored_with_what_the_game_tells():
+    gear = newest(run_scans(ONE_SCAN, tweak=GEAR_API)).gear
+    assert sorted(int(k) for k in gear.keys()) == [3, 11, 12, 19]
+    item = gear[3]
+    assert (item.itemID, item.name, item.quality, item.ilvl, item.iconID) == (209894, "Mantle of Embers", 4, 269, 5178362)
+    assert item.stats["ITEM_MOD_STAMINA_SHORT"] == 1374 and item.stats["RESISTANCE0_NAME"] == 52
+    assert item.enchantID == 8028
+    assert item.enchantText == "Shoulders - Thalassian Recovery"          # prefix and inline icon are gone
+    up = item.upgrade
+    assert (up.trackID, up.track, up.level, up.max) == (971, "Adventurer", 2, 6)
+    assert item.sockets is None and item.link is None                      # the link is only a helper
+
+
+def test_an_item_without_enchantment_upgrade_or_stats_has_none_of_those_fields():
+    gear = newest(run_scans(ONE_SCAN, tweak=GEAR_API)).gear
+    tabard = gear[19]
+    assert (tabard.itemID, tabard.name, tabard.ilvl) == (5976, "Guild Tabard", 1)
+    assert all(tabard[f] is None for f in ("enchantID", "enchantText", "upgrade", "stats", "sockets", "gems"))
+    ring = gear[11]
+    assert ring.enchantID is None and ring.enchantText is None             # an empty second field is no enchantment
+
+
+def test_sockets_store_gem_ids_with_zero_for_an_empty_one():
+    gear = newest(run_scans(ONE_SCAN, tweak=GEAR_API)).gear
+    assert gear[11].sockets == 1 and gear[11].gems[1] == 213743
+    assert gear[12].sockets == 2 and (gear[12].gems[1], gear[12].gems[2]) == (0, 5)
+
+
+def test_missing_item_names_are_waited_for_and_stored_when_they_arrive():
+    g = run_scans(ONE_SCAN, tweak=GEAR_API + "LOAD_AT = 12")               # known 2 s after the statistics are read
+    assert newest(g).gear[3].name == "Mantle of Embers"
+    done = [at for at, text in chat(g) if "Stat sync done" in text][0]
+    assert 12 <= done <= 13
+
+
+def test_names_that_never_arrive_are_left_out_after_five_seconds_not_stored_empty():
+    g = run_scans(ONE_SCAN, tweak=GEAR_API + "LOAD_AT = 1000")
+    rec = newest(g)
+    done = [at for at, text in chat(g) if "Stat sync done" in text][0]
+    assert 14.9 <= done <= 15.6                                            # 10 s of statistics + 5 s of waiting
+    assert len(list(rec.stats.keys())) == TOTAL and rec.playedTotal == 1   # the scan is whole anyway
+    assert rec.gear[3].name is None and rec.gear[3].itemID == 209894 and rec.gear[3].stats is not None
+
+
+RUN_UNTIL = """
+function RunUntil(limit)
+    while #TIMERS > 0 do
+        table.sort(TIMERS, function(a, b) return a.t < b.t end)
+        if TIMERS[1].t > limit then break end
+        local tm = table.remove(TIMERS, 1)
+        NOW = tm.t
+        CALLS = 0
+        tm.fn()
+    end
+end
+"""
+
+
+def test_no_second_scan_starts_while_the_names_are_awaited():
+    g = run_scans([], tweak=GEAR_API + "LOAD_AT = 1000" + RUN_UNTIL)
+    g.SlashCmdList["STATTRACKER"]("")
+    g.RunUntil(12)                                                         # the statistics are read, the wait is on
+    assert g.StatTrackerDB.chars["Alice-Realm"] is None                    # nothing stored yet
+    before = len(chat_texts(g))
+    g.SlashCmdList["STATTRACKER"]("")
+    assert "already running" in chat_texts(g)[before]
+    g.RunUntil(100)                                                        # the wait ends, the scan is stored
+    assert g.StatTrackerDB.chars["Alice-Realm"] is not None
+
+
+def test_an_error_in_one_gear_function_drops_that_slot_but_never_the_statistics():
+    broken = GEAR_API + 'local ok = C_Item.GetItemStats; C_Item.GetItemStats = function(l) if l:find("209894") then error("boom") end return ok(l) end'
+    g = run_scans(ONE_SCAN, tweak=broken)
+    rec = newest(g)
+    assert len(list(rec.stats.keys())) == TOTAL and rec.playedTotal == 1
+    assert sorted(int(k) for k in rec.gear.keys()) == [11, 12, 19]        # the slot with the error is gone
+    assert any("Gear not read" in t and "boom" in t for t in chat_texts(g))
+    assert (rec.specID, rec.ilvlTotal) == (72, 276.5)                      # the other parts are untouched
+
+
+def test_an_error_in_the_item_level_or_the_specialization_leaves_only_that_part_out():
+    g = run_scans(ONE_SCAN, tweak=GEAR_API + 'GetAverageItemLevel = function() error("ilvl boom") end')
+    rec = newest(g)
+    assert rec.ilvlTotal is None and rec.gear is not None and rec.specID == 72
+    assert any("Item level not read" in t for t in chat_texts(g))
+    g = run_scans(ONE_SCAN, tweak=GEAR_API + 'GetSpecialization = function() error("spec boom") end')
+    assert newest(g).specID is None and newest(g).gear is not None
+    assert any("Specialization not read" in t for t in chat_texts(g))
+
+
+def test_the_messages_are_german_on_a_german_client():
+    g = run_scans(ONE_SCAN, locale="deDE", tweak=GEAR_API + 'GetAverageItemLevel = function() error("x") end')
+    assert any("Itemlevel nicht gelesen" in t and "Statistiken sind gespeichert" in t for t in chat_texts(g))
+
+
+def test_a_character_without_a_specialization_gets_no_specialization_fields():
+    rec = newest(run_scans(ONE_SCAN, tweak=GEAR_API + "GetSpecialization = function() return nil end; PlayerUtil = nil"))
+    assert all(rec[f] is None for f in ("specID", "specName", "role")) and rec.gear is not None
+
+
+def test_gear_moves_into_the_history_with_its_scan():
+    g = run_scans([{"epoch": BASE_EPOCH, "played": 1}, {"epoch": BASE_EPOCH + DAY, "played": 2}], tweak=GEAR_API)
+    older = g.StatTrackerDB.history["Alice-Realm"][1]
+    assert older.gear[3].name == "Mantle of Embers" and older.specID == 72
