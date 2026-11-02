@@ -49,6 +49,14 @@
                   font-size:.85rem; color: var(--fg); text-decoration: none; }
   .gbar a.hlink:hover { border-color: var(--gold); color: var(--gold); }
   .gbar a.hlink span { color: var(--dim); }
+  .rbar { height: 5px; min-width: 110px; max-width: 260px; background: #2a2a2a; border-radius: 3px; margin-top: 3px; }
+  .rbar i { display: block; height: 100%; background: var(--gold); border-radius: 3px; }
+  .rbar.par i { background: var(--best); }
+  #rpt td.rcat { background: #1e1e1e; color: var(--gold); font-weight: 700; }
+  #rpt td.rsub { color: var(--dim); font-weight: 700; }
+  #rpt td.rhead { font-weight: 700; }
+  #rpt td.rcell { min-width: 130px; vertical-align: top; }
+  #rpt td.rname { vertical-align: top; }
   #xstat { max-width: 340px; }
   .foot { color: var(--dim); font-size: .8rem; margin: 12px 2px 0; }
   .foot a { color: var(--dim); }
@@ -98,6 +106,14 @@
   <div class="gnone" id="groupsNone" hidden></div>
   <div class="rwrap" id="groupsWrap"><table id="gt"><thead></thead><tbody></tbody></table></div>
   <div class="note" id="groupsNote"></div>
+</details>
+<details class="rates" id="rep" hidden>
+  <summary id="repTitle"></summary>
+  <div class="gbar"><input type="search" id="repQ"></div>
+  <div class="gnone" id="repNone" hidden></div>
+  <div class="rwrap" id="repWrap"><table id="rpt"><thead></thead><tbody></tbody></table></div>
+  <div class="note" id="repMissing"></div>
+  <div class="note" id="repNote"></div>
 </details>
 <details class="rates" id="history" hidden>
   <summary id="historyTitle"></summary>
@@ -172,6 +188,7 @@ function init() {
   setupGroups();
   setupPresets();
   setupHistory();
+  setupRep();
   renderRates();
   renderFoot();
   render();
@@ -588,6 +605,177 @@ function renderGroups() {
   }
 }
 
+// Reputation: the last scan of every ticked character (DATA.rep, built by src/stat_parser.py), the factions in the order
+// of the game. The characters have different lists, so they are merged: a faction the order does not know yet is put
+// right after the faction before it in the list it comes from. An account-wide faction is one cell across all characters,
+// taken from the newest scan that has it. Nothing here is guessed: a level name the page does not know shows its number.
+function setupRep() {
+  if (!DATA.rep || !DATA.rep.chars) return;
+  $("rep").hidden = false;
+  $("repTitle").textContent = UI.rep_title || "";
+  $("repQ").placeholder = UI.rep_search || "";
+  $("repQ").addEventListener("input", renderRep);
+  $("repNote").textContent = UI.rep_note || "";
+}
+
+function repOrder(lists) {
+  const order = [];
+  lists.forEach(list => {
+    let at = -1;
+    list.forEach(e => {
+      const i = order.indexOf(e.id);
+      if (i >= 0) at = i; else { order.splice(at + 1, 0, e.id); at += 1; }
+    });
+  });
+  return order;
+}
+
+function repBar(share, extra) {
+  const bar = document.createElement("div");
+  bar.className = "rbar" + (extra ? " " + extra : "");
+  const fill = document.createElement("i");
+  fill.style.width = Math.round(Math.max(0, Math.min(1, share)) * 100) + "%";
+  bar.append(fill);
+  return bar;
+}
+
+// One cell: the level, how far to the next one (a bar and "x / y"), and the paragon progress when there is one.
+function repCell(e) {
+  const num = v => v.toLocaleString(DATA.lang);
+  const box = document.createElement("div");
+  let label = "", detail = "", share = null;
+  const span = (lo, hi, at) => { share = (at - lo) / (hi - lo); detail = num(at - lo) + " / " + num(hi - lo); };
+  if (e.kind === "major") {
+    label = fmt(UI.rep_renown, {n: e.renown == null ? "?" : e.renown, max: e.max_renown == null ? "?" : e.max_renown});
+    if (e.max_renown != null && e.renown != null && e.renown >= e.max_renown) detail = UI.rep_max || "";
+    else if (e.earned != null && e.need > 0) span(0, e.need, e.earned);
+  } else if (e.kind === "friend") {
+    label = e.level == null ? EMPTY : fmt(UI.rep_level, {n: e.level, max: e.max_level == null ? "?" : e.max_level});
+    if (e.max_level != null && e.level != null && e.level >= e.max_level) detail = UI.rep_max || "";
+    else if (e.standing != null && e.lo != null && e.hi > e.lo) span(e.lo, e.hi, e.standing);
+  } else if (e.kind === "std") {
+    const names = (DATA.names && DATA.names.standing) || {};
+    label = names[e.reaction] || (e.reaction == null ? EMPTY : fmt(UI.rep_standing_n, {n: e.reaction}));
+    if (e.lo != null && e.hi != null && e.hi <= e.lo) detail = UI.rep_max || "";
+    else if (e.standing != null && e.lo != null && e.hi > e.lo) span(e.lo, e.hi, e.standing);
+  }
+  const top = document.createElement("div");
+  top.textContent = label;
+  box.append(top);
+  if (detail) {
+    const s = document.createElement("span");
+    s.className = "small"; s.textContent = detail;
+    box.append(s);
+  }
+  if (share !== null) box.append(repBar(share));
+  const p = e.par;
+  if (p && p.threshold > 0 && p.value != null) {
+    const done = p.value % p.threshold;
+    const s = document.createElement("span");
+    s.className = "small";
+    s.textContent = fmt(UI.rep_paragon, {value: num(done), threshold: num(p.threshold)})
+      + (p.pending ? " · " + (UI.rep_paragon_ready || "") : "");
+    box.append(s, repBar(done / p.threshold, "par"));
+  }
+  return box;
+}
+
+function renderRep() {
+  if (!DATA.rep || !DATA.rep.chars) return;
+  const chars = selected();
+  const have = chars.filter(c => DATA.rep.chars[c.key]);
+  const lists = new Map(have.map(c => [c.key, new Map(DATA.rep.chars[c.key].map(e => [e.id, e]))]));
+  const q = $("repQ").value.trim().toLowerCase();
+  const nameOf = id => DATA.rep.defs[id] || ("#" + id);
+
+  // rows in the merged order of the game; headings stay only above a row that is shown
+  const rows = [];
+  repOrder(have.map(c => DATA.rep.chars[c.key])).forEach(id => {
+    let first = null, wide = null;
+    have.forEach(c => {
+      const e = lists.get(c.key).get(id);
+      if (!e) return;
+      if (!first) first = e;
+      if (e.aw && (!wide || c.scanned_at > wide.at)) wide = {e: e, at: c.scanned_at};
+    });
+    const heading = first.hdr && !first.kind;
+    rows.push({id: id, name: nameOf(id), first: first, wide: wide && wide.e,
+               type: heading ? (first.child ? "sub" : "cat") : "row"});
+  });
+  const shown = [];
+  let cat = null, sub = null;
+  rows.forEach(r => {
+    if (r.type === "cat") { cat = r; sub = null; return; }
+    if (r.type === "sub") { sub = r; return; }
+    if (q && !r.name.toLowerCase().includes(q)) return;
+    if (cat) { shown.push(cat); cat = null; }
+    if (sub) { shown.push(sub); sub = null; }
+    shown.push(r);
+  });
+
+  const none = $("repNone");
+  const noneText = !chars.length ? UI.rep_none_selected : (have.length && !shown.length ? UI.rep_no_match : "");
+  none.hidden = !noneText;
+  none.textContent = noneText || "";
+  $("repWrap").hidden = !shown.length;
+  const missing = chars.filter(c => !DATA.rep.chars[c.key]).map(c => c.key);
+  $("repMissing").textContent = missing.length ? fmt(UI.rep_missing, {names: missing.join(", ")}) : "";
+
+  const head = $("rpt").tHead, body = $("rpt").tBodies[0];
+  head.textContent = ""; body.textContent = "";
+  if (!shown.length) return;
+  const hr = head.insertRow();
+  const th0 = document.createElement("th");
+  th0.textContent = UI.rep_col_faction || "";
+  hr.append(th0);
+  chars.forEach(c => {
+    const th = document.createElement("th");
+    th.textContent = c.key;
+    [[c.race, c.class, c.level], [c.scanned_at]].forEach(parts => {
+      const s = document.createElement("span");
+      s.className = "small"; s.textContent = parts.filter(Boolean).join(" · ");
+      if (s.textContent) th.append(s);
+    });
+    hr.append(th);
+  });
+
+  const frag = document.createDocumentFragment();
+  shown.forEach(r => {
+    const tr = document.createElement("tr");
+    const name = document.createElement("td");
+    name.textContent = r.name;
+    if (r.type !== "row") {
+      name.colSpan = chars.length + 1;
+      name.className = r.type === "cat" ? "rcat" : "rsub";
+      tr.append(name);
+    } else {
+      name.className = "rname" + (r.first.hdr ? " rhead" : "");
+      if (r.wide) {
+        const s = document.createElement("span");
+        s.className = "small"; s.textContent = UI.rep_account || "";
+        name.append(s);
+      }
+      tr.append(name);
+      if (r.wide) {
+        const td = document.createElement("td");
+        td.className = "rcell"; td.colSpan = chars.length;
+        td.append(repCell(r.wide));
+        tr.append(td);
+      } else {
+        chars.forEach(c => {
+          const td = document.createElement("td");
+          td.className = "rcell";
+          const e = lists.has(c.key) ? lists.get(c.key).get(r.id) : null;
+          if (e) td.append(repCell(e)); else td.textContent = EMPTY;
+          tr.append(td);
+        });
+      }
+    }
+    frag.append(tr);
+  });
+  body.append(frag);
+}
+
 function render() {
   syncToggle();
   const chars = selected();
@@ -665,6 +853,7 @@ function render() {
   body.append(frag);
   $("count").textContent = fmt(UI.count, {shown: rows.length, total: DATA.stats.length});
   renderGroups();
+  renderRep();
 }
 
 init();

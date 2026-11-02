@@ -781,6 +781,40 @@ def derived_payload(stats, chars, lang):
     return derived
 
 
+REP_PAYLOAD_NUMBERS = ("reaction", "standing", "lo", "hi", "level", "max_level", "renown", "earned", "need", "max_renown")
+REP_PAYLOAD_PARAGON = (("value", "p_value"), ("threshold", "p_threshold"), ("quest", "p_quest"), ("pending", "p_pending"))
+
+
+def rep_payload(conn, scan_to_char):
+    """The reputation list of the newest scan of every character that has one, for the stats page:
+    {"defs": {faction id: name}, "chars": {char key: [entry, ...]}} with the entries in the order of the game, or None
+    when no character has a list. An entry carries only what is set: "id", "hdr"/"child"/"aw" (1), "kind", the numbers of
+    its kind and "par" (paragon). A character whose newest scan has no list is not in "chars": an older scan is never
+    used in its place (the page says "no value")."""
+    columns = ", ".join(REP_PAYLOAD_NUMBERS + tuple(column for _, column in REP_PAYLOAD_PARAGON))
+    chars = {}
+    for row in conn.execute("SELECT scan_id, faction_id, is_header, is_child, account_wide, kind, " + columns
+                            + " FROM scan_reputation ORDER BY scan_id, ord"):
+        key = scan_to_char.get(row[0])
+        if key is None:
+            continue
+        entry = {"id": row[1]}
+        entry.update({name: 1 for name, flag in zip(("hdr", "child", "aw"), row[2:5]) if flag})
+        if row[5]:
+            entry["kind"] = row[5]
+        values = dict(zip(REP_PAYLOAD_NUMBERS + tuple(name for name, _ in REP_PAYLOAD_PARAGON), row[6:]))
+        entry.update({name: values[name] for name in REP_PAYLOAD_NUMBERS if values[name] is not None})
+        par = {name: values[name] for name, _ in REP_PAYLOAD_PARAGON if values[name] is not None}
+        if par:
+            entry["par"] = par
+        chars.setdefault(key, []).append(entry)
+    if not chars:
+        return None
+    used = {entry["id"] for entries in chars.values() for entry in entries}
+    defs = {faction: name for faction, name in conn.execute("SELECT faction_id, name FROM rep_defs") if faction in used}
+    return {"defs": defs, "chars": chars}
+
+
 def build_payload(conn, lang=None, history=None):
     """The data of the stats page. history: the links to the history pages (update_history_pages),
     left out of the payload when there are none."""
@@ -812,12 +846,16 @@ def build_payload(conn, lang=None, history=None):
     payload = {"generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
                "lang": lang,
                "ui": i18n.html_strings(lang),
-               "names": {"class": i18n.names("class_", lang), "race": i18n.names("race_", lang)},
+               "names": {"class": i18n.names("class_", lang), "race": i18n.names("race_", lang),
+                         "standing": i18n.names("standing_", lang)},
                "app": {"version": app_info.APP_VERSION, "copyright": app_info.COPYRIGHT,
                        "license": app_info.LICENSE_NAME, "site": app_info.SITE_URL},
                "chars": chars,
                "stats": sorted(defs.values(), key=lambda d: (d["cat"], d["name"])),
                "derived": derived_payload(list(defs.values()), chars, lang)}
+    rep = rep_payload(conn, scan_to_char)
+    if rep:
+        payload["rep"] = rep
     if history:
         payload["history"] = history
     return payload

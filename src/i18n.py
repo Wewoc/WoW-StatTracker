@@ -543,6 +543,32 @@ _STRINGS = {
         "en": "The chart could not be built (plotly.js is missing).",
     },
 
+    # ------------------------------------------- reputation block of the stats page
+    "html_rep_title": {"de": "Ruf", "en": "Reputation"},
+    "html_rep_search": {"de": "Fraktion suchen …", "en": "Search faction …"},
+    "html_rep_col_faction": {"de": "Fraktion", "en": "Faction"},
+    "html_rep_account": {"de": "kontoweit", "en": "account-wide"},
+    "html_rep_none_selected": {"de": "Keine Charaktere ausgewählt.", "en": "No character selected."},
+    "html_rep_no_match": {"de": "Keine Fraktion passt zur Suche.", "en": "No faction matches the search."},
+    "html_rep_missing": {
+        "de": "Ohne Rufdaten (der letzte Scan stammt nicht vom aktuellen Addon): {names}",
+        "en": "Without reputation data (the last scan is not from the current addon): {names}",
+    },
+    "html_rep_level": {"de": "Stufe {n} von {max}", "en": "Level {n} of {max}"},
+    "html_rep_standing_n": {"de": "Stufe {n}", "en": "Level {n}"},
+    "html_rep_renown": {"de": "Ruhm {n} von {max}", "en": "Renown {n} of {max}"},
+    "html_rep_max": {"de": "Maximum", "en": "Maximum"},
+    "html_rep_paragon": {"de": "Paragon {value} / {threshold}", "en": "Paragon {value} / {threshold}"},
+    "html_rep_paragon_ready": {"de": "Belohnung wartet", "en": "Reward waiting"},
+    "html_rep_note": {
+        "de": "Es zählt der letzte Scan jedes angehakten Charakters. Kontoweiter Ruf steht einmal je Fraktion und "
+              "stammt aus dem neuesten Scan der angehakten Charaktere. Die Fortschrittsbalken zeigen den Weg zur "
+              "nächsten Stufe; beim Paragon den Stand im laufenden Durchgang.",
+        "en": "The last scan of every ticked character is used. Account-wide reputation is shown once per faction, "
+              "from the newest scan of the ticked characters. The bars show the way to the next level; for paragon "
+              "the progress of the current round.",
+    },
+
     # ------------------------------------------- class and race names for the groups on the stats page
     # Keyed by the language independent file name the game gives (UnitClass/UnitRace, second value):
     # one neutral name per class or race, whatever the gender of the character. Unknown file names
@@ -584,6 +610,18 @@ _STRINGS = {
     "race_MagharOrc": {"de": "Mag'har", "en": "Mag'har Orc"},
     "race_Mechagnome": {"de": "Mechagnom", "en": "Mechagnome"},
     "race_Dracthyr": {"de": "Dracthyr", "en": "Dracthyr"},
+
+    # ------------------------------------------- reputation levels (the number `reaction` of a faction, 1..8)
+    # From knowledge of the game texts, not checked in the game (only the numbers 4, 5, 6, 7 and 8 were seen in
+    # real data, never the names). A number without a name here is shown as "Level {n}" on the page.
+    "standing_1": {"de": "Hasserfüllt", "en": "Hated"},
+    "standing_2": {"de": "Feindselig", "en": "Hostile"},
+    "standing_3": {"de": "Unfreundlich", "en": "Unfriendly"},
+    "standing_4": {"de": "Neutral", "en": "Neutral"},
+    "standing_5": {"de": "Freundlich", "en": "Friendly"},
+    "standing_6": {"de": "Wohlwollend", "en": "Honored"},
+    "standing_7": {"de": "Respektvoll", "en": "Revered"},
+    "standing_8": {"de": "Ehrfürchtig", "en": "Exalted"},
 }
 
 

@@ -403,3 +403,39 @@ def test_a_file_without_rep_meta_still_imports(tmp_path):
     assert conn.execute("SELECT COUNT(*) FROM rep_defs").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM scan_reputation").fetchone()[0] == 4
     conn.close()
+
+
+# --- what the stats page gets of the reputation (build_payload)
+def test_the_payload_carries_the_reputation_of_the_newest_scan(tmp_path):
+    conn = import_parts(tmp_path, NEW_PARTS)
+    rep = stat_parser.build_payload(conn, "en")["rep"]
+    assert rep["defs"] == {2696: "Amani", 2698: "Midnight"}                    # a faction without a name has no entry
+    assert rep["chars"]["A-B"] == [
+        {"id": 2698, "hdr": 1},                                                # a category: no kind, no numbers
+        {"id": 2696, "aw": 1, "kind": "std", "reaction": 5, "standing": 3000, "lo": 3000, "hi": 9000},
+        {"id": 2744, "aw": 1, "kind": "friend", "standing": 250754, "lo": 245747, "hi": 264497, "level": 22, "max_level": 80},
+        {"id": 2640, "child": 1, "kind": "major", "renown": 7, "earned": 2069, "need": 2500, "max_renown": 20,
+         "par": {"value": 100, "threshold": 7500, "quest": 93566, "pending": 0}}]
+    conn.close()
+
+
+def test_the_reputation_of_an_older_scan_is_not_used_for_a_newer_one_without(tmp_path):
+    conn = import_parts(tmp_path, scan_lua("2026-10-05 10:00:00"),
+                        older=[NEW_PARTS])                                     # the list is in the older scan only
+    assert "rep" not in stat_parser.build_payload(conn, "en")
+    conn.close()
+
+
+def test_the_payload_has_no_reputation_when_no_scan_has_one(tmp_path):
+    conn = import_parts(tmp_path, scan_lua("2026-10-05 10:00:00"))
+    assert "rep" not in stat_parser.build_payload(conn, "de")
+    conn.close()
+
+
+@pytest.mark.parametrize("lang", ["de", "en"])
+def test_the_payload_names_the_eight_reputation_levels(tmp_path, lang):
+    conn = import_parts(tmp_path, NEW_PARTS)
+    standing = stat_parser.build_payload(conn, lang)["names"]["standing"]
+    assert sorted(standing, key=int) == [str(n) for n in range(1, 9)] and all(standing.values())
+    assert standing["4"] == "Neutral"
+    conn.close()
