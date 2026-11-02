@@ -371,3 +371,12 @@ def test_localized_race_and_stable_file_are_kept_apart(sv, tmp_path):
     run(sv, tmp_path)
     char = _payload_from_html(tmp_path / "out" / "x.html")["chars"][0]
     assert (char["class"], char["class_file"], char["race"], char["race_file"]) == ("Magier", "MAGE", "Mensch", "Human")
+
+
+def test_template_puts_what_the_character_selection_drives_below_it():
+    """Rule of the page: blocks with no bearing on the selection (rates, history links) above it, everything it drives
+    (Groups, Reputation, the table) below it."""
+    from pathlib import Path
+    html = (Path(__file__).resolve().parent.parent / "src" / "template.html").read_text(encoding="utf-8")
+    order = [html.index(f'id="{name}"') for name in ("rates", "history", "chars", "groups", "rep", "count", "t")]
+    assert order == sorted(order)
