@@ -245,14 +245,15 @@ def test_an_existing_database_is_copied_once_a_day_and_the_copy_is_reported(tmp_
 
 
 def test_before_a_migration_a_permanent_copy_with_the_old_state_is_made(tmp_path, monkeypatch, capsys):
-    db = existing_db(tmp_path)                               # the current schema (2), one scan
-    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", 3)    # a pretend next schema
-    monkeypatch.setattr(stat_parser, "MIGRATIONS", {**stat_parser.MIGRATIONS, 3: lambda conn: None})
+    db = existing_db(tmp_path)                               # the current schema, one scan
+    current = stat_parser.SCHEMA_VERSION
+    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", current + 1)    # a pretend next schema
+    monkeypatch.setattr(stat_parser, "MIGRATIONS", {**stat_parser.MIGRATIONS, current + 1: lambda conn: None})
     stat_parser.init_db(db).close()
     (copy,) = list((tmp_path / "backups" / "migration").iterdir())
-    assert copy.name.startswith("wow_stats.") and copy.name.endswith(".pre-v3.bak")
-    assert content(copy) == (1, 2)                           # the state before the migration
-    assert content(db) == (1, 3)
+    assert copy.name.startswith("wow_stats.") and copy.name.endswith(f".pre-v{current + 1}.bak")
+    assert content(copy) == (1, current)                     # the state before the migration
+    assert content(db) == (1, current + 1)
     assert not (tmp_path / "backups" / "daily").exists()     # one copy per run
     assert f"Backup:   {copy}" in capsys.readouterr().out
 
@@ -262,12 +263,13 @@ def test_the_migration_copy_survives_a_failing_migration(tmp_path, monkeypatch):
         raise RuntimeError("boom")
 
     db = existing_db(tmp_path)
-    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", 3)
-    monkeypatch.setattr(stat_parser, "MIGRATIONS", {**stat_parser.MIGRATIONS, 3: broken})
+    current = stat_parser.SCHEMA_VERSION
+    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", current + 1)
+    monkeypatch.setattr(stat_parser, "MIGRATIONS", {**stat_parser.MIGRATIONS, current + 1: broken})
     with pytest.raises(RuntimeError, match="boom"):
         stat_parser.init_db(db)
     (copy,) = list((tmp_path / "backups" / "migration").iterdir())
-    assert content(copy) == (1, 2) and content(db) == (1, 2)
+    assert content(copy) == (1, current) and content(db) == (1, current)
 
 
 def test_a_database_from_a_newer_program_gets_no_backup_and_stays_untouched(tmp_path):

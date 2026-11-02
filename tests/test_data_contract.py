@@ -298,10 +298,88 @@ def test_skipped_details_are_reported_once_with_the_scan_time(tmp_path, capsys):
     assert "(gear, reputation)" not in capsys.readouterr().out
 
 
-def test_the_new_parts_do_not_change_what_the_database_holds_yet(tmp_path):
-    lua = file_lua(tmp_path, scan_lua("2026-10-03 10:00:00", extra=" specID = 72, rep = { { id = 1, ord = 1 } },"))
-    import_file(tmp_path, lua)
+# --- what a version 4 file leaves in the database
+def import_parts(folder, newest, older=(), rep_meta='{ [2696] = { name = "Amani" }, [2698] = { name = "Midnight" } }'):
+    ring = f' history = {{ ["A-B"] = {{ {", ".join(older)} }} }},' if older else ""
+    path = folder / "StatTracker.lua"
+    path.write_text(f'StatTrackerDB = {{ version = 4, meta = {{ [1] = {{ name = "x", cat = "y" }} }}, repMeta = {rep_meta},{ring} '
+                    f'chars = {{ ["A-B"] = {newest} }} }}', encoding="utf-8")
+    import_file(folder, path)
+    return sqlite3.connect(folder / "wow_stats.db")
+
+
+def test_the_new_parts_of_a_scan_are_stored(tmp_path):
+    conn = import_parts(tmp_path, NEW_PARTS)
+    assert conn.execute("SELECT spec_id, spec_name, role, ilvl_total, ilvl_equipped FROM scans").fetchall() == \
+        [(72, "Fury", "DAMAGER", 276.5, 275.0)]
+    gear = {r[0]: r for r in conn.execute("SELECT slot, item_id, name, ilvl, enchant_id, enchant_text, upg_track_id, upg_track, "
+                                          "upg_level, upg_max, sockets, gem_ids, stats FROM scan_gear")}
+    assert sorted(gear) == [3, 11]
+    assert gear[3] == (3, 209894, "Mantle", 269, 8028, "Shoulders - X", 971, "Adventurer", 2, 6, None, None,
+                       '{"ITEM_MOD_STAMINA_SHORT":1374,"RESISTANCE0_NAME":52}')       # the keys sorted, no spaces
+    assert gear[11][10:] == (2, "[0,5]", None)
+    rep = conn.execute("SELECT ord, faction_id, is_header, is_child, account_wide, kind, reaction, standing, lo, hi, level, max_level, "
+                       "renown, earned, need, max_renown, p_value, p_threshold, p_quest, p_pending FROM scan_reputation ORDER BY ord").fetchall()
+    assert [r[0] for r in rep] == [1, 2, 3, 4]
+    assert rep[0] == (1, 2698, 1, 0, 0, None) + (None,) * 14
+    assert rep[1] == (2, 2696, 0, 0, 1, "std", 5, 3000, 3000, 9000) + (None,) * 10
+    assert rep[2] == (3, 2744, 0, 0, 1, "friend", None, 250754, 245747, 264497, 22, 80) + (None,) * 8
+    assert rep[3] == (4, 2640, 0, 1, 0, "major") + (None,) * 6 + (7, 2069, 2500, 20, 100, 7500, 93566, 0)
+    assert dict(conn.execute("SELECT faction_id, name FROM rep_defs")) == {2696: "Amani", 2698: "Midnight"}
+    conn.close()
+
+
+def test_a_scan_without_the_new_parts_leaves_them_empty_next_to_one_with_them(tmp_path):
+    conn = import_parts(tmp_path, NEW_PARTS, older=[scan_lua("2026-09-01 10:00:00")])
+    old = conn.execute("SELECT spec_id, spec_name, role, ilvl_total, ilvl_equipped FROM scans WHERE scanned_at < '2026-10'").fetchall()
+    assert old == [(None,) * 5]
+    ids = {r[0]: r[1] for r in conn.execute("SELECT scan_id, scanned_at FROM scans")}
+    holders = {ids[r[0]] for r in conn.execute("SELECT DISTINCT scan_id FROM scan_gear UNION SELECT DISTINCT scan_id FROM scan_reputation")}
+    assert holders == {"2026-10-01 10:00:00"}
+    conn.close()
+
+
+def test_the_gear_and_reputation_of_an_older_scan_in_the_history_are_stored_with_it(tmp_path):
+    older = NEW_PARTS.replace("2026-10-01 10:00:00", "2026-09-01 10:00:00").replace("specID = 72", "specID = 73")
+    conn = import_parts(tmp_path, NEW_PARTS, older=[older])
+    per_scan = conn.execute("SELECT s.scanned_at, s.spec_id, (SELECT COUNT(*) FROM scan_gear g WHERE g.scan_id = s.scan_id), "
+                            "(SELECT COUNT(*) FROM scan_reputation r WHERE r.scan_id = s.scan_id) FROM scans s ORDER BY s.scanned_at").fetchall()
+    assert per_scan == [("2026-09-01 10:00:00", 73, 2, 4), ("2026-10-01 10:00:00", 72, 2, 4)]
+    conn.close()
+
+
+def test_importing_again_adds_no_row(tmp_path):
+    conn = import_parts(tmp_path, NEW_PARTS, older=[scan_lua("2026-09-01 10:00:00")])
+    counts = lambda: [conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("scans", "scan_gear", "scan_reputation", "rep_defs")]
+    first = counts()
+    conn.close()
+    conn = import_parts(tmp_path, NEW_PARTS, older=[scan_lua("2026-09-01 10:00:00")])
+    assert counts() == first == [2, 2, 4, 2]
+    conn.close()
+
+
+def test_a_scan_that_was_stored_without_the_parts_is_never_filled_in_later(tmp_path):
+    conn = import_parts(tmp_path, scan_lua("2026-10-01 10:00:00"))                  # the same scan time, no parts
+    conn.close()
+    conn = import_parts(tmp_path, NEW_PARTS)                                        # now the file has them for that time
+    assert conn.execute("SELECT spec_id FROM scans").fetchall() == [(None,)]
+    assert conn.execute("SELECT COUNT(*) FROM scan_gear").fetchone()[0] == 0
+    conn.close()
+
+
+def test_a_faction_name_is_updated_at_every_import(tmp_path):
+    import_parts(tmp_path, NEW_PARTS).close()
+    conn = import_parts(tmp_path, scan_lua("2026-10-05 10:00:00"), rep_meta='{ [2696] = { name = "Amani Tribe" }, [5] = "no", [0] = { name = "zero" } }')
+    assert dict(conn.execute("SELECT faction_id, name FROM rep_defs")) == {2696: "Amani Tribe", 2698: "Midnight"}   # junk is ignored
+    conn.close()
+
+
+def test_a_file_without_rep_meta_still_imports(tmp_path):
+    path = tmp_path / "StatTracker.lua"
+    path.write_text('StatTrackerDB = { version = 4, meta = { [1] = { name = "x", cat = "y" } }, chars = { ["A-B"] = ' + NEW_PARTS + ' } }',
+                    encoding="utf-8")
+    import_file(tmp_path, path)
     conn = sqlite3.connect(tmp_path / "wow_stats.db")
-    assert [r[1] for r in conn.execute("PRAGMA table_info(scans)")] == [
-        "scan_id", "char_key", "scanned_at", "class", "level", "faction", "class_file", "race", "race_file"]
+    assert conn.execute("SELECT COUNT(*) FROM rep_defs").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM scan_reputation").fetchone()[0] == 4
     conn.close()

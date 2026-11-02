@@ -231,10 +231,11 @@ def fmt_duration(sec):
 # ------------------------------------------------------------------------ DB
 # Schema version of the statistics database, kept in SQLite's PRAGMA user_version.
 # 0 = no number written yet (databases of v0.1.x), 1 = the same layout, 2 = the layout below
-# (scans gained class_file, race, race_file). Changing the layout means a new entry in
+# (scans gained class_file, race, race_file), 3 = the layout below (scans gained the specialization and item level,
+# new tables scan_gear, rep_defs, scan_reputation). Changing the layout means a new entry in
 # MIGRATIONS and a higher SCHEMA_VERSION; an old step is never edited.
 # A database newer than SCHEMA_VERSION is refused untouched (fail-closed).
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _migrate_0_to_1(conn):
@@ -248,7 +249,71 @@ def _migrate_1_to_2(conn):
         conn.execute(f"ALTER TABLE scans ADD COLUMN {column} TEXT")
 
 
-MIGRATIONS = {1: _migrate_0_to_1, 2: _migrate_1_to_2}      # target version -> step from the version before
+# What schema 3 adds. One definition for a new file (SCHEMA_SQL) and for the migration of an old one, so that the two
+# cannot drift apart (tests/test_db_schema.py compares a fresh with a migrated database).
+SCAN_COLUMNS_V3 = (("spec_id", "INTEGER"), ("spec_name", "TEXT"), ("role", "TEXT"),
+                   ("ilvl_total", "REAL"), ("ilvl_equipped", "REAL"))
+TABLES_V3 = (
+    """CREATE TABLE IF NOT EXISTS scan_gear (
+            scan_id      INTEGER NOT NULL REFERENCES scans(scan_id),
+            slot         INTEGER NOT NULL,
+            item_id      INTEGER,
+            name         TEXT,
+            quality      INTEGER,
+            ilvl         INTEGER,
+            icon_id      INTEGER,
+            enchant_id   INTEGER,
+            enchant_text TEXT,
+            upg_track_id INTEGER,
+            upg_track    TEXT,
+            upg_level    INTEGER,
+            upg_max      INTEGER,
+            sockets      INTEGER,
+            gem_ids      TEXT,
+            stats        TEXT,
+            PRIMARY KEY (scan_id, slot)
+        )""",
+    """CREATE TABLE IF NOT EXISTS rep_defs (
+            faction_id INTEGER PRIMARY KEY,
+            name       TEXT NOT NULL
+        )""",
+    """CREATE TABLE IF NOT EXISTS scan_reputation (
+            scan_id      INTEGER NOT NULL REFERENCES scans(scan_id),
+            ord          INTEGER NOT NULL,
+            faction_id   INTEGER NOT NULL,
+            is_header    INTEGER NOT NULL DEFAULT 0,
+            is_child     INTEGER NOT NULL DEFAULT 0,
+            account_wide INTEGER NOT NULL DEFAULT 0,
+            kind         TEXT,
+            reaction     INTEGER,
+            standing     INTEGER,
+            lo           INTEGER,
+            hi           INTEGER,
+            level        INTEGER,
+            max_level    INTEGER,
+            renown       INTEGER,
+            earned       INTEGER,
+            need         INTEGER,
+            max_renown   INTEGER,
+            p_value      INTEGER,
+            p_threshold  INTEGER,
+            p_quest      INTEGER,
+            p_pending    INTEGER,
+            PRIMARY KEY (scan_id, ord)
+        )""",
+)
+
+
+def _migrate_2_to_3(conn):
+    """Schema 3 adds the specialization and item level to every scan and the tables of gear and reputation. Scans taken
+    before stay NULL and have no rows there: nothing is filled in from a later scan."""
+    for column, kind in SCAN_COLUMNS_V3:
+        conn.execute(f"ALTER TABLE scans ADD COLUMN {column} {kind}")
+    for statement in TABLES_V3:
+        conn.execute(statement)
+
+
+MIGRATIONS = {1: _migrate_0_to_1, 2: _migrate_1_to_2, 3: _migrate_2_to_3}      # target version -> step from the version before
 
 SCHEMA_SQL = """
         CREATE TABLE IF NOT EXISTS scans (
@@ -261,7 +326,7 @@ SCHEMA_SQL = """
             class_file TEXT,
             race       TEXT,
             race_file  TEXT,
-            UNIQUE (char_key, scanned_at)
+{scan_columns_v3}            UNIQUE (char_key, scanned_at)
         );
         CREATE TABLE IF NOT EXISTS stat_defs (
             stat_id  INTEGER PRIMARY KEY,
@@ -276,6 +341,8 @@ SCHEMA_SQL = """
             PRIMARY KEY (scan_id, stat_id)
         );
 """
+SCHEMA_SQL = SCHEMA_SQL.replace("{scan_columns_v3}", "".join(f"            {c} {k},\n" for c, k in SCAN_COLUMNS_V3))
+SCHEMA_SQL += ";\n".join(TABLES_V3) + ";\n"
 
 
 def schema_version(conn):
@@ -534,6 +601,27 @@ def scans_by_char(db):
     return found
 
 
+def _json_or_none(value):
+    return None if value is None else json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+GEAR_COLUMNS = ("slot", "item_id", "name", "quality", "ilvl", "icon_id", "enchant_id", "enchant_text", "upg_track_id",
+                "upg_track", "upg_level", "upg_max", "sockets", "gem_ids", "stats")
+REP_COLUMNS = ("ord", "faction_id", "is_header", "is_child", "account_wide", "kind", "reaction", "standing", "lo", "hi",
+               "level", "max_level", "renown", "earned", "need", "max_renown", "p_value", "p_threshold", "p_quest", "p_pending")
+
+
+def store_details(conn, scan_id, scan):
+    """The gear and the reputation list of a scan that was just inserted (never of one that was already there)."""
+    conn.executemany(
+        f"INSERT INTO scan_gear(scan_id,{','.join(GEAR_COLUMNS)}) VALUES(?{',?' * len(GEAR_COLUMNS)})",
+        [(scan_id, *(_json_or_none(row[c]) if c in ("gem_ids", "stats") else row[c] for c in GEAR_COLUMNS))
+         for row in scan["gear"]])
+    conn.executemany(
+        f"INSERT INTO scan_reputation(scan_id,{','.join(REP_COLUMNS)}) VALUES(?{',?' * len(REP_COLUMNS)})",
+        [(scan_id, *(row[c] for c in REP_COLUMNS)) for row in scan["rep"]])
+
+
 def import_data(conn, db):
     """Stores the scans of the file: the newest of every character and the older ones in `history`. Returns
     (new, skipped, changed): the number of new scans, the number already in the database, and the keys of the
@@ -554,16 +642,24 @@ def import_data(conn, db):
                      "ON CONFLICT(stat_id) DO UPDATE SET name=excluded.name, category=excluded.category",
                      (sid, name, cat))
 
+    for faction, entry in (db.get("repMeta") if isinstance(db.get("repMeta"), dict) else {}).items():
+        faction_id = _int_or_none(faction)
+        name = _name_or_none(entry.get("name")) if isinstance(entry, dict) else None
+        if faction_id and faction_id > 0 and name:
+            conn.execute("INSERT INTO rep_defs(faction_id,name) VALUES(?,?) "
+                         "ON CONFLICT(faction_id) DO UPDATE SET name=excluded.name", (faction_id, name))
+
     new = skipped = 0
     changed = []
     for key, scans in by_char.items():
         for scan in scans:
             c = scan["raw"]
             cur = conn.execute(
-                "INSERT OR IGNORE INTO scans(char_key,scanned_at,class,level,faction,class_file,race,race_file) "
-                "VALUES(?,?,?,?,?,?,?,?)",
+                "INSERT OR IGNORE INTO scans(char_key,scanned_at,class,level,faction,class_file,race,race_file,"
+                "spec_id,spec_name,role,ilvl_total,ilvl_equipped) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (key, scan["at"], scan["class"], scan["level"], scan["faction"],
-                 scan["class_file"], scan["race"], scan["race_file"]))
+                 scan["class_file"], scan["race"], scan["race_file"],
+                 scan["spec_id"], scan["spec_name"], scan["role"], scan["ilvl_total"], scan["ilvl_equipped"]))
             if cur.rowcount == 0:
                 skipped += 1
                 continue
@@ -582,6 +678,7 @@ def import_data(conn, db):
                     sys.exit(t("parse_err_played_invalid", key=key, field=field, value=sec))
                 conn.execute("INSERT INTO stat_values(scan_id,stat_id,value_text,value_num) VALUES(?,?,?,?)",
                              (scan_id, sid, fmt_duration(sec), int(sec)))
+            store_details(conn, scan_id, scan)
             if scan["skipped"]:
                 print(t("parse_warn_scan_details", key=key, at=scan["at"], count=scan["skipped"]))
             new += 1
