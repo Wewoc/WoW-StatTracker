@@ -126,31 +126,95 @@ def test_schema_1_gets_the_race_columns_and_every_old_scan_stays_empty(tmp_path)
     db = make_v01(tmp_path / "v1.db", user_version=1)
     before = rows(db)
     stat_parser.init_db(db).close()
-    assert version(db) == 2
+    assert version(db) == SCHEMA_VERSION
     assert rows(db) == before                                # the old columns are untouched
-    assert [c for c, _t in columns(db)][-3:] == ["class_file", "race", "race_file"]
+    names = [c for c, _t in columns(db)]
+    assert names[6:9] == ["class_file", "race", "race_file"]            # schema 2 comes right after the v0.1 columns
+    assert names[9:] == [c for c, _k in stat_parser.SCAN_COLUMNS_V3]    # and schema 3 after that
     conn = sqlite3.connect(db)
-    assert conn.execute("SELECT class_file, race, race_file FROM scans").fetchall() == [(None, None, None)]
+    assert conn.execute("SELECT class_file, race, race_file, spec_id, spec_name, role, ilvl_total, ilvl_equipped "
+                        "FROM scans").fetchall() == [(None,) * 8]
     conn.close()
     (copy,) = migration_copies(tmp_path)                     # the copy holds the state before
-    assert copy.name.endswith(".pre-v2.bak") and version(copy) == 1
+    assert copy.name.endswith(f".pre-v{SCHEMA_VERSION}.bak") and version(copy) == 1
     assert "race" not in [c for c, _t in columns(copy)]
 
 
 def test_schema_0_takes_both_steps_and_leaves_one_permanent_copy(tmp_path):
     db = make_v01(tmp_path / "v0.db")
     stat_parser.init_db(db).close()
-    assert version(db) == 2
+    assert version(db) == SCHEMA_VERSION
     (copy,) = migration_copies(tmp_path)
-    assert copy.name.endswith(".pre-v2.bak") and version(copy) == 0
+    assert copy.name.endswith(f".pre-v{SCHEMA_VERSION}.bak") and version(copy) == 0
     assert not (tmp_path / "backups" / "daily").exists()
 
 
-def test_a_migrated_database_has_the_same_columns_as_a_new_one(tmp_path):
+V2_ADDED = "ALTER TABLE scans ADD COLUMN class_file TEXT; ALTER TABLE scans ADD COLUMN race TEXT; ALTER TABLE scans ADD COLUMN race_file TEXT;"
+
+
+def make_v2(path):
+    """A database of schema 2 with one scan, written out here like V01_LAYOUT (the test must not follow the code)."""
+    make_v01(path, user_version=2)
+    conn = sqlite3.connect(path)
+    conn.executescript(V2_ADDED)
+    conn.execute("UPDATE scans SET class_file='MAGE', race='Human', race_file='Human'")
+    conn.commit()
+    conn.close()
+    return path
+
+
+def layout(path):
+    """Everything the layout consists of: tables with their columns, keys and indexes."""
+    conn = sqlite3.connect(path)
+    try:
+        tables = sorted(r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
+        return {t: ([tuple(r) for r in conn.execute(f"PRAGMA table_info({t})")],
+                    sorted(r[1] for r in conn.execute(f"PRAGMA index_list({t})")),
+                    [tuple(r[2:5]) for r in conn.execute(f"PRAGMA foreign_key_list({t})")])
+                for t in tables}
+    finally:
+        conn.close()
+
+
+NEW_TABLES = ["rep_defs", "scan_gear", "scan_reputation"]
+
+
+def test_a_new_database_has_the_tables_of_schema_3(tmp_path):
     stat_parser.init_db(tmp_path / "new.db").close()
-    stat_parser.init_db(make_v01(tmp_path / "old.db")).close()
-    for table in ("scans", "stat_defs", "stat_values"):
-        assert columns(tmp_path / "old.db", table) == columns(tmp_path / "new.db", table)
+    assert sorted(layout(tmp_path / "new.db")) == sorted(["scans", "stat_defs", "stat_values", *NEW_TABLES])
+
+
+@pytest.mark.parametrize("start", ["v0", "v1", "v2"])
+def test_a_migrated_database_has_exactly_the_layout_of_a_new_one(tmp_path, start):
+    stat_parser.init_db(tmp_path / "new.db").close()
+    old = {"v0": lambda p: make_v01(p), "v1": lambda p: make_v01(p, user_version=1), "v2": make_v2}[start](tmp_path / "old.db")
+    stat_parser.init_db(old).close()
+    assert layout(old) == layout(tmp_path / "new.db")                  # columns, order, keys, indexes: all of it
+
+
+def test_schema_2_gets_schema_3_and_every_old_scan_keeps_its_row_and_stays_empty(tmp_path):
+    db = make_v2(tmp_path / "v2.db")
+    before = rows(db)
+    stat_parser.init_db(db).close()
+    assert version(db) == 3 and rows(db) == before
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT class_file, spec_id, spec_name, role, ilvl_total, ilvl_equipped FROM scans").fetchall() == \
+        [("MAGE", None, None, None, None, None)]
+    assert [conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in NEW_TABLES] == [0, 0, 0]
+    conn.close()
+    (copy,) = migration_copies(tmp_path)
+    assert copy.name.endswith(".pre-v3.bak") and version(copy) == 2
+    assert not {"spec_id", "scan_gear"} & ({c for c, _t in columns(copy)} | set(layout(copy)))
+
+
+def test_a_failing_step_to_schema_3_leaves_the_database_at_schema_2(tmp_path, monkeypatch):
+    db = make_v2(tmp_path / "v2.db")
+    before = layout(db)
+    monkeypatch.setattr(stat_parser, "TABLES_V3", (*stat_parser.TABLES_V3[:1], "CREATE TABLE broken ("))
+    with pytest.raises(sqlite3.OperationalError):
+        stat_parser.init_db(db)
+    assert version(db) == 2 and layout(db) == before                   # the added columns and the first table were rolled back
+    assert migration_copies(tmp_path)                                  # the copy before the step stays
 
 
 def test_opening_again_changes_nothing(tmp_path):

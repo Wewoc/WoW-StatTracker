@@ -19,6 +19,10 @@ ROOT = Path(__file__).resolve().parent.parent
     ("0.1.0", "0.1.0", False),
     ("0.0.9", "0.1.0", False),
     ("0.10.0", "0.9.0", True),        # numeric, not string comparison
+    ("0.1.10", "0.1.9", True),        # a two digit patch number: 10 is more than 9
+    ("v0.1.10", "0.1.9", True),
+    ("0.1.9", "0.1.10", False),
+    ("0.1.10", "0.1.10", False),
     ("v0.2", "0.1.0", True),
     ("nightly", "0.1.0", False),      # unparseable is never "newer"
     ("0.2.0", "dev", False),

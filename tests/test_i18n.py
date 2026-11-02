@@ -10,7 +10,7 @@ import pytest
 import i18n
 
 SRC = Path(__file__).resolve().parent.parent / "src"
-NAME_PREFIXES = ("class_", "race_")
+NAME_PREFIXES = ("class_", "race_", "standing_")
 TEMPLATES = ("template.html", "history.html")          # the pages whose texts come from the html_* keys
 
 
@@ -62,7 +62,7 @@ def test_every_key_is_used_somewhere():
         elif key.startswith("unit_"):
             if 'f"unit_{' not in code:
                 unused.append(key)
-        elif key.startswith(NAME_PREFIXES):             # class_* / race_*: read through i18n.names(prefix, lang)
+        elif key.startswith(NAME_PREFIXES):             # class_* / race_* / standing_*: read through i18n.names(prefix, lang)
             prefix = next(p for p in NAME_PREFIXES if key.startswith(p))
             if f'names("{prefix}"' not in code:
                 unused.append(key)

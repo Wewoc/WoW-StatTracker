@@ -109,6 +109,21 @@ GENERIC = (
     ("gold", "Gold earned from quests", "Durch Quests verdientes Gold", "Quests", "Quests", 53000),
     ("gold", "Highest single sale", "Höchster Einzelverkauf", "Wealth", "Wohlstand", 52000),
 )
+# Invented reputation, written in the format of the addon (data version 4). Account-wide entries are the same for every
+# character; of the others a character knows a faction when (faction index + character index) % 3 != 0, and its standing
+# varies. The last character has no list at all (the page then names it as without data).
+REP_DEMO = (
+    # (faction id, kind, account-wide, en name, de name)
+    (9100, "cat", False, "Old Roads", "Alte Pfade"),
+    (9101, "std", False, "Ashfall Wardens", "Aschenfall-Wächter"),
+    (9102, "std", False, "Lantern Guild", "Laternengilde"),
+    (9103, "friend", True, "Greywater Pact", "Graswasser-Pakt"),
+    (9110, "cat", False, "Far Shores", "Ferne Küsten"),
+    (9111, "major", True, "Tide Court", "Gezeitenhof"),
+    (9112, "major", True, "Salt Caravans", "Salzkarawanen"),
+    (9113, "std", False, "Reef Scouts", "Riffspäher"),
+)
+REP_BANDS = {4: (0, 3000), 5: (3000, 9000), 6: (9000, 21000), 7: (21000, 42000), 8: (42000, 42000)}
 MOUNT = ("Favourite mount", "Lieblingsreittier", "Character", "Charakter")
 GENERIC_FIRST_ID = 9001            # far away from the real IDs used above
 
@@ -194,17 +209,49 @@ def _lua_str(text):
     return f'"{text}"'
 
 
+def _rep_lines(n):
+    """The `rep` table of character n as Lua lines; none for the last character."""
+    if n == len(CHARS) - 1:
+        return []
+    lines, ord_ = ['\t\t\t["rep"] = {'], 0
+    for f, (fid, kind, aw, _en, _de) in enumerate(REP_DEMO):
+        if kind == "std" and (n + f) % 3 == 0:
+            continue                                    # this character never met the faction
+        ord_ += 1
+        head = f'["id"] = {fid}, ["ord"] = {ord_}' + (', ["aw"] = true' if aw else "")
+        if kind == "cat":
+            body = ', ["hdr"] = true'
+        elif kind == "std":
+            reaction = 4 + (n + f) % 5
+            lo, hi = REP_BANDS[reaction]
+            standing = lo + (hi - lo) * ((n * 7 + f * 3) % 10) // 10
+            body = (f', ["kind"] = "std", ["reaction"] = {reaction}, ["standing"] = {standing}, ["lo"] = {lo}, ["hi"] = {hi}'
+                    + (', ["paragon"] = { ["value"] = 13950, ["threshold"] = 10000, ["quest"] = 70001, ["pending"] = true }'
+                       if reaction == 8 else ""))
+        elif kind == "friend":
+            body = ', ["kind"] = "friend", ["standing"] = 6200, ["lo"] = 4200, ["hi"] = 8400, ["level"] = 5, ["maxLevel"] = 8'
+        elif fid == 9111:
+            body = ', ["kind"] = "major", ["renown"] = 14, ["earned"] = 1200, ["need"] = 2500, ["maxRenown"] = 20'
+        else:
+            body = (', ["kind"] = "major", ["renown"] = 20, ["earned"] = 0, ["need"] = 2500, ["maxRenown"] = 20, '
+                    '["paragon"] = { ["value"] = 4200, ["threshold"] = 7500, ["quest"] = 70002, ["pending"] = false }')
+        lines.append(f"\t\t\t\t{{ {head}{body} }},")
+    return lines + ["\t\t\t},"]
+
+
 def build_lua(lang, k=None, snapshots=1):
     """The demo SavedVariables file (StatTrackerDB) for one language: snapshot k (0-based) of `snapshots`,
     by default the final one, which is the single scan of a run without --snapshots."""
     i = LANGS.index(lang)
     k = snapshots - 1 if k is None else k
     meta, stats = _tables(i, k, snapshots)
-    out = ["StatTrackerDB = {", '\t["version"] = 3,', '\t["auto"] = true,', '\t["meta"] = {']
+    out = ["StatTrackerDB = {", '\t["version"] = 4,', '\t["auto"] = true,', '\t["meta"] = {']
     for sid, (name, cat) in meta.items():
         out.append(f'\t\t[{sid}] = {{ ["name"] = {_lua_str(name)}, ["cat"] = {_lua_str(cat)} }},')
+    out += ["\t},", '\t["repMeta"] = {']
+    out += [f'\t\t[{fid}] = {{ ["name"] = {_lua_str(names[i])} }},' for fid, _kind, _aw, *names in REP_DEMO]
     out += ["\t},", '\t["chars"] = {']
-    for c, values in zip(CHARS, stats):
+    for n, (c, values) in enumerate(zip(CHARS, stats)):
         at, epoch, level, played, level_played = _scan_values(c, k, snapshots)
         out += [f'\t\t[{_lua_str(c["key"])}] = {{',
                 f'\t\t\t["scannedAt"] = {_lua_str(at)}, ["scannedEpoch"] = {epoch},',
@@ -216,6 +263,7 @@ def build_lua(lang, k=None, snapshots=1):
         out += [f"\t\t\t\t[{sid}] = {_lua_str(text)}," for sid, text in values.items()]
         out += ["\t\t\t},",
                 f'\t\t\t["playedTotal"] = {played}, ["playedLevel"] = {level_played},',
+                *_rep_lines(n),
                 "\t\t},"]
     out += ["\t},", "}", ""]
     return "\n".join(out)
