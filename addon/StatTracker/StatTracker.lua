@@ -29,6 +29,9 @@
 --       ilvlTotal = N, ilvlEquipped = N,                -- GetAverageItemLevel()
 --       gear = { [slot 1..19] = { itemID, name, quality, ilvl, iconID, stats = { ITEM_MOD_... = N },
 --                 enchantID, enchantText, upgrade = { trackID, track, level, max }, sockets, gems = { id or 0 } } },
+--       rep = { { id, ord, hdr, child, aw, kind = "std"|"friend"|"major", ..., paragon = { value, threshold, quest, pending } }, ... }
+--           the reputation list in the order of the game (hdr = category, child = sub category, aw = account wide);
+--           std: reaction, standing, lo, hi; friend: standing, lo, hi, level, maxLevel; major: renown, earned, need, maxRenown
 
 local ADDON = ...
 local PREFIX = "|cff00ff00[StatTracker]|r "
@@ -317,6 +320,119 @@ local function CollectGear(into, waiting)
     if failed then error(failed, 0) end
 end
 
+-- Reputation. The list the game shows has the categories the player collapsed hidden, so they are expanded for the
+-- read and put back afterwards, in every path (an error while reading included). Nothing is touched when no
+-- category is collapsed, and nothing at all in combat. The expanded list is copied into a local table first, so
+-- that putting the categories back does not depend on the game functions that may just have failed.
+local function IsFaction(data)
+    return type(data) == "table" and type(data.factionID) == "number" and data.factionID > 0
+end
+
+local function CollapseAgain(R, collapsedNames, copy)
+    if type(R.CollapseFactionHeader) ~= "function" then return end
+    for i = (R.GetNumFactions() or 0), 1, -1 do               -- the last header first: the indices before it stay valid
+        local data = copy[i]
+        if data == nil then
+            local ok, live = pcall(R.GetFactionDataByIndex, i)
+            data = ok and live or nil
+        end
+        if type(data) == "table" and data.isHeader and collapsedNames[data.name] then
+            pcall(R.CollapseFactionHeader, i)
+        end
+    end
+end
+
+local function Number(value)
+    if type(value) == "number" then return value end
+end
+
+-- The numbers of one entry by its kind: friendship, major faction (renown) or standard reputation. The values
+-- in the list entry are right only for the standard kind.
+local function ReadRepKind(entry, data)
+    local id = data.factionID
+    if data.isHeader and not data.isHeaderWithRep then return end          -- a category without reputation: no kind
+
+    local friend = C_GossipInfo and C_GossipInfo.GetFriendshipReputation and C_GossipInfo.GetFriendshipReputation(id)
+    if type(friend) == "table" and type(friend.friendshipFactionID) == "number" and friend.friendshipFactionID > 0 then
+        entry.kind = "friend"
+        entry.standing, entry.lo, entry.hi = Number(friend.standing), Number(friend.reactionThreshold), Number(friend.nextThreshold)
+        local ranks = C_GossipInfo.GetFriendshipReputationRanks and C_GossipInfo.GetFriendshipReputationRanks(id)
+        if type(ranks) == "table" then
+            entry.level, entry.maxLevel = Number(ranks.currentLevel), Number(ranks.maxLevel)
+        end
+    elseif C_Reputation.IsMajorFaction and C_Reputation.IsMajorFaction(id)
+           and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+        local major = C_MajorFactions.GetMajorFactionData(id)
+        entry.kind = "major"
+        if type(major) == "table" then
+            entry.renown, entry.earned = Number(major.renownLevel), Number(major.renownReputationEarned)
+            entry.need, entry.maxRenown = Number(major.renownLevelThreshold), Number(major.maxLevel)
+        end
+    else
+        entry.kind = "std"
+        entry.reaction, entry.standing = Number(data.reaction), Number(data.currentStanding)
+        entry.lo, entry.hi = Number(data.currentReactionThreshold), Number(data.nextReactionThreshold)
+    end
+
+    if C_Reputation.IsFactionParagonForCurrentPlayer and C_Reputation.IsFactionParagonForCurrentPlayer(id)
+       and C_Reputation.GetFactionParagonInfo then
+        local value, threshold, quest, pending = C_Reputation.GetFactionParagonInfo(id)
+        entry.paragon = { value = Number(value), threshold = Number(threshold), quest = Number(quest), pending = pending == true }
+    end
+end
+
+-- The entries of the copied list. An entry that raises is left out and the first error is returned with the rest.
+local function ReadAllFactions(copy, count, names)
+    local list, failed = {}, nil
+    for i = 1, count do
+        local data = copy[i]
+        if IsFaction(data) then
+            local entry = { id = data.factionID, ord = i }
+            if data.isHeader then entry.hdr = true end
+            if data.isChild then entry.child = true end
+            if data.isAccountWide then entry.aw = true end
+            local ok, err = pcall(ReadRepKind, entry, data)
+            if ok then
+                list[#list + 1] = entry
+                if NonEmpty(data.name) then names[data.factionID] = data.name end
+            else
+                failed = failed or err
+            end
+        end
+    end
+    return list, failed
+end
+
+local function CollectReputation(into, names)
+    local R = C_Reputation
+    if not (R and R.GetNumFactions and R.GetFactionDataByIndex and R.ExpandAllFactionHeaders) then return end
+    if InCombatLockdown and InCombatLockdown() then
+        Say(Tr("Ruf im Kampf nicht gelesen.", "Reputation not read in combat."))
+        return
+    end
+
+    local collapsedNames, anyCollapsed = {}, false
+    for i = 1, (R.GetNumFactions() or 0) do
+        local data = R.GetFactionDataByIndex(i)
+        if type(data) == "table" and data.isHeader and data.isCollapsed and NonEmpty(data.name) then
+            collapsedNames[data.name] = true
+            anyCollapsed = true
+        end
+    end
+
+    local copy = {}
+    local ok, list, failed = pcall(function()
+        if anyCollapsed then R.ExpandAllFactionHeaders() end
+        local count = R.GetNumFactions() or 0
+        for i = 1, count do copy[i] = R.GetFactionDataByIndex(i) end
+        return ReadAllFactions(copy, count, names)
+    end)
+    if anyCollapsed then pcall(CollapseAgain, R, collapsedNames, copy) end   -- also after an error
+    if not ok then error(list, 0) end
+    if #list > 0 then into.rep = list end
+    if failed then error(failed, 0) end
+end
+
 -- One look at the items that still have no name; the ones that have one now leave the list.
 local function FillNames(waiting)
     for i = #waiting, 1, -1 do
@@ -356,6 +472,10 @@ local function StoreScan(key, st, extra)
     for id, m in pairs(st.meta) do
         StatTrackerDB.meta[id] = m
     end
+    StatTrackerDB.repMeta = StatTrackerDB.repMeta or {}
+    for id, name in pairs(st.repNames or {}) do
+        StatTrackerDB.repMeta[id] = { name = name }
+    end
 
     Say(Tr("Stat-Sync fertig: " .. st.count .. " Statistiken fuer " .. key .. " erfasst. Warte auf Spielzeit ...",
            "Stat sync done: " .. st.count .. " statistics recorded for " .. key .. ". Waiting for played time ..."))
@@ -381,6 +501,8 @@ local function FinishScan(key, st)
     local extra, waiting = {}, {}
     Collect("Spezialisierung", "Specialization", CollectSpec, extra)
     Collect("Itemlevel", "Item level", CollectItemLevel, extra)
+    st.repNames = {}
+    Collect("Ruf", "Reputation", CollectReputation, extra, st.repNames)
     Collect("Ausruestung", "Gear", CollectGear, extra, waiting)
 
     if #waiting == 0 then

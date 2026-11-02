@@ -373,7 +373,7 @@ def test_a_game_without_these_functions_stores_the_scan_as_before_and_says_nothi
     g = run_scans(ONE_SCAN)
     rec = newest(g)
     assert len(list(rec.stats.keys())) == TOTAL and rec.playedTotal == 1
-    assert all(rec[field] is None for field in ("specID", "specName", "role", "ilvlTotal", "ilvlEquipped", "gear"))
+    assert all(rec[field] is None for field in ("specID", "specName", "role", "ilvlTotal", "ilvlEquipped", "gear", "rep"))
     assert not any("not read" in t for t in chat_texts(g))
 
 
@@ -492,3 +492,170 @@ def test_gear_moves_into_the_history_with_its_scan():
     g = run_scans([{"epoch": BASE_EPOCH, "played": 1}, {"epoch": BASE_EPOCH + DAY, "played": 2}], tweak=GEAR_API)
     older = g.StatTrackerDB.history["Alice-Realm"][1]
     assert older.gear[3].name == "Mantle of Embers" and older.specID == 72
+
+
+# ------------------------------------------------------------------ reputation
+# A faked reputation list that really hides the children of a collapsed category, so that expanding and putting
+# back can be seen. The list entries of a friendship and of a major faction carry WRONG numbers on purpose: the
+# values must come from the functions of that kind.
+REP_API = r'''
+REP_DEFS = {
+  { id = 2698, name = "Midnight", header = true },
+  { id = 2696, name = "Amani", aw = true, reaction = 5, standing = 3000, lo = 3000, hi = 9000 },
+  { id = 2744, name = "Valeera", aw = true, reaction = 8, standing = 41248, lo = 1, hi = 2,
+    friend = { standing = 250754, lo = 245747, hi = 264497, level = 22, maxLevel = 80 } },
+  { id = 2640, name = "Renown Folk", aw = true, reaction = 4, standing = 11, lo = 0, hi = 1,
+    major = { level = 7, earned = 2069, need = 2500, max = 20 } },
+  { id = 1000, name = "Classic", header = true, collapsed = true },
+  { id = 1001, name = "Stormwind", child = true, reaction = 6, standing = 7000, lo = 3000, hi = 9000 },
+  { id = 1002, name = "Ironforge", child = true, reaction = 8, standing = 42000, lo = 42000, hi = 42000,
+    paragon = { value = 100, threshold = 7500, quest = 93566, pending = false } },
+  { id = 3000, name = "Header With Rep", header = true, withRep = true, reaction = 5, standing = 3500, lo = 3000, hi = 9000 },
+}
+EXPAND_CALLS, COLLAPSE_CALLS, IN_COMBAT = 0, 0, false
+function RepVisible()
+    local out, hidden = {}, false
+    for _, d in ipairs(REP_DEFS) do
+        if d.header then hidden = false end
+        if not hidden then out[#out + 1] = d end
+        if d.header and d.collapsed then hidden = true end
+    end
+    return out
+end
+function RepFind(id) for _, d in ipairs(REP_DEFS) do if d.id == id then return d end end end
+function CollapsedNames()
+    local names = {}
+    for _, d in ipairs(REP_DEFS) do if d.collapsed then names[#names + 1] = d.name end end
+    return table.concat(names, ",")
+end
+InCombatLockdown = function() return IN_COMBAT end
+C_Reputation = {
+  GetNumFactions = function() return #RepVisible() end,
+  GetFactionDataByIndex = function(i)
+      local d = RepVisible()[i]
+      if not d then return nil end
+      return { factionID = d.id, name = d.name, isHeader = d.header or false, isHeaderWithRep = d.withRep or false,
+               isChild = d.child or false, isAccountWide = d.aw or false, isCollapsed = d.collapsed or false,
+               reaction = d.reaction, currentStanding = d.standing, currentReactionThreshold = d.lo,
+               nextReactionThreshold = d.hi }
+  end,
+  ExpandAllFactionHeaders = function()
+      EXPAND_CALLS = EXPAND_CALLS + 1
+      for _, d in ipairs(REP_DEFS) do d.collapsed = false end
+  end,
+  CollapseFactionHeader = function(i)
+      COLLAPSE_CALLS = COLLAPSE_CALLS + 1
+      local d = RepVisible()[i]
+      if d and d.header then d.collapsed = true end
+  end,
+  IsMajorFaction = function(id) return RepFind(id).major ~= nil end,
+  IsFactionParagon = function(id) return true end,               -- true for far too many: not to be used
+  IsFactionParagonForCurrentPlayer = function(id) return RepFind(id).paragon ~= nil end,
+  GetFactionParagonInfo = function(id) local p = RepFind(id).paragon; return p.value, p.threshold, p.quest, p.pending end,
+}
+C_GossipInfo = {
+  GetFriendshipReputation = function(id)
+      local f = RepFind(id).friend
+      if not f then return { friendshipFactionID = 0 } end
+      return { friendshipFactionID = id, standing = f.standing, reactionThreshold = f.lo, nextThreshold = f.hi }
+  end,
+  GetFriendshipReputationRanks = function(id) local f = RepFind(id).friend; return { currentLevel = f.level, maxLevel = f.maxLevel } end,
+}
+C_MajorFactions = {
+  GetMajorFactionData = function(id)
+      local m = RepFind(id).major
+      return { renownLevel = m.level, renownReputationEarned = m.earned, renownLevelThreshold = m.need, maxLevel = m.max }
+  end,
+}
+'''
+
+
+def rep_of(g):
+    rep = newest(g).rep
+    return {int(e.id): e for e in (rep[i] for i in range(1, len(rep) + 1))}
+
+
+def test_the_reputation_list_is_read_with_the_values_of_each_kind():
+    g = run_scans(ONE_SCAN, tweak=REP_API)
+    rep = newest(g).rep
+    assert [int(rep[i].ord) for i in range(1, len(rep) + 1)] == list(range(1, 9))      # the order of the game
+    entries = rep_of(g)
+
+    header = entries[2698]                                                    # a category without reputation
+    assert header.hdr is True and header.kind is None and header.standing is None
+    amani = entries[2696]                                                     # standard
+    assert (amani.kind, amani.reaction, amani.standing, amani.lo, amani.hi, amani.aw) == ("std", 5, 3000, 3000, 9000, True)
+    valeera = entries[2744]                                                   # friendship: NOT the list numbers
+    assert valeera.kind == "friend"
+    assert (valeera.standing, valeera.lo, valeera.hi, valeera.level, valeera.maxLevel) == (250754, 245747, 264497, 22, 80)
+    assert valeera.reaction is None
+    renown = entries[2640]                                                    # major faction: NOT the list numbers
+    assert renown.kind == "major"
+    assert (renown.renown, renown.earned, renown.need, renown.maxRenown) == (7, 2069, 2500, 20)
+    assert renown.standing is None
+    child = entries[1001]
+    assert child.child is True and child.aw is None and child.paragon is None   # "IsFactionParagon" alone does not count
+    paragon = entries[1002].paragon
+    assert (paragon.value, paragon.threshold, paragon.quest, paragon.pending) == (100, 7500, 93566, False)
+    with_rep = entries[3000]                                                  # a category WITH reputation is also an entry
+    assert with_rep.hdr is True and with_rep.kind == "std" and with_rep.standing == 3500
+
+
+def test_faction_names_go_to_rep_meta():
+    meta = run_scans(ONE_SCAN, tweak=REP_API).StatTrackerDB.repMeta
+    assert meta[2696].name == "Amani" and meta[2698].name == "Midnight"
+
+
+def test_collapsed_categories_are_expanded_for_the_read_and_put_back_exactly():
+    g = run_scans(ONE_SCAN, tweak=REP_API + "BEFORE = CollapsedNames(); VISIBLE_BEFORE = #RepVisible()")
+    assert (g.EXPAND_CALLS, g.COLLAPSE_CALLS) == (1, 1)
+    assert g.CollapsedNames() == "Classic" == g.BEFORE
+    assert len(g.RepVisible()) == g.VISIBLE_BEFORE                           # the player sees what they saw before
+    assert 1001 in rep_of(g)                                                  # the hidden children were read
+
+
+def test_nothing_is_expanded_when_no_category_is_collapsed():
+    g = run_scans(ONE_SCAN, tweak=REP_API + "REP_DEFS[5].collapsed = false")
+    assert (g.EXPAND_CALLS, g.COLLAPSE_CALLS) == (0, 0)
+    assert 1001 in rep_of(g)
+
+
+def test_nothing_is_expanded_in_combat_and_the_reputation_is_left_out():
+    g = run_scans(ONE_SCAN, tweak=REP_API + "IN_COMBAT = true")
+    assert (g.EXPAND_CALLS, g.COLLAPSE_CALLS) == (0, 0) and g.CollapsedNames() == "Classic"
+    rec = newest(g)
+    assert rec.rep is None and len(list(rec.stats.keys())) == TOTAL and rec.gear is None
+    assert any("not read in combat" in t for t in chat_texts(g))
+    assert any("im Kampf" in t for t in chat_texts(run_scans(ONE_SCAN, locale="deDE", tweak=REP_API + "IN_COMBAT = true")))
+
+
+def test_the_categories_are_put_back_even_when_expanding_raises():
+    boom = REP_API + 'local expand = C_Reputation.ExpandAllFactionHeaders; C_Reputation.ExpandAllFactionHeaders = function() expand(); error("expand boom") end'
+    g = run_scans(ONE_SCAN, tweak=boom)
+    assert g.CollapsedNames() == "Classic"                                    # put back although the read failed
+    rec = newest(g)
+    assert rec.rep is None and len(list(rec.stats.keys())) == TOTAL and rec.playedTotal == 1
+    assert any("Reputation not read" in t and "expand boom" in t for t in chat_texts(g))
+
+
+def test_the_categories_are_put_back_when_reading_one_entry_fails():
+    broken = REP_API + 'local get = C_GossipInfo.GetFriendshipReputation; C_GossipInfo.GetFriendshipReputation = function(id) if id == 2744 then error("friend boom") end return get(id) end'
+    g = run_scans(ONE_SCAN, tweak=broken)
+    entries = rep_of(g)
+    assert 2744 not in entries and 2696 in entries and 1001 in entries        # only the failing entry is missing
+    assert g.CollapsedNames() == "Classic"
+    assert any("Reputation not read" in t and "friend boom" in t for t in chat_texts(g))
+    assert len(list(newest(g).stats.keys())) == TOTAL
+
+
+def test_one_failing_collapse_does_not_stop_the_others():
+    two = REP_API + 'REP_DEFS[8].collapsed = true; local c = C_Reputation.CollapseFactionHeader; ' \
+                    'C_Reputation.CollapseFactionHeader = function(i) if RepVisible()[i].id == 3000 then error("no") end c(i) end'
+    g = run_scans(ONE_SCAN, tweak=two)
+    assert g.CollapsedNames() == "Classic"                                    # 3000 could not be put back, 1000 was
+
+
+def test_reputation_moves_into_the_history_with_its_scan():
+    g = run_scans([{"epoch": BASE_EPOCH, "played": 1}, {"epoch": BASE_EPOCH + DAY, "played": 2}], tweak=REP_API)
+    older = g.StatTrackerDB.history["Alice-Realm"][1]
+    assert older.rep[2].id == 2696 and older.rep[2].kind == "std"
