@@ -43,6 +43,30 @@
   .foot { color: var(--dim); font-size: .8rem; margin: 12px 2px 0; }
   .foot a { color: var(--dim); }
   .foot a:hover { color: var(--gold); }
+  .gear { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; margin-top: 8px; }
+  .gear > summary { cursor: pointer; padding: 9px 12px; }
+  .gear .gh { color: var(--dim); font-size: .8rem; margin-left: 8px; }
+  .gbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); }
+  .gchg { color: var(--gold); font-size: .8rem; }
+  .ggrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; padding: 10px 12px; }
+  .gcol { display: grid; gap: 6px; align-content: start; }
+  .gbottom { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 800px) { .ggrid, .gbottom { grid-template-columns: 1fr; } }
+  .slot { display: flex; gap: 8px; align-items: flex-start; background: #161616; border: 1px solid var(--line);
+          border-left: 3px solid transparent; border-radius: 4px; padding: 5px 8px; min-width: 0; }
+  .slot.chg { border-left-color: var(--gold); }
+  .slot.none { opacity: .55; }
+  .slot svg { flex: none; color: var(--dim); }
+  .sbody { min-width: 0; flex: 1; font-size: .85rem; line-height: 1.4; }
+  .srow { display: flex; justify-content: space-between; gap: 6px; }
+  .sslot { color: var(--dim); font-size: .72rem; }
+  .sil { font-size: .78rem; }
+  .sil b { color: var(--gold); font-weight: normal; }
+  .sname { overflow-wrap: anywhere; }
+  .sinfo { color: var(--dim); font-size: .72rem; overflow-wrap: anywhere; }
+  .sinfo .warn { color: #e0a050; }
+  .gsum { padding: 6px 12px 10px; border-top: 1px solid var(--line); font-size: .85rem; }
+  .gsum .row { display: flex; flex-wrap: wrap; gap: 4px 18px; }
 </style>
 <!--__PLOTLY__-->
 </head>
@@ -73,6 +97,18 @@
     <div class="note" id="ilvlNote" hidden></div>
   </div>
 </div>
+<details class="gear" id="gear" hidden>
+  <summary><span id="gearTitle"></span><span class="gh" id="gearHead"></span></summary>
+  <div class="gbar">
+    <button type="button" id="gPrev">◀</button>
+    <select id="gScan"></select>
+    <button type="button" id="gNext">▶</button>
+    <label id="gCmpBox"><input type="checkbox" id="gCompare" checked> <span id="lblCompare"></span></label>
+    <span class="gchg" id="gChanged"></span>
+  </div>
+  <div class="ggrid" id="gGrid"></div>
+  <div class="gsum" id="gSum" hidden></div>
+</details>
 <div class="note" id="note"></div>
 <div class="foot" id="foot"></div>
 
@@ -159,6 +195,7 @@ function init() {
   $("oneScan").textContent = DATA.scans.length < 2 ? (UI.hist_one_scan || "") : "";
   $("oneScan").hidden = DATA.scans.length >= 2;
   renderFoot();
+  setupGear();
   renderList();
   renderChart();
 }
@@ -279,6 +316,196 @@ function renderChart() {
             range: DATA.scans.length === 1 ? singleScanRange() : undefined},
     yaxis: {gridcolor: "#2e2e2e", zeroline: false, hoverformat: ",.2f"}
   }, {responsive: true, displaylogo: false});
+}
+
+// ---- Character: the equipment of one scan, as in the game's character screen (data: DATA.gear, one entry per scan
+// or null; texts: DATA.names). The shirt (4) and the tabard (19) are not shown. Nothing is guessed: a missing name shows
+// the item id, a missing stat name its raw key, an unknown upgrade track the stored text.
+const GEAR = (DATA && DATA.gear) || null;
+const NAMES = (DATA && DATA.names) || {};
+const SLOTS_LEFT = [1, 2, 3, 15, 5, 9];
+const SLOTS_RIGHT = [10, 6, 7, 8, 11, 12, 13, 14];
+const SLOTS_BOTTOM = [16, 17];
+const SECONDARY = ["ITEM_MOD_CRIT_RATING_SHORT", "ITEM_MOD_HASTE_RATING_SHORT", "ITEM_MOD_MASTERY_RATING_SHORT", "ITEM_MOD_VERSATILITY"];
+const QUALITY_COLOR = {0: "#9d9d9d", 1: "#ffffff", 2: "#4fd04f", 3: "#4a9eff", 4: "#c070f5", 5: "#ff8000", 6: "#e6cc80", 7: "#00ccff", 8: "#00ccff"};
+const SLOT_ICON = {   // outline symbols, 24 x 24, drawn here: no image files, nothing loaded
+  1: '<path d="M5 14a7 7 0 0 1 14 0v5h-4v-3H9v3H5z"/>',
+  2: '<path d="M5 5c0 8 4 11 7 11s7-3 7-11"/><circle cx="12" cy="19" r="2.5"/>',
+  3: '<path d="M3 17c0-6 4-10 9-10s9 4 9 10z"/>',
+  5: '<path d="M8 4 3 8l2 4 3-1v9h8v-9l3 1 2-4-5-4c-1 2-2 3-4 3S9 6 8 4z"/>',
+  6: '<rect x="3" y="9" width="18" height="6" rx="1"/><rect x="9.5" y="8" width="5" height="8" rx="1"/>',
+  7: '<path d="M7 3h10l1 18h-5l-1-10-1 10H6z"/>',
+  8: '<path d="M8 3h6v9l6 3v5H5v-4l3-1z"/>',
+  9: '<rect x="6" y="6" width="12" height="12" rx="3"/><path d="M6 10h12M6 14h12"/>',
+  10: '<path d="M8 21v-6L5 9l2-1 2 3V4h2v7V3h2v8V5h2v7V8l2 1v6l-2 6z"/>',
+  11: '<circle cx="12" cy="14" r="6"/><path d="m9 6 3-3 3 3-3 3z"/>',
+  12: '<circle cx="12" cy="14" r="6"/><path d="m9 6 3-3 3 3-3 3z"/>',
+  13: '<path d="m12 3 2.5 6 6.5.5-5 4.3 1.6 6.4-5.6-3.4-5.6 3.4L8 13.8 3 9.5 9.5 9z"/>',
+  14: '<path d="m12 3 2.5 6 6.5.5-5 4.3 1.6 6.4-5.6-3.4-5.6 3.4L8 13.8 3 9.5 9.5 9z"/>',
+  15: '<path d="M8 3h8l3 17-7-3-7 3z"/>',
+  16: '<path d="m19 3 2 2-9 9-3-3z"/><path d="m8 12 4 4M5 19l4-4M4 20l2-2"/>',
+  17: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>'
+};
+let gearScans = [];   // the positions in DATA.scans that have equipment data
+let gearPos = 0;      // the shown one, as a position in gearScans
+
+const slotIcon = slot => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" ' +
+  'stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">' + (SLOT_ICON[slot] || "") + "</svg>";
+const itemsBySlot = g => new Map((g.items || []).map(it => [it.slot, it]));
+
+// What makes two equipped items "the same" for the comparison; a stat or the name alone never counts.
+function sameItem(a, b) {
+  return a.item_id === b.item_id && a.ilvl === b.ilvl && a.enchant_id === b.enchant_id && a.upg_track_id === b.upg_track_id &&
+    a.upg_level === b.upg_level && JSON.stringify(a.gem_ids) === JSON.stringify(b.gem_ids);
+}
+
+function upgradeText(it) {
+  const track = (NAMES.track && NAMES.track[String(it.upg_track_id)]) || it.upg_track;
+  if (!track) return "";
+  return isNum(it.upg_level) && isNum(it.upg_max) ? track + " " + it.upg_level + "/" + it.upg_max : track;
+}
+
+// Empty sockets are counted from gem_ids only (0 = empty); a missing list is "unknown", never "empty".
+function emptySockets(it) {
+  return Array.isArray(it.gem_ids) && isNum(it.sockets) && it.sockets > 0 ? it.gem_ids.filter(id => id === 0).length : 0;
+}
+
+function statLines(it) {
+  return Object.keys(it.stats || {}).filter(k => !k.startsWith("EMPTY_SOCKET")).map(k => ((NAMES.stat && NAMES.stat[k]) || k) + " " + it.stats[k]);
+}
+
+function slotCard(slot, it, old, compare) {
+  const card = document.createElement("div");
+  card.className = "slot";
+  const ico = document.createElement("span");
+  ico.innerHTML = slotIcon(slot);
+  const body = document.createElement("div");
+  body.className = "sbody";
+  const top = document.createElement("div");
+  top.className = "srow";
+  const label = document.createElement("span");
+  label.className = "sslot"; label.textContent = (NAMES.slot && NAMES.slot[String(slot)]) || "#" + slot;
+  const il = document.createElement("span");
+  il.className = "sil";
+  top.append(label, il);
+  const name = document.createElement("div");
+  name.className = "sname";
+  const info = document.createElement("div");
+  info.className = "sinfo";
+  body.append(top, name, info);
+  card.append(ico, body);
+  let changed = false;
+  if (it) {
+    if (isNum(it.ilvl)) il.textContent = String(it.ilvl);
+    name.textContent = it.name || "#" + it.item_id;
+    name.style.color = QUALITY_COLOR[it.quality] || "#e0e0e0";
+    const bits = [upgradeText(it), it.enchant_text || ""].filter(Boolean);
+    info.textContent = bits.join(" · ");
+    const n = emptySockets(it);
+    if (n) {
+      const warn = document.createElement("span");
+      warn.className = "warn";
+      warn.textContent = n === 1 ? (UI.hist_gear_socket_empty || "") : fmt(UI.hist_gear_sockets_empty, {n: n});
+      if (bits.length) info.append(" · ");
+      info.append(warn);
+    }
+    const lines = statLines(it);
+    if (lines.length) card.title = lines.join("\n");
+  } else {
+    card.classList.add("none");
+    info.textContent = UI.hist_gear_empty || "";
+  }
+  if (compare) {
+    changed = (!!it !== !!old) || (!!it && !sameItem(it, old));
+    if (it && old && isNum(it.ilvl) && isNum(old.ilvl) && it.ilvl !== old.ilvl) {
+      const d = it.ilvl - old.ilvl;
+      const b = document.createElement("b");
+      b.textContent = " (" + (d > 0 ? "+" : "") + d + ")";
+      il.append(b);
+    }
+  }
+  card.classList.toggle("chg", changed);
+  return {card: card, changed: changed};
+}
+
+function renderGear() {
+  const g = GEAR[gearScans[gearPos]];
+  const prev = gearPos > 0 && $("gCompare").checked ? GEAR[gearScans[gearPos - 1]] : null;
+  $("gScan").value = String(gearPos);
+  $("gPrev").disabled = gearPos === 0;
+  $("gNext").disabled = gearPos === gearScans.length - 1;
+
+  const role = {TANK: UI.hist_gear_role_tank, HEALER: UI.hist_gear_role_healer, DAMAGER: UI.hist_gear_role_damager}[g.role];
+  const head = [];
+  if (g.spec_name) head.push(g.spec_name + (role ? " (" + role + ")" : ""));
+  if (isNum(g.ilvl_total) || isNum(g.ilvl_equipped)) {
+    const n = x => (isNum(x) ? valueText({unit: "number"}, x) : "–");
+    head.push(fmt(UI.hist_gear_ilvl, {total: n(g.ilvl_total), equipped: n(g.ilvl_equipped)}));
+  }
+  $("gearHead").textContent = head.length ? "· " + head.join(" · ") : "";
+
+  const now = itemsBySlot(g), before = prev ? itemsBySlot(prev) : null;
+  let changed = 0;
+  const column = slots => {
+    const col = document.createElement("div");
+    col.className = "gcol";
+    slots.forEach(s => {
+      const r = slotCard(s, now.get(s), before && before.get(s), !!before);
+      if (r.changed) changed++;
+      col.append(r.card);
+    });
+    return col;
+  };
+  const bottom = column(SLOTS_BOTTOM);
+  bottom.className = "gbottom";
+  $("gGrid").replaceChildren(column(SLOTS_LEFT), column(SLOTS_RIGHT), bottom);
+  $("gChanged").textContent = !before ? "" : (changed ? fmt(UI.hist_gear_changed, {n: changed}) : (UI.hist_gear_unchanged || ""));
+
+  // The sum of the stats the parts carry (not the gems' values, which the data does not have).
+  const sums = SECONDARY.map(k => {
+    const have = (g.items || []).filter(it => it.stats && isNum(it.stats[k]));
+    return have.length ? {key: k, value: have.reduce((t, it) => t + it.stats[k], 0)} : null;
+  }).filter(Boolean);
+  const sum = $("gSum");
+  sum.hidden = !sums.length;
+  sum.textContent = "";
+  if (sums.length) {
+    const cap = document.createElement("div");
+    cap.className = "sslot"; cap.textContent = UI.hist_gear_sum || "";
+    const row = document.createElement("div");
+    row.className = "row";
+    sums.forEach(s => {
+      const el = document.createElement("span");
+      el.textContent = ((NAMES.stat && NAMES.stat[s.key]) || s.key) + " " + num(s.value, 0);
+      row.append(el);
+    });
+    const note = document.createElement("div");
+    note.className = "sinfo"; note.textContent = UI.hist_gear_gems_note || "";
+    sum.append(cap, row, note);
+  }
+}
+
+function setupGear() {
+  gearScans = (GEAR || []).map((g, i) => (g ? i : -1)).filter(i => i >= 0);
+  if (!gearScans.length) return;                  // no equipment in the database (before schema 3): no block
+  $("gear").hidden = false;
+  $("gearTitle").textContent = UI.hist_gear_title || "";
+  $("lblCompare").textContent = UI.hist_gear_compare || "";
+  $("gPrev").title = UI.hist_gear_prev || "";
+  $("gNext").title = UI.hist_gear_next || "";
+  const sel = $("gScan");
+  for (let n = gearScans.length - 1; n >= 0; n--) {       // the newest scan first
+    const i = gearScans[n];
+    sel.add(new Option(fmt(UI.hist_gear_scan_n, {when: DATA.scans[i], n: i + 1, total: DATA.scans.length}), String(n)));
+  }
+  const several = gearScans.length > 1;
+  ["gPrev", "gNext", "gCmpBox"].forEach(id => { $(id).hidden = !several; });
+  gearPos = gearScans.length - 1;
+  sel.addEventListener("input", () => { gearPos = Number(sel.value); renderGear(); });
+  $("gPrev").addEventListener("click", () => { if (gearPos > 0) { gearPos--; renderGear(); } });
+  $("gNext").addEventListener("click", () => { if (gearPos < gearScans.length - 1) { gearPos++; renderGear(); } });
+  $("gCompare").addEventListener("input", renderGear);
+  renderGear();
 }
 
 // Version, link to the project page and copyright (values from src/app_info.py via the generator), and the

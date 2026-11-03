@@ -104,6 +104,17 @@ def test_the_item_levels_reach_the_page_data_with_their_decimals(tmp_path):
     assert "ilvlNote" in template and "UI.hist_ilvl_note" in template          # the text that tells them apart
 
 
+def test_the_character_block_shows_exactly_the_slots_that_have_a_name():
+    template = (SRC / stat_history.PAGE_TEMPLATE).read_text(encoding="utf-8")
+    shown = set()
+    for name in ("SLOTS_LEFT", "SLOTS_RIGHT", "SLOTS_BOTTOM"):
+        shown |= {int(n) for n in re.search(rf"const {name} = \[([\d, ]+)\]", template).group(1).split(",")}
+    named = {int(k) for k in i18n.names("slot_", "en")}
+    assert shown == named and 4 not in shown and 19 not in shown            # no shirt, no tabard
+    icons = {int(n) for n in re.findall(r"^\s+(\d+): '<", template, re.M)}
+    assert named <= icons                                                  # a symbol for every slot, drawn in the page
+
+
 def test_the_page_carries_the_data_and_the_plotly_bundle_once(site, payload, tmp_path):
     out = tmp_path / "out" / "verlauf" / "alice.html"
     stat_history.write_page(payload, out)
