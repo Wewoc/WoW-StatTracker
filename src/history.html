@@ -43,8 +43,9 @@
   .foot { color: var(--dim); font-size: .8rem; margin: 12px 2px 0; }
   .foot a { color: var(--dim); }
   .foot a:hover { color: var(--gold); }
-  .gear { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; margin-top: 8px; }
+  .gear { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; margin: 12px 0 8px; }
   .gear > summary { cursor: pointer; padding: 9px 12px; }
+  #gearTitle { color: var(--gold); font-size: 1.05rem; }
   .gear .gh { color: var(--dim); font-size: .8rem; margin-left: 8px; }
   .gbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); }
   .gchg { color: var(--gold); font-size: .8rem; }
@@ -76,6 +77,19 @@
 <div class="sub" id="who"></div>
 <div class="sub" id="span"></div>
 
+<details class="gear" id="gear" hidden>
+  <summary><span id="gearTitle"></span><span class="gh" id="gearHead"></span></summary>
+  <div class="gbar">
+    <button type="button" id="gPrev">◀</button>
+    <select id="gScan"></select>
+    <button type="button" id="gNext">▶</button>
+    <label id="gCmpBox"><input type="checkbox" id="gCompare" checked> <span id="lblCompare"></span></label>
+    <span class="gchg" id="gChanged"></span>
+  </div>
+  <div class="ggrid" id="gGrid"></div>
+  <div class="gsum" id="gSum" hidden></div>
+</details>
+
 <div class="bar">
   <input type="search" id="q">
   <select id="cat"></select>
@@ -97,18 +111,6 @@
     <div class="note" id="ilvlNote" hidden></div>
   </div>
 </div>
-<details class="gear" id="gear" hidden>
-  <summary><span id="gearTitle"></span><span class="gh" id="gearHead"></span></summary>
-  <div class="gbar">
-    <button type="button" id="gPrev">◀</button>
-    <select id="gScan"></select>
-    <button type="button" id="gNext">▶</button>
-    <label id="gCmpBox"><input type="checkbox" id="gCompare" checked> <span id="lblCompare"></span></label>
-    <span class="gchg" id="gChanged"></span>
-  </div>
-  <div class="ggrid" id="gGrid"></div>
-  <div class="gsum" id="gSum" hidden></div>
-</details>
 <div class="note" id="note"></div>
 <div class="foot" id="foot"></div>
 
