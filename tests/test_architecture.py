@@ -42,6 +42,7 @@ LEAF_MODULES = {
     "app_info": set(),
     "paths": {"app_info"},
     "plotly_asset": {"paths"},
+    "blp_decode": set(),
     "i18n": set(),
 }
 
