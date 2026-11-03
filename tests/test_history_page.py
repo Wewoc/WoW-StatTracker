@@ -111,6 +111,8 @@ def test_the_character_block_shows_exactly_the_slots_that_have_a_name():
         shown |= {int(n) for n in re.search(rf"const {name} = \[([\d, ]+)\]", template).group(1).split(",")}
     named = {int(k) for k in i18n.names("slot_", "en")}
     assert shown == named and 4 not in shown and 19 not in shown            # no shirt, no tabard
+    order = re.search(r"const STAT_ORDER = \[([^\]]+)\]", template).group(1)
+    assert set(re.findall(r'"(\w+)"', order)) == set(i18n.names("itemstat_", "en"))        # every named stat has its place
     icons = {int(n) for n in re.findall(r"^\s+(\d+): '<", template, re.M)}
     assert named <= icons                                                  # a symbol for every slot, drawn in the page
 

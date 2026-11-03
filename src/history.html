@@ -372,8 +372,18 @@ function emptySockets(it) {
   return Array.isArray(it.gem_ids) && isNum(it.sockets) && it.sockets > 0 ? it.gem_ids.filter(id => id === 0).length : 0;
 }
 
+// The order the stats are listed in: main stat and stamina, then secondary, tertiary, weapon and armor; a key the page does not
+// know comes last, by its raw key.
+const STAT_ORDER = ["ITEM_MOD_STRENGTH_SHORT", "ITEM_MOD_AGILITY_SHORT", "ITEM_MOD_INTELLECT_SHORT", "ITEM_MOD_STAMINA_SHORT",
+  "ITEM_MOD_CRIT_RATING_SHORT", "ITEM_MOD_HASTE_RATING_SHORT", "ITEM_MOD_MASTERY_RATING_SHORT", "ITEM_MOD_VERSATILITY",
+  "ITEM_MOD_CR_AVOIDANCE_SHORT", "ITEM_MOD_CR_SPEED_SHORT", "ITEM_MOD_CR_LIFESTEAL_SHORT", "ITEM_MOD_CR_STURDINESS_SHORT",
+  "ITEM_MOD_DAMAGE_PER_SECOND_SHORT", "RESISTANCE0_NAME"];
+
 function statLines(it) {
-  return Object.keys(it.stats || {}).filter(k => !k.startsWith("EMPTY_SOCKET")).map(k => ((NAMES.stat && NAMES.stat[k]) || k) + " " + it.stats[k]);
+  const rank = k => { const i = STAT_ORDER.indexOf(k); return i < 0 ? STAT_ORDER.length : i; };
+  return Object.keys(it.stats || {}).filter(k => !k.startsWith("EMPTY_SOCKET") && isNum(it.stats[k]))
+    .sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : 1))
+    .map(k => ((NAMES.stat && NAMES.stat[k]) || k) + " " + valueText({unit: "number"}, it.stats[k]));
 }
 
 function slotCard(slot, it, old, compare) {
@@ -394,7 +404,9 @@ function slotCard(slot, it, old, compare) {
   name.className = "sname";
   const info = document.createElement("div");
   info.className = "sinfo";
-  body.append(top, name, info);
+  const stats = document.createElement("div");
+  stats.className = "sinfo";
+  body.append(top, name, info, stats);
   card.append(ico, body);
   let changed = false;
   if (it) {
@@ -411,8 +423,7 @@ function slotCard(slot, it, old, compare) {
       if (bits.length) info.append(" · ");
       info.append(warn);
     }
-    const lines = statLines(it);
-    if (lines.length) card.title = lines.join("\n");
+    stats.textContent = statLines(it).join(" · ");
   } else {
     card.classList.add("none");
     info.textContent = UI.hist_gear_empty || "";
