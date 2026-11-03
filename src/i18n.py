@@ -525,6 +525,14 @@ _STRINGS = {
     "html_hist_level_cat": {"de": "Charakter", "en": "Character"},
     "html_hist_ilvl_equipped": {"de": "Item Level / Gegenstandsstufe (ausgerüstet)", "en": "Item level (equipped)"},
     "html_hist_ilvl_total": {"de": "Item Level / Gegenstandsstufe (gesamt)", "en": "Item level (overall)"},
+    "html_hist_ilvl_note": {
+        "de": "Item Level / Gegenstandsstufe: „ausgerüstet“ ist der Durchschnitt dessen, was der Charakter gerade trägt. "
+              "„Gesamt“ nimmt für jeden Slot das beste Teil, das er bei sich hat (angelegt oder in den Taschen), und liegt "
+              "höher, wenn dort ein besseres Teil wartet.",
+        "en": "Item level: “equipped” is the average of what the character is wearing right now. “Overall” takes the best "
+              "piece for each slot among everything the character carries (worn or in the bags), so it is higher when a "
+              "better piece is waiting there.",
+    },
     "html_hist_plotly": {"de": "Diagramme: plotly.js {version} (MIT-Lizenz)", "en": "Charts: plotly.js {version} (MIT license)"},
     "html_hist_back": {"de": "← Übersicht", "en": "← Overview"},
     "html_hist_links_title": {"de": "Verläufe", "en": "History"},

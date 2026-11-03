@@ -101,6 +101,7 @@ def test_the_item_levels_reach_the_page_data_with_their_decimals(tmp_path):
     assert [g["ilvl_total"] for g in p["gear"]] == [603.75, 603.75]
     template = (SRC / stat_history.PAGE_TEMPLATE).read_text(encoding="utf-8")
     assert '"ilvl_equipped"' in template and '"ilvl_total"' in template        # the fields the template draws
+    assert "ilvlNote" in template and "UI.hist_ilvl_note" in template          # the text that tells them apart
 
 
 def test_the_page_carries_the_data_and_the_plotly_bundle_once(site, payload, tmp_path):

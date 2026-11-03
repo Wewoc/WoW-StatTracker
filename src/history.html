@@ -70,6 +70,7 @@
     <div class="hint" id="hint" hidden></div>
     <div class="note" id="skipped" hidden></div>
     <div class="note" id="oneScan" hidden></div>
+    <div class="note" id="ilvlNote" hidden></div>
   </div>
 </div>
 <div class="note" id="note"></div>
@@ -143,6 +144,7 @@ function init() {
   $("lblChanged").textContent = UI.hist_only_changed || "";
   $("lead").textContent = fmt(UI.hist_pick, {n: MAX_LINES});
   $("note").textContent = UI.hist_note || "";
+  $("ilvlNote").textContent = UI.hist_ilvl_note || "";
   const sel = $("cat");
   sel.add(new Option(UI.all_cats || "", ""));
   [...new Set(ALL.map(s => s.cat))].sort().forEach(k => sel.add(new Option(k, k)));
@@ -231,6 +233,7 @@ function singleScanRange() {
 function renderChart() {
   const picked = [...chosen].map(id => BY_ID.get(id)).filter(Boolean);
   renderChips(picked);
+  $("ilvlNote").hidden = !chosen.has("ilvl_total");   // what "overall" means, only while that line is drawn
   const index = $("mode").value === "index";
   const skipped = [];
   const traces = [];
