@@ -28,6 +28,17 @@ def scan(at, stats, played=None, level=80, race=None):
     return c
 
 
+def gear_scan(at, items, ilvl=(600.5, 598.25), spec=(250, "Blood", "TANK")):
+    """A scan with the parts of data contract 4: specialization, item level and equipped items ({slot: item})."""
+    c = scan(at, {1: "1"})
+    c.update(specID=spec[0], specName=spec[1], role=spec[2], ilvlTotal=ilvl[0], ilvlEquipped=ilvl[1], gear=items)
+    return c
+
+
+def item(item_id, name, ilvl, **extra):
+    return {"itemID": item_id, "name": name, "quality": 4, "ilvl": ilvl, "iconID": item_id + 1000, **extra}
+
+
 def make_db(path, scans, key=KEY):
     """A database made the way the importer makes it: one import per scan, in the given order."""
     conn = stat_parser.init_db(path)
@@ -188,4 +199,64 @@ def test_a_database_from_before_schema_2_is_readable_without_migrating_it(tmp_pa
     assert h["char"] == {"key": KEY, "class": "Mage", "level": 80, "faction": "Alliance",
                          "class_file": None, "race": None, "race_file": None}
     assert by_id(h)[1]["v"] == [1234]
+    assert h["gear"] is None                        # no specialization columns, no gear table: no gear block
     assert digest(db) == before
+
+
+def test_a_database_at_schema_2_has_no_gear_block(tmp_path):
+    db = make_db(tmp_path / "x.db", [scan("2026-10-01 10:00:00", {1: "1"})])
+    conn = sqlite3.connect(db)
+    for table in ("scan_gear", "scan_reputation", "rep_defs"):
+        conn.execute(f"DROP TABLE {table}")
+    for column in stat_parser.SCAN_COLUMNS_V3:
+        conn.execute(f"ALTER TABLE scans DROP COLUMN {column[0]}")
+    conn.execute("PRAGMA user_version = 2")
+    conn.commit()
+    conn.close()
+    h = history(db)
+    assert h["gear"] is None and by_id(h)[1]["v"] == [1]
+
+
+def test_gear_comes_per_scan_oldest_first_with_the_items_by_slot(tmp_path):
+    db = make_db(tmp_path / "x.db", [
+        gear_scan("2026-10-02 10:00:00", {10: item(2, "Gloves", 610), 1: item(1, "Helm", 620,
+                  enchantText="Enchant X", sockets=1, gems={1: 240870}, stats={"ITEM_MOD_CRIT_RATING_SHORT": 120},
+                  upgrade={"trackID": 972, "track": "Veteran", "level": 2, "max": 6})}, ilvl=(605.0, 603.5)),
+        gear_scan("2026-10-01 10:00:00", {1: item(1, "Old helm", 600)})])
+    gear = history(db)["gear"]
+    assert [g["ilvl_total"] for g in gear] == [600.5, 605.0]                      # same order as "scans"
+    assert (gear[1]["spec_id"], gear[1]["spec_name"], gear[1]["role"], gear[1]["ilvl_equipped"]) == (250, "Blood", "TANK", 603.5)
+    assert [i["slot"] for i in gear[1]["items"]] == [1, 10] and [i["name"] for i in gear[0]["items"]] == ["Old helm"]
+    helm = gear[1]["items"][0]
+    assert (helm["item_id"], helm["quality"], helm["ilvl"], helm["icon_id"]) == (1, 4, 620, 1001)
+    assert (helm["enchant_text"], helm["sockets"], helm["gem_ids"]) == ("Enchant X", 1, [240870])
+    assert helm["stats"] == {"ITEM_MOD_CRIT_RATING_SHORT": 120}
+    assert (helm["upg_track_id"], helm["upg_track"], helm["upg_level"], helm["upg_max"]) == (972, "Veteran", 2, 6)
+    assert gear[1]["items"][1]["gem_ids"] is None and gear[1]["items"][1]["stats"] is None      # not given: None
+
+
+def test_a_scan_without_gear_data_is_none_and_so_is_a_history_without_any(tmp_path):
+    db = make_db(tmp_path / "x.db", [scan("2026-10-01 10:00:00", {1: "1"}),
+                                     gear_scan("2026-10-02 10:00:00", {1: item(1, "Helm", 620)})])
+    gear = history(db)["gear"]
+    assert gear[0] is None and gear[1]["items"][0]["name"] == "Helm"
+    plain = make_db(tmp_path / "y.db", [scan("2026-10-01 10:00:00", {1: "1"}), scan("2026-10-02 10:00:00", {1: "2"})])
+    assert history(plain)["gear"] is None                                         # schema 3, but nothing collected
+
+
+def test_a_scan_with_only_a_specialization_still_has_an_entry(tmp_path):
+    c = scan("2026-10-01 10:00:00", {1: "1"})
+    c.update(specID=62, specName="Arcane", role="DAMAGER")
+    entry = history(make_db(tmp_path / "x.db", [c]))["gear"][0]
+    assert (entry["spec_id"], entry["items"], entry["ilvl_total"]) == (62, [], None)
+
+
+def test_unreadable_json_in_a_gear_row_leaves_only_that_field_empty(tmp_path):
+    db = make_db(tmp_path / "x.db", [gear_scan("2026-10-01 10:00:00", {1: item(1, "Helm", 620, gems={1: 5},
+                                                                          stats={"ITEM_MOD_CRIT_RATING_SHORT": 1})})])
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE scan_gear SET stats='{broken', gem_ids='{\"a\": 1}'")        # not JSON / not a list
+    conn.commit()
+    conn.close()
+    helm = history(db)["gear"][0]["items"][0]
+    assert helm["stats"] is None and helm["gem_ids"] is None and helm["name"] == "Helm"
