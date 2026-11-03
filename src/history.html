@@ -130,6 +130,12 @@ function init() {
   $("span").textContent = fmt(UI.hist_sub, {scans: DATA.scans.length, first: DATA.scans[0], last: DATA.scans[DATA.scans.length - 1]});
 
   if ((DATA.level || []).some(isNum)) ALL.push({id: "level", name: UI.hist_level || "", cat: UI.hist_level_cat || "", unit: "number", v: DATA.level});
+  // The average item levels of the scans (scans.ilvl_*, since schema 3) are lines of their own, next to the level;
+  // scans without one leave a gap. The decimals stay (valueText shows them).
+  [["ilvl_equipped", UI.hist_ilvl_equipped], ["ilvl_total", UI.hist_ilvl_total]].forEach(([field, name]) => {
+    const v = (DATA.gear || []).map(g => (g ? g[field] : null));
+    if (v.some(isNum)) ALL.push({id: field, name: name || "", cat: UI.hist_level_cat || "", unit: "number", v: v});
+  });
   ALL = ALL.concat(DATA.stats);
   ALL.forEach(s => BY_ID.set(s.id, s));
 

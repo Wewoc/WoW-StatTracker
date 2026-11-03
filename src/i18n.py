@@ -523,6 +523,8 @@ _STRINGS = {
     },
     "html_hist_level": {"de": "Level", "en": "Level"},
     "html_hist_level_cat": {"de": "Charakter", "en": "Character"},
+    "html_hist_ilvl_equipped": {"de": "Itemlevel (ausgerüstet)", "en": "Item level (equipped)"},
+    "html_hist_ilvl_total": {"de": "Itemlevel (gesamt)", "en": "Item level (overall)"},
     "html_hist_plotly": {"de": "Diagramme: plotly.js {version} (MIT-Lizenz)", "en": "Charts: plotly.js {version} (MIT license)"},
     "html_hist_back": {"de": "← Übersicht", "en": "← Overview"},
     "html_hist_links_title": {"de": "Verläufe", "en": "History"},
