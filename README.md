@@ -25,7 +25,7 @@ Repeat step 5/6 whenever you want fresh numbers. Scans that were read stay in th
 
 The addon also records each character's class (as a language-independent name) and race with every scan. Scans taken with an older addon lack this data and it is never filled in afterwards: those characters are listed under "unknown" for class and race in the Groups block - nothing is guessed. Run *1. Install / update addon* and scan the character again to get it.
 
-Each scan also records the specialization, the average item level, the equipped items (with enchantment, upgrade level and sockets) and the reputation list; they are stored in the database. So far only the reputation is shown: the collapsible *Reputation* block of the stats page lists every faction of the ticked characters in the order of the game, with its level and a bar to the next one (friendships, renown and paragon included; account-wide reputation appears once). Scans taken with an older addon have none of this and it is never filled in afterwards: those characters are named under the block as without reputation data - scan them again with the updated addon.
+Each scan also records the specialization, the average item level, the equipped items (with enchantment, upgrade level and sockets) and the reputation list; they are stored in the database. The equipment is shown on the history page of the character (below); the reputation in the collapsible *Reputation* block of the stats page, which lists every faction of the ticked characters in the order of the game, with its level and a bar to the next one (friendships, renown and paragon included; account-wide reputation appears once). Scans taken with an older addon have none of this and it is never filled in afterwards: those characters are named under the block as without reputation data - scan them again with the updated addon.
 
 The stats page shows race, class and level under each name. Its collapsible *Groups* block sums up the ticked characters by class, race, faction or realm: number of characters, average level, played time and the rates per hour. Any other statistic with a number can be added as a column (sum, average or maximum). A preset saves the grouping, the figures and the added statistics under a name; it is kept in your browser, not in the page. The Excel export has no groups.
 
@@ -33,7 +33,11 @@ The stats page shows race, class and level under each name. Its collapsible *Gro
 
 Every character with at least two scans also gets a **history page**, linked from the *History* block of the stats page: pick up to ten statistics and see them as lines over your scans, as absolute values or as an index (first value = 100). A scan without a number leaves a gap, nothing is filled in. *2. Read data* makes the pages (only for characters with a new scan) and needs no internet; the links work as long as the `history` folder lies next to the stats page.
 
+Two more lines are on offer there: the equipped and the overall item level of every scan (the overall one takes the best piece of each slot among everything the character carries, so it is higher when a better piece waits in the bags). Above the chart a collapsible *Character* block shows the equipment of one scan, arranged like the character screen of the game: for every slot the item with its item level, upgrade track, enchantment, stats and a note on an empty gem socket, plus the sum of the secondary stats (the values of inserted gems are not in the stored data and are not part of it). You can pick any scan and compare it with the previous one; slots that changed are marked. The shirt and the tabard are left out, and the symbols are drawn by the page: the item pictures of the game are not shown.
+
 ![The history page of one character: four statistics shown as an index over twelve scans, with the list of all statistics on the left.](docs/images/history-en.png)
+
+![The Character block of the history page: sixteen equipment slots with item, item level, upgrade track, enchantment and stats; slots changed since the previous scan have a gold edge.](docs/images/character-en.png)
 
 ## Game versions
 

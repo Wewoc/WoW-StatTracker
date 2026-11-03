@@ -523,6 +523,41 @@ _STRINGS = {
     },
     "html_hist_level": {"de": "Level", "en": "Level"},
     "html_hist_level_cat": {"de": "Charakter", "en": "Character"},
+    "html_hist_ilvl_equipped": {"de": "Item Level / Gegenstandsstufe (ausgerüstet)", "en": "Item level (equipped)"},
+    "html_hist_ilvl_total": {"de": "Item Level / Gegenstandsstufe (gesamt)", "en": "Item level (overall)"},
+    "html_hist_ilvl_note": {
+        "de": "Item Level / Gegenstandsstufe: „ausgerüstet“ ist der Durchschnitt dessen, was der Charakter gerade trägt. "
+              "„Gesamt“ nimmt für jeden Slot das beste Teil, das er bei sich hat (angelegt oder in den Taschen), und liegt "
+              "höher, wenn dort ein besseres Teil wartet.",
+        "en": "Item level: “equipped” is the average of what the character is wearing right now. “Overall” takes the best "
+              "piece for each slot among everything the character carries (worn or in the bags), so it is higher when a "
+              "better piece is waiting there.",
+    },
+    "html_hist_gear_title": {"de": "Charakter", "en": "Character"},
+    "html_hist_gear_ilvl": {
+        "de": "Item Level / Gegenstandsstufe {total} (ausgerüstet {equipped})",
+        "en": "Item level {total} (equipped {equipped})",
+    },
+    "html_hist_gear_role_tank": {"de": "Tank", "en": "Tank"},
+    "html_hist_gear_role_healer": {"de": "Heilung", "en": "Healer"},
+    "html_hist_gear_role_damager": {"de": "Schaden", "en": "Damage"},
+    "html_hist_gear_prev": {"de": "Vorheriger Scan", "en": "Previous scan"},
+    "html_hist_gear_next": {"de": "Nächster Scan", "en": "Next scan"},
+    "html_hist_gear_scan_n": {"de": "{when} (Scan {n} von {total})", "en": "{when} (scan {n} of {total})"},
+    "html_hist_gear_compare": {"de": "mit dem vorigen Scan vergleichen", "en": "compare with the previous scan"},
+    "html_hist_gear_changed": {"de": "Geändert: {n}", "en": "Changed: {n}"},
+    "html_hist_gear_unchanged": {"de": "Keine Änderung zum vorigen Scan", "en": "No change since the previous scan"},
+    "html_hist_gear_empty": {"de": "leer", "en": "empty"},
+    "html_hist_gear_socket_empty": {"de": "Sockel leer", "en": "Empty socket"},
+    "html_hist_gear_sockets_empty": {"de": "{n} Sockel leer", "en": "{n} empty sockets"},
+    "html_hist_gear_sum": {
+        "de": "Summe der Werte der angelegten Teile",
+        "en": "Sum of the stats of the equipped items",
+    },
+    "html_hist_gear_gems_note": {
+        "de": "Die Werte eingesetzter Edelsteine stehen nicht in den gespeicherten Daten und fehlen in der Summe.",
+        "en": "The stats of inserted gems are not in the stored data and are missing from the sum.",
+    },
     "html_hist_plotly": {"de": "Diagramme: plotly.js {version} (MIT-Lizenz)", "en": "Charts: plotly.js {version} (MIT license)"},
     "html_hist_back": {"de": "← Übersicht", "en": "← Overview"},
     "html_hist_links_title": {"de": "Verläufe", "en": "History"},
@@ -622,6 +657,51 @@ _STRINGS = {
     "standing_6": {"de": "Wohlwollend", "en": "Honored"},
     "standing_7": {"de": "Respektvoll", "en": "Revered"},
     "standing_8": {"de": "Ehrfürchtig", "en": "Exalted"},
+
+    # ------------------------------------------- equipment (history page): slots, item stats, upgrade tracks
+    # Slot names are the game's own (global strings HEADSLOT ... SECONDARYHANDSLOT), keyed by the inventory slot
+    # number; the shirt (4) and the tabard (19) are not shown, so they have no name. Two fingers and two trinkets are
+    # numbered here. German "Taille" and "Schildhand" are the client's words, not "Gürtel" and "Nebenhand".
+    "slot_1": {"de": "Kopf", "en": "Head"},
+    "slot_2": {"de": "Hals", "en": "Neck"},
+    "slot_3": {"de": "Schulter", "en": "Shoulders"},
+    "slot_5": {"de": "Brust", "en": "Chest"},
+    "slot_6": {"de": "Taille", "en": "Waist"},
+    "slot_7": {"de": "Beine", "en": "Legs"},
+    "slot_8": {"de": "Füße", "en": "Feet"},
+    "slot_9": {"de": "Handgelenk", "en": "Wrist"},
+    "slot_10": {"de": "Hände", "en": "Hands"},
+    "slot_11": {"de": "Finger 1", "en": "Finger 1"},
+    "slot_12": {"de": "Finger 2", "en": "Finger 2"},
+    "slot_13": {"de": "Schmuck 1", "en": "Trinket 1"},
+    "slot_14": {"de": "Schmuck 2", "en": "Trinket 2"},
+    "slot_15": {"de": "Rücken", "en": "Back"},
+    "slot_16": {"de": "Waffenhand", "en": "Main Hand"},
+    "slot_17": {"de": "Schildhand", "en": "Off Hand"},
+    # Item stats, keyed by the raw key the addon stores (GetItemStats). The texts are the game's global strings of the
+    # same name (ITEM_MOD_*_SHORT, RESISTANCE0_NAME), compared on 2026-11-03 with the German and English client texts of
+    # the mirror github.com/Ketho/BlizzardInterfaceResources (state 2026-10-22); not compared with a running client.
+    # A key without a name is shown with the raw key.
+    "itemstat_ITEM_MOD_STRENGTH_SHORT": {"de": "Stärke", "en": "Strength"},
+    "itemstat_ITEM_MOD_AGILITY_SHORT": {"de": "Beweglichkeit", "en": "Agility"},
+    "itemstat_ITEM_MOD_INTELLECT_SHORT": {"de": "Intelligenz", "en": "Intellect"},
+    "itemstat_ITEM_MOD_STAMINA_SHORT": {"de": "Ausdauer", "en": "Stamina"},
+    "itemstat_ITEM_MOD_CRIT_RATING_SHORT": {"de": "Kritischer Trefferwert", "en": "Critical Strike"},
+    "itemstat_ITEM_MOD_HASTE_RATING_SHORT": {"de": "Tempo", "en": "Haste"},
+    "itemstat_ITEM_MOD_MASTERY_RATING_SHORT": {"de": "Meisterschaft", "en": "Mastery"},
+    "itemstat_ITEM_MOD_VERSATILITY": {"de": "Vielseitigkeit", "en": "Versatility"},
+    "itemstat_ITEM_MOD_CR_AVOIDANCE_SHORT": {"de": "Vermeidung", "en": "Avoidance"},
+    "itemstat_ITEM_MOD_CR_SPEED_SHORT": {"de": "Bewegungsgeschwindigkeit", "en": "Speed"},
+    "itemstat_ITEM_MOD_CR_STURDINESS_SHORT": {"de": "Unzerstörbar", "en": "Indestructible"},
+    "itemstat_ITEM_MOD_CR_LIFESTEAL_SHORT": {"de": "Lebensraub", "en": "Leech"},
+    "itemstat_ITEM_MOD_DAMAGE_PER_SECOND_SHORT": {"de": "Schaden pro Sekunde", "en": "Damage Per Second"},
+    "itemstat_RESISTANCE0_NAME": {"de": "Rüstung", "en": "Armor"},
+    # Upgrade tracks, keyed by the track id (upgrade.trackStringID). Only the ids seen in real data (971 to 973); the German
+    # names match the item tooltips on wowhead.com/de, the English ones are from knowledge. Another track is shown with
+    # the text the game stored with the scan.
+    "track_971": {"de": "Abenteurer", "en": "Adventurer"},
+    "track_972": {"de": "Veteran", "en": "Veteran"},
+    "track_973": {"de": "Champion", "en": "Champion"},
 }
 
 

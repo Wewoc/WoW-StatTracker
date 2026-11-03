@@ -72,6 +72,9 @@ def test_payload_carries_the_history_the_texts_and_the_plotly_version(payload, l
     assert p["char"]["key"] == KEY and p["scans"] == ["2026-10-01 10:00:00", "2026-10-02 10:00:00"]
     assert p["ui"]["hist_title"] == i18n.raw("html_hist_title", lang)
     assert p["app"]["version"]
+    assert p["names"]["slot"]["1"] == i18n.raw("slot_1", lang)
+    assert p["names"]["stat"]["ITEM_MOD_VERSATILITY"] == i18n.raw("itemstat_ITEM_MOD_VERSATILITY", lang)
+    assert p["names"]["track"]["972"] == i18n.raw("track_972", lang)
 
 
 def test_an_unknown_character_has_no_payload(tmp_path, payload):
@@ -80,6 +83,38 @@ def test_an_unknown_character_has_no_payload(tmp_path, payload):
         assert stat_history.build_page_payload(ro, "Nobody-Realm") is None
     finally:
         ro.close()
+
+
+def test_the_item_levels_reach_the_page_data_with_their_decimals(tmp_path):
+    conn = stat_parser.init_db(tmp_path / "ilvl.db")
+    for at, equipped in (("2026-10-01 10:00:00", 598.25), ("2026-10-02 10:00:00", 601.5)):
+        c = {"scannedAt": at, "scannedEpoch": 1, "class": "Mage", "level": 80, "faction": "Alliance", "stats": {1: "1"},
+             "ilvlTotal": 603.75, "ilvlEquipped": equipped}
+        stat_parser.import_data(conn, {"meta": META, "chars": {KEY: c}})
+    conn.close()
+    ro = stat_history.open_readonly(tmp_path / "ilvl.db")
+    try:
+        p = stat_history.build_page_payload(ro, KEY)
+    finally:
+        ro.close()
+    assert [g["ilvl_equipped"] for g in p["gear"]] == [598.25, 601.5]       # the database keeps them, the page too
+    assert [g["ilvl_total"] for g in p["gear"]] == [603.75, 603.75]
+    template = (SRC / stat_history.PAGE_TEMPLATE).read_text(encoding="utf-8")
+    assert '"ilvl_equipped"' in template and '"ilvl_total"' in template        # the fields the template draws
+    assert "ilvlNote" in template and "UI.hist_ilvl_note" in template          # the text that tells them apart
+
+
+def test_the_character_block_shows_exactly_the_slots_that_have_a_name():
+    template = (SRC / stat_history.PAGE_TEMPLATE).read_text(encoding="utf-8")
+    shown = set()
+    for name in ("SLOTS_LEFT", "SLOTS_RIGHT", "SLOTS_BOTTOM"):
+        shown |= {int(n) for n in re.search(rf"const {name} = \[([\d, ]+)\]", template).group(1).split(",")}
+    named = {int(k) for k in i18n.names("slot_", "en")}
+    assert shown == named and 4 not in shown and 19 not in shown            # no shirt, no tabard
+    order = re.search(r"const STAT_ORDER = \[([^\]]+)\]", template).group(1)
+    assert set(re.findall(r'"(\w+)"', order)) == set(i18n.names("itemstat_", "en"))        # every named stat has its place
+    icons = {int(n) for n in re.findall(r"^\s+(\d+): '<", template, re.M)}
+    assert named <= icons                                                  # a symbol for every slot, drawn in the page
 
 
 def test_the_page_carries_the_data_and_the_plotly_bundle_once(site, payload, tmp_path):

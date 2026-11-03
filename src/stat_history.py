@@ -7,7 +7,8 @@
 #
 # Reads the statistics database, never writes it: open_readonly() opens it read-only (no
 # init_db, so no backup, no migration, no new file) after stat_parser.check_schema. Raw values
-# as stored (value_num), no rates, no reset detection, no smoothing.
+# as stored (value_num), no rates, no reset detection, no smoothing. Since schema 3 it also hands
+# over the specialization, item level and equipped items of every scan (scan_gear), as stored.
 # write_page() puts the data and the pinned plotly.js (plotly_asset) into history.html and
 # writes that one file; write_pages() decides which characters need a new page (a new scan, no
 # page yet, or pages from another program version). Both are the only writers of the history pages.
@@ -33,6 +34,7 @@ import stat_parser
 COIN_TEXT = re.compile(r"(?:\d[\d.,]*\s*[gsc]\s*)+")
 
 RACE_COLUMNS = ("class_file", "race", "race_file")     # scans.* since schema 2
+SPEC_COLUMNS = tuple(name for name, _kind in stat_parser.SCAN_COLUMNS_V3)      # scans.* since schema 3
 
 PAGE_TEMPLATE = "history.html"                  # bundled next to template.html
 DATA_MARKER = "/*__DATA__*/null"                # replaced by the page data (JSON)
@@ -69,27 +71,67 @@ def _unit(stat_id, all_coin):
     return "gold" if all_coin else "number"      # gold values are copper
 
 
+def _json_of(text, kind):
+    """The JSON text of a gear column as `kind` (list or dict), or None if it is missing or not that."""
+    if text is None:
+        return None
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return None
+    return value if isinstance(value, kind) else None
+
+
+def _gear_history(conn, char_key, scans, position, spec):
+    """The specialization, item level and equipped items of every scan (see build_history), or None if the
+    database has no such part (schema 2 or older) or no scan of this character has any. `scans` are the
+    rows of build_history, whose last len(spec) columns are the `spec` columns."""
+    if not spec:
+        return None
+    have = {r[1] for r in conn.execute("PRAGMA table_info(scan_gear)")}
+    if not set(stat_parser.GEAR_COLUMNS) <= have:
+        return None
+    entries = [{**dict(zip(spec, row[-len(spec):])), "items": []} for row in scans]
+    columns = ", ".join(f"g.{c}" for c in stat_parser.GEAR_COLUMNS)
+    for scan_id, *values in conn.execute(
+            f"SELECT g.scan_id, {columns} FROM scan_gear g JOIN scans s ON s.scan_id = g.scan_id "
+            "WHERE s.char_key=? ORDER BY g.scan_id, g.slot", (char_key,)):
+        item = dict(zip(stat_parser.GEAR_COLUMNS, values))
+        item["gem_ids"], item["stats"] = _json_of(item["gem_ids"], list), _json_of(item["stats"], dict)
+        entries[position[scan_id]]["items"].append(item)
+    entries = [e if e["items"] or any(e[c] is not None for c in spec) else None for e in entries]
+    return entries if any(entries) else None
+
+
 def build_history(conn, char_key):
     """The history of one character, or None if the database has no scan of it:
         {"char":  {key, class, level, faction, class_file, race, race_file}   latest scan; the race
                                                                                fields are None before schema 2
          "scans": [scanned_at, ...]                     oldest first, as stored
          "level": [level, ...]                          one per scan
-         "stats": [{id, name, cat, unit, v}, ...]}      sorted like the stats page; v has one entry per
+         "stats": [{id, name, cat, unit, v}, ...]       sorted like the stats page; v has one entry per
                                                         scan: value_num, or None where the scan has no
                                                         number (missing, or text such as '--')
+         "gear":  [entry or None, ...] or None}         one per scan: {spec_id, spec_name, role, ilvl_total,
+                                                        ilvl_equipped, items: [{slot, item_id, name, quality,
+                                                        ilvl, icon_id, enchant_id, enchant_text, upg_track_id,
+                                                        upg_track, upg_level, upg_max, sockets, gem_ids, stats}]}
+                                                        with the items by slot (the shirt included); None for a
+                                                        scan without such data, and as a whole where the database
+                                                        has no such part (before schema 3) or no scan has any
     Only statistics with at least one number for this character are listed. unit is "seconds" for
     played time, "gold" if every number came from a coin text, otherwise "number". Names of the played
     time statistics are in the current language."""
     have = {r[1] for r in conn.execute("PRAGMA table_info(scans)")}
     race = [c for c in RACE_COLUMNS if c in have]
-    columns = ", ".join(["scan_id", "scanned_at", "class", "level", "faction", *race])
-    scans = conn.execute(f"SELECT {columns} FROM scans WHERE char_key=? ORDER BY scanned_at, scan_id",
+    spec = list(SPEC_COLUMNS) if all(c in have for c in SPEC_COLUMNS) else []
+    names = ["scan_id", "scanned_at", "class", "level", "faction", *race, *spec]
+    scans = conn.execute(f"SELECT {', '.join(names)} FROM scans WHERE char_key=? ORDER BY scanned_at, scan_id",
                          (char_key,)).fetchall()
     if not scans:
         return None
     position = {row[0]: i for i, row in enumerate(scans)}
-    latest = dict(zip(["scan_id", "scanned_at", "class", "level", "faction", *race], scans[-1]))
+    latest = dict(zip(names, scans[-1]))
 
     defs = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT stat_id,name,category FROM stat_defs")}
     for sid, label in stat_parser.played_labels().items():
@@ -113,11 +155,13 @@ def build_history(conn, char_key):
                      "faction": latest["faction"], **{c: latest.get(c) for c in RACE_COLUMNS}},
             "scans": [row[1] for row in scans],
             "level": [row[3] for row in scans],
-            "stats": stats}
+            "stats": stats,
+            "gear": _gear_history(conn, char_key, scans, position, spec)}
 
 
 def build_page_payload(conn, char_key, back=None):
-    """build_history() plus what the page needs besides the numbers: texts in the current language,
+    """build_history() plus what the page needs besides the numbers: texts in the current language
+    (`ui`, and `names` of the equipment: slots by number, item stats by raw key, upgrade tracks by id),
     the program data for the footer, the plotly.js version, and `back`, the link to the stats page
     (relative, already URL-quoted; None = no link). None if the database has no scan of the
     character."""
@@ -129,6 +173,8 @@ def build_page_payload(conn, char_key, back=None):
             "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "lang": lang,
             "ui": i18n.html_strings(lang),
+            "names": {"slot": i18n.names("slot_", lang), "stat": i18n.names("itemstat_", lang),
+                      "track": i18n.names("track_", lang)},
             "app": {"version": app_info.APP_VERSION, "copyright": app_info.COPYRIGHT,
                     "license": app_info.LICENSE_NAME, "site": app_info.SITE_URL},
             "plotly": plotly_asset.VERSION,

@@ -81,8 +81,9 @@ For the history page add `--snapshots 12`: every character then gets 12 scans th
 last one is exactly the single scan of the default run, so the pictures above stay the same), the
 import writes `<folder>/<lang>/history/` and the stats page gets its *History* block. The picture of
 the history page is `history/shot-history.html` (one character, four statistics as an index), 1280 x 840
-at scale 1.5, saved as `history-en.png` / `history-de.png`. It needs plotly.js: run
-`python compiler/plotly_fetch.py` once before.
+at scale 1.5, saved as `history-en.png` / `history-de.png`. The same page with the *Character* block
+opened is `history/shot-character.html`, saved as `character-en.png` / `character-de.png` (1280 x 900 at
+scale 1.5). It needs plotly.js: run `python compiler/plotly_fetch.py` once before.
 
 ## Layout
 

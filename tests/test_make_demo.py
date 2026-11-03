@@ -17,6 +17,7 @@ import paths
 import plotly_asset
 import stat_derive
 import stat_history
+import stat_parser
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 TOOL = Path(__file__).resolve().parent.parent / "tools" / "make_demo.py"
@@ -81,6 +82,44 @@ def test_demo_reputation_is_invented_and_leaves_the_last_character_without(tmp_p
     assert len({len(entries) for entries in rep["chars"].values()}) > 1  # the others differ per character
     kinds = {e.get("kind") for entries in rep["chars"].values() for e in entries}
     assert kinds == {None, "std", "friend", "major"} and any("par" in e for es in rep["chars"].values() for e in es)
+
+
+def _demo_scans(lang, k=None, snapshots=1):
+    """{char key: read_scan result} of the demo file, read the way the importer reads it."""
+    db = stat_parser.LuaReader(make_demo.build_lua(lang, k, snapshots)).parse_file()["StatTrackerDB"]
+    return {key: stat_parser.read_scan(c) for key, c in db["chars"].items()}
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_demo_gear_is_complete_and_leaves_the_last_character_without(lang):
+    scans = _demo_scans(lang)
+    last = make_demo.CHARS[-1]["key"]
+    assert scans[last]["gear"] == [] and scans[last]["spec_id"] is None and scans[last]["ilvl_equipped"] is None
+    roles = set()
+    for key, scan in scans.items():
+        if key == last:
+            continue
+        assert scan["skipped"] == 0 and len(scan["gear"]) == len(make_demo.GEAR_SLOTS), key
+        assert all(g["name"] and g["quality"] and g["ilvl"] and g["stats"] for g in scan["gear"]), key
+        assert scan["spec_name"] and scan["ilvl_equipped"] and scan["ilvl_total"] >= scan["ilvl_equipped"], key
+        roles.add(scan["role"])
+    assert roles == {"TANK", "HEALER", "DAMAGER"}
+    rings = [g for s in scans.values() for g in s["gear"] if g["slot"] in (11, 12)]
+    assert rings and all(g["sockets"] == 1 and g["gem_ids"] for g in rings)         # a socket with a gem, as in the game
+    assert any(g["upg_track"] and g["enchant_text"] for s in scans.values() for g in s["gear"])
+
+
+def test_demo_gear_of_the_older_scans_differs_for_a_comparison():
+    old, final = _demo_scans("en", 0, 10)["Mirella-Dawnspire"], _demo_scans("en")["Mirella-Dawnspire"]
+    by = lambda scan: {g["slot"]: g for g in scan["gear"]}
+    assert 17 not in by(old) and 17 in by(final)                                    # no off hand yet
+    assert by(old)[13]["name"] != by(final)[13]["name"] and by(old)[13]["item_id"] != by(final)[13]["item_id"]
+    assert by(old)[11]["enchant_text"] is None and by(final)[11]["enchant_text"]    # the ring was enchanted later
+    assert by(old)[3]["ilvl"] == by(final)[3]["ilvl"] and by(old)[6]["ilvl"] < by(final)[6]["ilvl"]   # only the even slots rose
+    assert old["ilvl_equipped"] < final["ilvl_equipped"]
+    assert any(g["gem_ids"] == [0] for g in old["gear"])                           # one ring still without a gem
+    assert _demo_scans("de")["Mirella-Dawnspire"]["spec_name"] == "Frost"
+    assert _demo_scans("de")["Selwyn-Moonvale"]["spec_name"] != _demo_scans("en")["Selwyn-Moonvale"]["spec_name"]
 
 
 def test_demo_is_deterministic():
@@ -163,6 +202,14 @@ def test_the_history_runs_up_in_time_and_no_counter_falls(tmp_path, fake_plotly)
             assert numbers == sorted(numbers), (demo["key"], stat["name"])
 
 
+def test_the_history_pages_carry_the_demo_gear_except_for_the_last_character(tmp_path, fake_plotly):
+    folder = make_demo.make(tmp_path / "out", "en", 6)
+    mirella = _history_of(folder, make_demo.HISTORY_CHAR)["gear"]
+    assert len(mirella) == 6 and all(entry and len(entry["items"]) >= 15 for entry in mirella)
+    assert mirella[0]["ilvl_equipped"] < mirella[-1]["ilvl_equipped"] and mirella[-1]["spec_name"] == "Frost"
+    assert _history_of(folder, make_demo.CHARS[-1]["key"])["gear"] is None
+
+
 def test_the_lines_of_one_character_do_not_grow_alike(tmp_path, fake_plotly):
     folder = make_demo.make(tmp_path / "out", "en", 8)
     stats = {s["id"]: s["v"] for s in _history_of(folder, make_demo.HISTORY_CHAR)["stats"]}
@@ -178,6 +225,9 @@ def test_the_history_screenshot_page_is_a_copy_with_the_picks(tmp_path, fake_plo
     shot = (folder / "history" / "shot-history.html").read_text(encoding="utf-8")
     assert make_demo.HISTORY_JS not in real and make_demo.HISTORY_JS in shot
     assert shot.replace(make_demo.HISTORY_JS + "\n", "") == real
+    character = (folder / "history" / "shot-character.html").read_text(encoding="utf-8")
+    assert make_demo.CHARACTER_JS in character and make_demo.HISTORY_JS not in character
+    assert character.replace(make_demo.CHARACTER_JS + "\n", "") == real              # a copy, only the opening added
 
 
 def test_running_again_starts_from_scratch(tmp_path, fake_plotly):

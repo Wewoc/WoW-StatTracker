@@ -10,7 +10,7 @@ import pytest
 import i18n
 
 SRC = Path(__file__).resolve().parent.parent / "src"
-NAME_PREFIXES = ("class_", "race_", "standing_")
+NAME_PREFIXES = ("class_", "race_", "standing_", "slot_", "itemstat_", "track_")
 TEMPLATES = ("template.html", "history.html")          # the pages whose texts come from the html_* keys
 
 
@@ -62,7 +62,7 @@ def test_every_key_is_used_somewhere():
         elif key.startswith("unit_"):
             if 'f"unit_{' not in code:
                 unused.append(key)
-        elif key.startswith(NAME_PREFIXES):             # class_* / race_* / standing_*: read through i18n.names(prefix, lang)
+        elif key.startswith(NAME_PREFIXES):             # class_* / race_* / ...: read through i18n.names(prefix, lang)
             prefix = next(p for p in NAME_PREFIXES if key.startswith(p))
             if f'names("{prefix}"' not in code:
                 unused.append(key)
@@ -114,6 +114,26 @@ def test_a_unit_stays_with_its_number_in_the_group_table(key):
     for lang in ("de", "en"):
         text = i18n.raw(key, lang)
         assert text.startswith("{n} ") and " " not in text, (key, lang)      # no-break space, no plain space
+
+
+SHOWN_SLOTS = {1, 2, 3, *range(5, 18)}                   # the history page leaves out the shirt (4) and the tabard (19)
+
+
+@pytest.mark.parametrize("lang", ["de", "en"])
+def test_equipment_names_cover_what_the_history_page_shows(lang):
+    slots, stats, tracks = (i18n.names(p, lang) for p in ("slot_", "itemstat_", "track_"))
+    assert set(slots) == {str(n) for n in SHOWN_SLOTS}
+    assert {"ITEM_MOD_CRIT_RATING_SHORT", "ITEM_MOD_HASTE_RATING_SHORT", "ITEM_MOD_MASTERY_RATING_SHORT",
+            "ITEM_MOD_VERSATILITY", "ITEM_MOD_STAMINA_SHORT", "RESISTANCE0_NAME"} <= set(stats)
+    assert set(tracks) == {"971", "972", "973"}
+    assert all(v and not v.startswith("[") for v in (*slots.values(), *stats.values(), *tracks.values()))
+
+
+def test_equipment_names_are_the_games_words():
+    de, en = i18n.names("itemstat_", "de"), i18n.names("itemstat_", "en")
+    assert de["ITEM_MOD_CR_STURDINESS_SHORT"] == "Unzerstörbar" and en["ITEM_MOD_CR_STURDINESS_SHORT"] == "Indestructible"
+    assert de["ITEM_MOD_CRIT_RATING_SHORT"] == "Kritischer Trefferwert"
+    assert i18n.names("slot_", "de")["6"] == "Taille" and i18n.names("slot_", "de")["17"] == "Schildhand"
 
 
 def test_names_are_neutral_and_differ_by_language():
