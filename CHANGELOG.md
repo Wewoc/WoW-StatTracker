@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.11
+
+- New: every history page has a collapsible *Character* block above the statistics: the equipment of one scan, arranged like the character screen of the game. Each slot shows the item in its quality colour, its item level, upgrade track, enchantment, its stats and a note on an empty gem socket; the head line names the specialization and the average item level, and below the slots stands the sum of the secondary stats of the equipped items. Pick any scan that has equipment data and compare it with the previous one: slots whose item, item level, enchantment, upgrade or gems changed get a gold edge. The shirt and the tabard are left out, and the symbols are drawn by the page: the item pictures of the game are not shown
+- New: two more lines on the history page, the equipped and the overall item level of every scan. The overall one takes the best piece for each slot among everything the character carries, so it is higher when a better piece waits in the bags; a note under the chart says so
+- Note: only scans taken with the addon of 0.1.10 or later have equipment and item level. Older scans leave a gap in the lines and have no Character block; nothing is filled in afterwards
+- Note: the names of the slots, stats and upgrade tracks are the game's own words in German and English, compared with the client texts of the game, not with a running client. An empty gem socket is recognized from the gem ids only; the stats of inserted gems are not in the stored data and are not part of the sum
+- Note: the first read after the update makes every history page again, so the new block appears without a new scan
+- Changed: the addon itself is unchanged, but its version follows the program version, so after updating the window asks once to run *1. Install / update addon*
+- Docs: both READMEs and the landing page describe the Character block; all pictures of the landing page are made again and a new one shows the block
+- Developer: the page data of a history page carries the equipment of every scan (`gear`) and the names of slots, stats and tracks (`names`); the demo data (`tools/make_demo.py`) has invented equipment that changes over the scans and writes `history/shot-character.html` for the new picture; tests for the equipment in the page data, the names, the slots shown and the demo equipment
+
 ## 0.1.10
 
 - New: a collapsible *Reputation* block on the stats page shows the reputation of the ticked characters: every faction in the order of the game, grouped by category, with the level and a bar to the next one. Friendships and renown are shown with their own levels, paragon progress and a waiting reward are marked. Account-wide reputation appears once per faction. A character whose last scan does not contain reputation yet (scanned with an older addon) is listed under the block as without reputation data; it needs one new scan
