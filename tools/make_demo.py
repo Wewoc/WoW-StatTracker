@@ -19,6 +19,7 @@ exactly the single scan of the default run. They are imported one after the othe
 does, so the page also gets its History block and <folder>/<lang>/history/ holds the history pages,
 plus
   history/shot-history.html   the history page of one character, four statistics as an index
+  history/shot-character.html the same page with the Character block opened (the equipment of the newest scan)
 The counters grow along curves of their own, so the lines on a history page differ. The default
 (--snapshots 1) makes no history and the same pages as before. Four of the five characters also carry invented
 equipment and a specialization (GEAR_BY_CHAR), which changes over the snapshots for the Character block of the
@@ -178,6 +179,8 @@ GROUPS_JS = ('$("groups").open = true; $("groupBy").value = "faction"; '
 # on the history page: Creatures killed (107), Total deaths (60), Total gold acquired (328) and Jumps (9003), as an index
 HISTORY_JS = ('chosen.clear(); [107, 60, 328, 9003].forEach(id => chosen.add(id)); '
               '$("mode").value = "index"; renderList(); renderChart();')
+# on the same page: the Character block opened (the newest scan, compared with the one before)
+CHARACTER_JS = '$("gear").open = true;'
 
 
 def _number(n, i):
@@ -378,12 +381,12 @@ def shot_variants(html):
             "shot-groups.html": groups}
 
 
-def history_shot(html):
-    """The history page of one character with four statistics picked, as an index (a copy for the
-    screenshot, the page itself is not touched)."""
+def history_shot(html, js=HISTORY_JS):
+    """The history page of one character with `js` run after init(): by default four statistics picked, as
+    an index (a copy for the screenshot, the page itself is not touched)."""
     tail = "init();\n</script>"
     i = html.rindex(tail)
-    return html[:i] + f"init();\n{HISTORY_JS}\n</script>" + html[i + len(tail):]
+    return html[:i] + f"init();\n{js}\n</script>" + html[i + len(tail):]
 
 
 def _import(args, show_all):
@@ -424,7 +427,9 @@ def make(out_dir, lang, snapshots=1):
         (folder / name).write_text(text, encoding="utf-8")
     shot_source = history / stat_history.page_name(HISTORY_CHAR)
     if snapshots > 1 and shot_source.is_file():
-        (history / "shot-history.html").write_text(history_shot(shot_source.read_text(encoding="utf-8")), encoding="utf-8")
+        source = shot_source.read_text(encoding="utf-8")
+        (history / "shot-history.html").write_text(history_shot(source), encoding="utf-8")
+        (history / "shot-character.html").write_text(history_shot(source, CHARACTER_JS), encoding="utf-8")
     return folder
 
 

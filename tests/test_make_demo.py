@@ -225,6 +225,9 @@ def test_the_history_screenshot_page_is_a_copy_with_the_picks(tmp_path, fake_plo
     shot = (folder / "history" / "shot-history.html").read_text(encoding="utf-8")
     assert make_demo.HISTORY_JS not in real and make_demo.HISTORY_JS in shot
     assert shot.replace(make_demo.HISTORY_JS + "\n", "") == real
+    character = (folder / "history" / "shot-character.html").read_text(encoding="utf-8")
+    assert make_demo.CHARACTER_JS in character and make_demo.HISTORY_JS not in character
+    assert character.replace(make_demo.CHARACTER_JS + "\n", "") == real              # a copy, only the opening added
 
 
 def test_running_again_starts_from_scratch(tmp_path, fake_plotly):
