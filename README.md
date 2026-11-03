@@ -37,6 +37,8 @@ Two more lines are on offer there: the equipped and the overall item level of ev
 
 ![The history page of one character: four statistics shown as an index over twelve scans, with the list of all statistics on the left.](docs/images/history-en.png)
 
+![The Character block of the history page: sixteen equipment slots with item, item level, upgrade track, enchantment and stats; slots changed since the previous scan have a gold edge.](docs/images/character-en.png)
+
 ## Game versions
 
 Only game versions you enabled show up in the dropdown. The default is **Retail** only. Open *Settings ...* to enable others. Every game version gets its own database and page (`wow_stats.db` / `stats.html` for Retail, `wow_stats_<version>.db` / `stats_<version>.html` for the others).

@@ -37,6 +37,8 @@ Zwei weitere Linien stehen dort zur Wahl: das ausgerüstete und das gesamte Item
 
 ![Die Verlaufsseite eines Charakters: vier Statistiken als Index über zwölf Scans, links die Liste aller Statistiken.](docs/images/history-de.png)
 
+![Der Bereich Charakter der Verlaufsseite: sechzehn Ausrüstungsslots mit Item, Itemlevel, Aufwertungsspur, Verzauberung und Werten; seit dem vorigen Scan geänderte Slots haben einen goldenen Rand.](docs/images/character-de.png)
+
 ## Spielversionen
 
 Im Dropdown erscheinen nur Spielversionen, die du aktiviert hast. Standard ist nur **Retail**. Unter *Einstellungen ...* lassen sich weitere aktivieren. Jede Spielversion hat eigene Datenbank und Seite (`wow_stats.db` / `stats.html` für Retail, `wow_stats_<Version>.db` / `stats_<Version>.html` für die anderen).
