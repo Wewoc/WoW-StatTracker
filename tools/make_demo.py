@@ -20,7 +20,9 @@ does, so the page also gets its History block and <folder>/<lang>/history/ holds
 plus
   history/shot-history.html   the history page of one character, four statistics as an index
 The counters grow along curves of their own, so the lines on a history page differ. The default
-(--snapshots 1) makes no history and the same pages as before.
+(--snapshots 1) makes no history and the same pages as before. Four of the five characters also carry invented
+equipment and a specialization (GEAR_BY_CHAR), which changes over the snapshots for the Character block of the
+history pages; the last character has none.
 
 Usage (from the repository root):
   python tools/make_demo.py --out <folder>             # both languages
@@ -124,6 +126,46 @@ REP_DEMO = (
     (9113, "std", False, "Reef Scouts", "Riffspäher"),
 )
 REP_BANDS = {4: (0, 3000), 5: (3000, 9000), 6: (9000, 21000), 7: (21000, 42000), 8: (42000, 42000)}
+# Invented equipment and specialization, written in the format of the addon (data version 4). The last character has
+# none at all (its history page then has no Character block). Over the snapshots the older scans differ: the items of
+# the even slots were a little lower, the trinket in slot 13 was another one, the off hand was missing and the rings
+# were not enchanted yet, so the comparison of two scans has something to show.
+GEAR_BY_CHAR = {
+    # key: (spec id, en name, de name, role, main stat, item level of the final scan, extra item level in the bags)
+    "Korvak-Ironmaw": (71, "Arms", "Waffen", "DAMAGER", "ITEM_MOD_STRENGTH_SHORT", 255, 0.0),
+    "Mirella-Dawnspire": (64, "Frost", "Frost", "DAMAGER", "ITEM_MOD_INTELLECT_SHORT", 276, 1.25),
+    "Selwyn-Moonvale": (104, "Guardian", "Wächter", "TANK", "ITEM_MOD_AGILITY_SHORT", 205, 2.5),
+    "Thalrin-Sunhaven": (65, "Holy", "Heilig", "HEALER", "ITEM_MOD_INTELLECT_SHORT", 280, 0.0),
+}
+GEAR_SLOTS = (1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+GEAR_NAMES = {      # slot: (en, de); nothing here is a real item
+    1: ("Helm of Ashen Oaths", "Helm der Aschenschwüre"),
+    2: ("Lantern Pendant", "Laternenanhänger"),
+    3: ("Spaulders of the Old Roads", "Schulterstücke der Alten Pfade"),
+    5: ("Reefplate Cuirass", "Riffplatten-Brustpanzer"),
+    6: ("Saltweave Girdle", "Salzgewebe-Gürtel"),
+    7: ("Greaves of the Tide Court", "Beinschienen des Gezeitenhofs"),
+    8: ("Caravan Treads", "Karawanentritte"),
+    9: ("Bracers of Grey Water", "Armschienen des Graswassers"),
+    10: ("Gauntlets of Quiet Sparks", "Stulpen der stillen Funken"),
+    11: ("Ember Band", "Glutband"),
+    12: ("Signet of the Scouts", "Siegelring der Späher"),
+    13: ("Wardens' Hourglass", "Sanduhr der Wächter"),
+    14: ("Idol of the Far Shore", "Idol der Fernen Küste"),
+    15: ("Cloak of Drifting Salt", "Umhang des treibenden Salzes"),
+    16: ("Lantern-Keeper's Blade", "Klinge des Laternenhüters"),
+    17: ("Aegis of the Pact", "Aigis des Paktes"),
+}
+OLD_TRINKET = ("Cracked Hourglass", "Rissige Sanduhr")            # slot 13 in the older scans
+GEAR_ENCHANT = {11: ("Ring - Ember Surge", "Ring - Glutwelle"), 12: ("Ring - Quiet Edge", "Ring - Stille Schneide"),
+                16: ("Weapon - Lantern Flame", "Waffe - Laternenflamme")}
+GEAR_TRACKS = {971: ("Adventurer", "Abenteurer"), 972: ("Veteran", "Veteran"), 973: ("Champion", "Champion")}
+GEAR_SECONDARY = ("ITEM_MOD_CRIT_RATING_SHORT", "ITEM_MOD_HASTE_RATING_SHORT", "ITEM_MOD_MASTERY_RATING_SHORT",
+                  "ITEM_MOD_VERSATILITY")
+GEAR_TERTIARY = {2: ("ITEM_MOD_CR_AVOIDANCE_SHORT", 35), 8: ("ITEM_MOD_CR_SPEED_SHORT", 40),
+                 9: ("ITEM_MOD_CR_LIFESTEAL_SHORT", 28)}
+GEAR_ARMOR_SLOTS = (1, 3, 5, 6, 7, 8, 9, 10, 15)
+GEAR_GEM = 90301                    # an invented gem id
 MOUNT = ("Favourite mount", "Lieblingsreittier", "Character", "Charakter")
 GENERIC_FIRST_ID = 9001            # far away from the real IDs used above
 
@@ -239,6 +281,61 @@ def _rep_lines(n):
     return lines + ["\t\t\t},"]
 
 
+def _gear_items(g, i, back):
+    """{slot: item fields} of a character with GEAR_BY_CHAR entry g, `back` scans before its final one (0 = final)."""
+    _spec, _en, _de, _role, main, final, _bag = g
+    drop = 2 * ((back + 2) // 3)                       # item level the even slots gained since
+    items = {}
+    for slot in GEAR_SLOTS:
+        if slot == 17 and back >= 8:
+            continue                                   # no off hand yet
+        old_trinket = slot == 13 and back >= 4
+        ilvl = final + (slot * 5) % 7 - 3 - (drop if slot % 2 == 0 else 0) - (14 if old_trinket else 0)
+        stats = {main: round(ilvl * 0.33), "ITEM_MOD_STAMINA_SHORT": round(ilvl * 5.2)}
+        stats[GEAR_SECONDARY[slot % 4]] = round(ilvl * 0.2)
+        stats[GEAR_SECONDARY[(slot + 1) % 4]] = round(ilvl * 0.12)
+        if slot in GEAR_TERTIARY:
+            stats[GEAR_TERTIARY[slot][0]] = GEAR_TERTIARY[slot][1]
+        if slot in GEAR_ARMOR_SLOTS:
+            stats["RESISTANCE0_NAME"] = round(ilvl * 0.18)
+        if slot == 16:
+            stats["ITEM_MOD_DAMAGE_PER_SECOND_SHORT"] = round(ilvl * 0.11)
+        item = {"itemID": 91000 + slot * 10 + old_trinket, "name": (OLD_TRINKET if old_trinket else GEAR_NAMES[slot])[i],
+                "quality": 4 if slot % 3 else 3, "ilvl": ilvl, "iconID": 130000 + slot, "stats": stats}
+        if slot in GEAR_ENCHANT and not (slot in (11, 12) and back >= 6):
+            item["enchantID"], item["enchantText"] = 7000 + slot, GEAR_ENCHANT[slot][i]
+        if slot % 3:
+            track = 971 + slot % 3
+            item["upgrade"] = {"trackID": track, "track": GEAR_TRACKS[track][i], "level": 1 + slot % 5, "max": 6}
+        if slot in (11, 12):
+            item["sockets"] = 1
+            item["gems"] = [0 if (slot == 12 and back >= 5) else GEAR_GEM]
+            stats["EMPTY_SOCKET_PRISMATIC"] = 1
+        items[slot] = item
+    return items
+
+
+def _lua_value(v):
+    if isinstance(v, dict):
+        return "{ " + ", ".join(f'["{k}"] = {_lua_value(x)}' for k, x in v.items()) + " }"
+    if isinstance(v, list):
+        return "{ " + ", ".join(f"[{n}] = {_lua_value(x)}" for n, x in enumerate(v, 1)) + " }"
+    return _lua_str(v) if isinstance(v, str) else repr(v)
+
+
+def _gear_lines(c, i, back):
+    """Specialization, item levels and the `gear` table of a character as Lua lines; none for a character without."""
+    g = GEAR_BY_CHAR.get(c["key"])
+    if g is None:
+        return []
+    items = _gear_items(g, i, back)
+    equipped = round(sum(it["ilvl"] for it in items.values()) / len(GEAR_SLOTS), 2)
+    lines = [f'\t\t\t["specID"] = {g[0]}, ["specName"] = {_lua_str(g[1 + i])}, ["role"] = {_lua_str(g[3])},',
+             f'\t\t\t["ilvlTotal"] = {round(equipped + g[6], 2)}, ["ilvlEquipped"] = {equipped},', '\t\t\t["gear"] = {']
+    lines += [f"\t\t\t\t[{slot}] = {_lua_value(item)}," for slot, item in items.items()]
+    return lines + ["\t\t\t},"]
+
+
 def build_lua(lang, k=None, snapshots=1):
     """The demo SavedVariables file (StatTrackerDB) for one language: snapshot k (0-based) of `snapshots`,
     by default the final one, which is the single scan of a run without --snapshots."""
@@ -263,6 +360,7 @@ def build_lua(lang, k=None, snapshots=1):
         out += [f"\t\t\t\t[{sid}] = {_lua_str(text)}," for sid, text in values.items()]
         out += ["\t\t\t},",
                 f'\t\t\t["playedTotal"] = {played}, ["playedLevel"] = {level_played},',
+                *_gear_lines(c, i, snapshots - 1 - k),
                 *_rep_lines(n),
                 "\t\t},"]
     out += ["\t},", "}", ""]
