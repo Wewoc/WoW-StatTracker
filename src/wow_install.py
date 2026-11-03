@@ -11,6 +11,7 @@
 #   _anniversary_  -> wow_stats_anniversary.db / stats_anniversary.html   etc.
 # The history pages of the characters go to a folder per game version (see history_dir()):
 #   _retail_       -> history/        _anniversary_ -> history_anniversary/   etc.
+# The item icons (PNG, made by wow_icons) likewise (see icons_dir()): icons/, icons_anniversary/ ...
 # Tested: Retail works. BC Anniversary does not work (that game version provides no
 # statistics). Everything else is untested.
 
@@ -113,6 +114,14 @@ def history_dir(variant):
     if variant == DEFAULT_VARIANT:
         return data / "history"
     return data / f"history_{variant.strip('_')}"
+
+
+def icons_dir(variant):
+    """Folder of the item icons (PNG files made by wow_icons) per game version, in data/."""
+    data = paths.data_dir()
+    if variant == DEFAULT_VARIANT:
+        return data / "icons"
+    return data / f"icons_{variant.strip('_')}"
 
 
 # ------------------------------------------------------------- build info / toc
