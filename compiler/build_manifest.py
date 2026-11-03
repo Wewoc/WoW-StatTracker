@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import app_info  # noqa: E402
+import casclib_asset  # noqa: E402
 import plotly_asset  # noqa: E402
 
 APP_NAME = app_info.APP_NAME
@@ -33,6 +34,13 @@ DATA_FILES = [
 # place (the build runs it first).
 FETCHED_FILES = [
     ("src/" + plotly_asset.FILENAME, "."),
+]
+
+# Bundled like FETCHED_FILES but built, not fetched, and optional on a machine without a C++ compiler:
+# compiler/casclib_build.py puts it in place, build.py bundles it when it is there and requires it
+# with --require-casclib (CI and release builds). Without it the program reads no item icons.
+BUILT_FILES = [
+    ("src/" + casclib_asset.FILENAME, "."),
 ]
 
 # Modules that are only imported inside functions or try/except (found anyway,

@@ -43,6 +43,7 @@ LEAF_MODULES = {
     "paths": {"app_info"},
     "plotly_asset": {"paths"},
     "blp_decode": set(),
+    "casclib_asset": {"paths"},
     "i18n": set(),
 }
 

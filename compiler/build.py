@@ -27,7 +27,9 @@ import zipfile
 from pathlib import Path
 
 import build_manifest as manifest
-import plotly_asset  # noqa: E402  (build_manifest puts src/ on the path)
+import casclib_asset  # noqa: E402  (build_manifest puts src/ on the path)
+import casclib_build
+import plotly_asset  # noqa: E402
 import plotly_fetch
 
 
@@ -44,13 +46,19 @@ def expected_modules(root: Path) -> set:
     return own | set(manifest.HIDDEN_IMPORTS) | set(LAZY_STDLIB)
 
 
-def bundle_problems(root: Path, dist_dir: Path, toc_path: Path) -> list:
+def built_files(root: Path, require: bool = False) -> list:
+    """The BUILT_FILES that belong in the bundle: those present in the checkout, all of them if `require`."""
+    return [(src, dest) for src, dest in manifest.BUILT_FILES if require or (root / src).is_file()]
+
+
+def bundle_problems(root: Path, dist_dir: Path, toc_path: Path, require_built: bool = False) -> list:
     """What the finished PyInstaller folder lacks, as readable lines (empty: complete). Looks for the bundled
     data files in _internal and for the modules in the module table PyInstaller leaves in its work folder
     (PYZ-00.toc): an import inside a function is the kind PyInstaller can miss, and a bundle without it
-    starts normally and fails when the function runs."""
+    starts normally and fails when the function runs. The built files (CascLib.dll) are expected when they
+    are in the checkout, and always with `require_built`."""
     problems = []
-    for src, dest in (*manifest.DATA_FILES, *manifest.FETCHED_FILES):
+    for src, dest in (*manifest.DATA_FILES, *manifest.FETCHED_FILES, *built_files(root, require_built)):
         target = dist_dir / CONTENTS_DIR / dest / Path(src).name
         if not target.is_file():
             problems.append(f"data file {Path(src).name} is not in the bundle (expected {target})")
@@ -63,8 +71,8 @@ def bundle_problems(root: Path, dist_dir: Path, toc_path: Path) -> list:
     return problems
 
 
-def check_bundle(root: Path, dist_dir: Path):
-    problems = bundle_problems(root, dist_dir, root / "build" / manifest.APP_NAME / "PYZ-00.toc")
+def check_bundle(root: Path, dist_dir: Path, require_built: bool = False):
+    problems = bundle_problems(root, dist_dir, root / "build" / manifest.APP_NAME / "PYZ-00.toc", require_built)
     if problems:
         print("  [build] The bundle is incomplete:")
         for line in problems:
@@ -94,6 +102,23 @@ def ensure_plotly():
     print(f"  plotly.js {plotly_asset.VERSION} {'fetched and verified' if downloaded else 'present and verified'}.")
 
 
+def ensure_casclib(required: bool) -> bool:
+    """CascLib.dll for the item icons must be in src/ (built from the pinned commit if missing). A machine
+    without git, CMake or a C++ compiler builds without it, unless `required` (CI and release builds):
+    then a missing DLL stops the build. Returns whether the DLL is there."""
+    print("\n[0/4] Checking the CascLib DLL ...")
+    try:
+        built = casclib_build.ensure()
+    except casclib_build.CasclibBuildError as exc:
+        print(f"  [casclib] {exc}")
+        if required:
+            raise SystemExit(1)
+        print("  Continuing without it: this build reads no item icons (--require-casclib makes this an error).")
+        return False
+    print(f"  CascLib {casclib_asset.VERSION} {'built and verified' if built else 'present and verified'}.")
+    return True
+
+
 def ensure_build_venv(root: Path) -> Path:
     """Creates (if missing) or reuses a project-local .venv-build/, installs
     requirements.txt + PyInstaller into it, returns its python. Project-local on
@@ -120,7 +145,7 @@ def build_exe(root: Path, python: Path, dist_dir: Path):
 
     sep = ";" if sys.platform == "win32" else ":"
     args = []
-    for src, dest in (*manifest.DATA_FILES, *manifest.FETCHED_FILES):
+    for src, dest in (*manifest.DATA_FILES, *manifest.FETCHED_FILES, *built_files(root)):
         args += ["--add-data", f"{root / src}{sep}{dest}"]
     for h in manifest.HIDDEN_IMPORTS:
         args += ["--hidden-import", h]
@@ -145,7 +170,7 @@ def build_exe(root: Path, python: Path, dist_dir: Path):
         raise SystemExit(1)
 
 
-def copy_extras(root: Path, dist_dir: Path):
+def copy_extras(root: Path, dist_dir: Path, require_built: bool = False):
     """Addon, documentation and LICENSE next to the exe (runs after build_exe, which wipes dist_dir)."""
     print("\n[3/4] Copying addon and documentation ...")
     shutil.copytree(root / manifest.ADDON_SRC, dist_dir / manifest.ADDON_SRC,
@@ -161,7 +186,7 @@ def copy_extras(root: Path, dist_dir: Path):
         print(f"  [build] Release is missing {', '.join(missing)} (manifest vs. build output).")
         raise SystemExit(1)
     print("  addon/, info/, LICENSE copied; all release items present.")
-    check_bundle(root, dist_dir)
+    check_bundle(root, dist_dir, require_built)
 
 
 def build_zip(dist_dir: Path):
@@ -183,16 +208,20 @@ def main():
     ap.add_argument("--no-zip", action="store_true", help="Skip creating the release ZIP and checksum.")
     ap.add_argument("--no-venv", action="store_true",
                     help="Use the current Python instead of .venv-build/ (PyInstaller and requirements must be installed).")
+    ap.add_argument("--require-casclib", action="store_true",
+                    help="Fail unless CascLib.dll can be built or is in src/ (CI and release builds). Without it "
+                         "a machine that cannot build the DLL gets a build that reads no item icons.")
     args = ap.parse_args()
 
     root = Path(__file__).resolve().parent.parent
     ensure_plotly()
+    ensure_casclib(args.require_casclib)
     check_source(root)
     python = Path(sys.executable) if args.no_venv else ensure_build_venv(root)
 
     dist_dir = root / "dist" / manifest.APP_NAME
     build_exe(root, python, dist_dir)
-    copy_extras(root, dist_dir)
+    copy_extras(root, dist_dir, args.require_casclib)
     if not args.no_zip:
         build_zip(dist_dir)
     print(f"\n  Build finished: {dist_dir}")

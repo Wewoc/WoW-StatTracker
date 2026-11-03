@@ -15,4 +15,5 @@ jobs:
           python-version: "3.13"
       - run: pip install -r requirements-dev.txt
       - run: python compiler/plotly_fetch.py
+      - run: python compiler/casclib_build.py
       - run: python -m pytest -q

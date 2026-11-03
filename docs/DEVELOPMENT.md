@@ -26,11 +26,21 @@ downloads the pinned version from `cdn.plot.ly` into `src/plotly.min.js` (git-ig
 its SHA-256 (`src/plotly_asset.py` holds version and hash; change them together). Run it once
 before using the history pages from source. The program itself never downloads it.
 
+`CascLib.dll` (reads the item icons from a local WoW installation) is not part of the repository either.
+`python compiler/casclib_build.py` fetches CascLib at the pinned commit with git, builds it with CMake and the
+Visual Studio Build Tools (C++ workload) and puts the checked x64 DLL into `src/CascLib.dll` (git-ignored).
+`src/casclib_asset.py` holds version and commit (change them together). CI and the release build run the script
+before the tests; `compiler/build.py` runs it too, and on a machine that cannot build the DLL it goes on without it
+(the program then reads no item icons) unless `--require-casclib` is given, which CI and the release build do.
+Without the build tools, copy a CascLib.dll of the pinned version to `src/CascLib.dll`. The program neither builds
+nor downloads it.
+
 ## Tests
 
 ```bash
 pip install -r requirements-dev.txt
 python compiler/plotly_fetch.py       # optional: lets the test for the real Plotly file run
+python compiler/casclib_build.py      # optional: lets the test with the real CascLib DLL run (needs the build tools)
 python -m pytest -q
 ```
 
