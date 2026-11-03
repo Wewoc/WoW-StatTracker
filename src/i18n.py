@@ -624,6 +624,51 @@ _STRINGS = {
     "standing_6": {"de": "Wohlwollend", "en": "Honored"},
     "standing_7": {"de": "Respektvoll", "en": "Revered"},
     "standing_8": {"de": "Ehrfürchtig", "en": "Exalted"},
+
+    # ------------------------------------------- equipment (history page): slots, item stats, upgrade tracks
+    # Slot names are the game's own (global strings HEADSLOT ... SECONDARYHANDSLOT), keyed by the inventory slot
+    # number; the shirt (4) and the tabard (19) are not shown, so they have no name. Two fingers and two trinkets are
+    # numbered here. German "Taille" and "Schildhand" are the client's words, not "Gürtel" and "Nebenhand".
+    "slot_1": {"de": "Kopf", "en": "Head"},
+    "slot_2": {"de": "Hals", "en": "Neck"},
+    "slot_3": {"de": "Schulter", "en": "Shoulders"},
+    "slot_5": {"de": "Brust", "en": "Chest"},
+    "slot_6": {"de": "Taille", "en": "Waist"},
+    "slot_7": {"de": "Beine", "en": "Legs"},
+    "slot_8": {"de": "Füße", "en": "Feet"},
+    "slot_9": {"de": "Handgelenk", "en": "Wrist"},
+    "slot_10": {"de": "Hände", "en": "Hands"},
+    "slot_11": {"de": "Finger 1", "en": "Finger 1"},
+    "slot_12": {"de": "Finger 2", "en": "Finger 2"},
+    "slot_13": {"de": "Schmuck 1", "en": "Trinket 1"},
+    "slot_14": {"de": "Schmuck 2", "en": "Trinket 2"},
+    "slot_15": {"de": "Rücken", "en": "Back"},
+    "slot_16": {"de": "Waffenhand", "en": "Main Hand"},
+    "slot_17": {"de": "Schildhand", "en": "Off Hand"},
+    # Item stats, keyed by the raw key the addon stores (GetItemStats). The texts are the game's global strings of the
+    # same name (ITEM_MOD_*_SHORT, RESISTANCE0_NAME), compared on 2026-11-03 with the German and English client texts of
+    # the mirror github.com/Ketho/BlizzardInterfaceResources (state 2026-10-22); not compared with a running client.
+    # A key without a name is shown with the raw key.
+    "itemstat_ITEM_MOD_STRENGTH_SHORT": {"de": "Stärke", "en": "Strength"},
+    "itemstat_ITEM_MOD_AGILITY_SHORT": {"de": "Beweglichkeit", "en": "Agility"},
+    "itemstat_ITEM_MOD_INTELLECT_SHORT": {"de": "Intelligenz", "en": "Intellect"},
+    "itemstat_ITEM_MOD_STAMINA_SHORT": {"de": "Ausdauer", "en": "Stamina"},
+    "itemstat_ITEM_MOD_CRIT_RATING_SHORT": {"de": "Kritischer Trefferwert", "en": "Critical Strike"},
+    "itemstat_ITEM_MOD_HASTE_RATING_SHORT": {"de": "Tempo", "en": "Haste"},
+    "itemstat_ITEM_MOD_MASTERY_RATING_SHORT": {"de": "Meisterschaft", "en": "Mastery"},
+    "itemstat_ITEM_MOD_VERSATILITY": {"de": "Vielseitigkeit", "en": "Versatility"},
+    "itemstat_ITEM_MOD_CR_AVOIDANCE_SHORT": {"de": "Vermeidung", "en": "Avoidance"},
+    "itemstat_ITEM_MOD_CR_SPEED_SHORT": {"de": "Bewegungsgeschwindigkeit", "en": "Speed"},
+    "itemstat_ITEM_MOD_CR_STURDINESS_SHORT": {"de": "Unzerstörbar", "en": "Indestructible"},
+    "itemstat_ITEM_MOD_CR_LIFESTEAL_SHORT": {"de": "Lebensraub", "en": "Leech"},
+    "itemstat_ITEM_MOD_DAMAGE_PER_SECOND_SHORT": {"de": "Schaden pro Sekunde", "en": "Damage Per Second"},
+    "itemstat_RESISTANCE0_NAME": {"de": "Rüstung", "en": "Armor"},
+    # Upgrade tracks, keyed by the track id (upgrade.trackStringID). Only the ids seen in real data (971 to 973); the German
+    # names match the item tooltips on wowhead.com/de, the English ones are from knowledge. Another track is shown with
+    # the text the game stored with the scan.
+    "track_971": {"de": "Abenteurer", "en": "Adventurer"},
+    "track_972": {"de": "Veteran", "en": "Veteran"},
+    "track_973": {"de": "Champion", "en": "Champion"},
 }
 
 

@@ -160,7 +160,8 @@ def build_history(conn, char_key):
 
 
 def build_page_payload(conn, char_key, back=None):
-    """build_history() plus what the page needs besides the numbers: texts in the current language,
+    """build_history() plus what the page needs besides the numbers: texts in the current language
+    (`ui`, and `names` of the equipment: slots by number, item stats by raw key, upgrade tracks by id),
     the program data for the footer, the plotly.js version, and `back`, the link to the stats page
     (relative, already URL-quoted; None = no link). None if the database has no scan of the
     character."""
@@ -172,6 +173,8 @@ def build_page_payload(conn, char_key, back=None):
             "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "lang": lang,
             "ui": i18n.html_strings(lang),
+            "names": {"slot": i18n.names("slot_", lang), "stat": i18n.names("itemstat_", lang),
+                      "track": i18n.names("track_", lang)},
             "app": {"version": app_info.APP_VERSION, "copyright": app_info.COPYRIGHT,
                     "license": app_info.LICENSE_NAME, "site": app_info.SITE_URL},
             "plotly": plotly_asset.VERSION,

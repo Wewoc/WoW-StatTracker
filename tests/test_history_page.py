@@ -72,6 +72,9 @@ def test_payload_carries_the_history_the_texts_and_the_plotly_version(payload, l
     assert p["char"]["key"] == KEY and p["scans"] == ["2026-10-01 10:00:00", "2026-10-02 10:00:00"]
     assert p["ui"]["hist_title"] == i18n.raw("html_hist_title", lang)
     assert p["app"]["version"]
+    assert p["names"]["slot"]["1"] == i18n.raw("slot_1", lang)
+    assert p["names"]["stat"]["ITEM_MOD_VERSATILITY"] == i18n.raw("itemstat_ITEM_MOD_VERSATILITY", lang)
+    assert p["names"]["track"]["972"] == i18n.raw("track_972", lang)
 
 
 def test_an_unknown_character_has_no_payload(tmp_path, payload):
