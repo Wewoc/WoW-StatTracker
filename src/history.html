@@ -58,6 +58,7 @@
   .slot.chg { border-left-color: var(--gold); }
   .slot.none { opacity: .55; }
   .slot svg { flex: none; color: var(--dim); }
+  .slot .ic { flex: none; width: 40px; height: 40px; border-radius: 5px; background-size: cover; background-repeat: no-repeat; }
   .sbody { min-width: 0; flex: 1; font-size: .85rem; line-height: 1.4; }
   .srow { display: flex; justify-content: space-between; gap: 6px; }
   .sslot { color: var(--dim); font-size: .72rem; }
@@ -68,6 +69,7 @@
   .sinfo .warn { color: #e0a050; }
   .gsum { padding: 6px 12px 10px; border-top: 1px solid var(--line); font-size: .85rem; }
   .gsum .row { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+  .gnote { margin: 0; padding: 6px 12px 10px; }
 </style>
 <!--__PLOTLY__-->
 </head>
@@ -88,6 +90,7 @@
   </div>
   <div class="ggrid" id="gGrid"></div>
   <div class="gsum" id="gSum" hidden></div>
+  <div class="note gnote" id="gIconsNote" hidden></div>
 </details>
 
 <div class="bar">
@@ -325,6 +328,8 @@ function renderChart() {
 // the item id, a missing stat name its raw key, an unknown upgrade track the stored text.
 const GEAR = (DATA && DATA.gear) || null;
 const NAMES = (DATA && DATA.names) || {};
+const ICONS = (DATA && DATA.icons) || {};       // icon id -> data URI of a PNG, made by the generator; absent without icons
+const ICON_URI = /^data:image\/png;base64,[A-Za-z0-9+\/]+={0,2}$/;
 const SLOTS_LEFT = [1, 2, 3, 15, 5, 9];
 const SLOTS_RIGHT = [10, 6, 7, 8, 11, 12, 13, 14];
 const SLOTS_BOTTOM = [16, 17];
@@ -386,11 +391,26 @@ function statLines(it) {
     .map(k => ((NAMES.stat && NAMES.stat[k]) || k) + " " + valueText({unit: "number"}, it.stats[k]));
 }
 
+// The picture of an item, only if the generator embedded one and it has the exact shape of a PNG data URI; else null.
+function iconUri(it) {
+  const uri = it && isNum(it.icon_id) ? ICONS[String(it.icon_id)] : null;
+  return typeof uri === "string" && ICON_URI.test(uri) ? uri : null;
+}
+
 function slotCard(slot, it, old, compare) {
   const card = document.createElement("div");
   card.className = "slot";
   const ico = document.createElement("span");
-  ico.innerHTML = slotIcon(slot);
+  const uri = iconUri(it);
+  if (uri) {                                       // the item's own icon, framed in its quality color
+    ico.className = "ic";
+    ico.style.backgroundImage = 'url("' + uri + '")';
+    ico.style.boxShadow = "0 0 0 1px " + (QUALITY_COLOR[it.quality] || "transparent");
+    ico.setAttribute("role", "img");
+    ico.setAttribute("aria-label", it.name || "");
+  } else {
+    ico.innerHTML = slotIcon(slot);                // no picture: the symbol of the slot
+  }
   const body = document.createElement("div");
   body.className = "sbody";
   const top = document.createElement("div");
@@ -472,6 +492,9 @@ function renderGear() {
   const bottom = column(SLOTS_BOTTOM);
   bottom.className = "gbottom";
   $("gGrid").replaceChildren(column(SLOTS_LEFT), column(SLOTS_RIGHT), bottom);
+  const iconsNote = $("gIconsNote");                // the credit shows only while a game icon is on screen
+  iconsNote.hidden = !$("gGrid").querySelector(".ic");
+  iconsNote.textContent = iconsNote.hidden ? "" : (UI.hist_gear_icons_note || "");
   $("gChanged").textContent = !before ? "" : (changed ? fmt(UI.hist_gear_changed, {n: changed}) : (UI.hist_gear_unchanged || ""));
 
   // The sum of the stats the parts carry (not the gems' values, which the data does not have).

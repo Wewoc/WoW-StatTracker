@@ -38,8 +38,8 @@ def link_label(parent, text, url, **kw):
     return lbl
 
 
-def ask_settings(parent, detected_variants, enabled_variants, check_updates):
-    """Settings dialog. Returns (enabled_variants, check_updates) or None if cancelled."""
+def ask_settings(parent, detected_variants, enabled_variants, check_updates, read_icons):
+    """Settings dialog. Returns (enabled_variants, check_updates, read_icons) or None if cancelled."""
     win = _modal(parent, t("settings_title"))
     body = ttk.Frame(win, padding=12)
     body.pack(fill="both", expand=True)
@@ -58,6 +58,11 @@ def ask_settings(parent, detected_variants, enabled_variants, check_updates):
     upd = tk.BooleanVar(value=check_updates)
     ttk.Checkbutton(body, text=t("settings_check_updates"), variable=upd).pack(anchor="w", pady=(12, 0))
 
+    icons = tk.BooleanVar(value=read_icons)
+    ttk.Checkbutton(body, text=t("settings_read_icons"), variable=icons).pack(anchor="w", pady=(8, 0))
+    ttk.Label(body, text=t("settings_read_icons_hint"), wraplength=380, justify="left",
+              foreground="#555").pack(anchor="w", padx=(22, 0))
+
     result = {}
 
     def on_ok():
@@ -65,7 +70,7 @@ def ask_settings(parent, detected_variants, enabled_variants, check_updates):
         if not chosen:
             messagebox.showerror(t("dlg_title"), t("settings_none_selected"), parent=win)
             return
-        result["value"] = (chosen, upd.get())
+        result["value"] = (chosen, upd.get(), icons.get())
         win.destroy()
 
     row = ttk.Frame(body)

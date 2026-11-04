@@ -59,3 +59,15 @@ def test_all_variants_invalid_keeps_retail_default(instance):
     path.write_text(json.dumps({"enabled_variants": ["nope"]}), encoding="utf-8")
     cfg, _ = config.load()
     assert cfg["enabled_variants"] == ["_retail_"]
+
+
+def test_reading_icons_is_on_by_default_and_only_a_real_bool_changes_it(instance):
+    cfg, _ = config.load()
+    assert cfg["read_icons"] is True
+    cfg["read_icons"] = False
+    config.save(cfg)
+    assert config.load()[0]["read_icons"] is False
+    config.config_path().write_text(json.dumps({"read_icons": "no"}), encoding="utf-8")
+    assert config.load()[0]["read_icons"] is True
+    config.config_path().write_text(json.dumps({"read_icons": 0}), encoding="utf-8")
+    assert config.load()[0]["read_icons"] is True

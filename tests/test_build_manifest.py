@@ -8,6 +8,7 @@ import pytest
 import app_info
 import build
 import build_manifest as manifest
+import casclib_asset
 import plotly_asset
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,7 +51,7 @@ def fake_bundle(tmp_path, skip_file=None, skip_module=None, toc="ok"):
     dist = tmp_path / "dist" / "StatTracker"
     inside = dist / build.CONTENTS_DIR
     inside.mkdir(parents=True)
-    for src, _dest in manifest.DATA_FILES + manifest.FETCHED_FILES:
+    for src, _dest in manifest.DATA_FILES + manifest.FETCHED_FILES + manifest.BUILT_FILES:
         if Path(src).name != skip_file:
             (inside / Path(src).name).write_text("x", encoding="utf-8")
     modules = sorted(build.expected_modules(ROOT) - {skip_module})
@@ -92,6 +93,51 @@ def test_an_unreadable_module_table_fails_loudly(tmp_path, toc):
     dist, toc_path = fake_bundle(tmp_path, toc=toc)
     problems = build.bundle_problems(ROOT, dist, toc_path)
     assert problems and "module table" in problems[-1]
+
+
+def test_the_built_file_is_the_casclib_dll_and_not_a_checked_in_or_fetched_one():
+    built = {Path(src).name for src, _ in manifest.BUILT_FILES}
+    assert built == {casclib_asset.FILENAME}
+    assert not built & {Path(src).name for src, _ in manifest.DATA_FILES + manifest.FETCHED_FILES}
+
+
+def test_a_built_file_that_is_in_the_checkout_must_be_in_the_bundle(tmp_path, monkeypatch):
+    monkeypatch.setattr(manifest, "BUILT_FILES", [("src/blp_decode.py", ".")])      # stands in: it exists
+    dist, toc = fake_bundle(tmp_path, skip_file="blp_decode.py")
+    problems = build.bundle_problems(ROOT, dist, toc)
+    assert len(problems) == 1 and "blp_decode.py" in problems[0]
+
+
+def test_a_built_file_that_is_not_in_the_checkout_is_not_expected_unless_required(tmp_path, monkeypatch):
+    monkeypatch.setattr(manifest, "BUILT_FILES", [("src/absent-casclib.dll", ".")])
+    dist, toc = fake_bundle(tmp_path)
+    (dist / build.CONTENTS_DIR / "absent-casclib.dll").unlink(missing_ok=True)
+    assert build.bundle_problems(ROOT, dist, toc) == []
+    problems = build.bundle_problems(ROOT, dist, toc, require_built=True)
+    assert len(problems) == 1 and "absent-casclib.dll" in problems[0]
+
+
+def test_the_built_files_are_listed_when_they_exist_or_are_required(tmp_path):
+    (tmp_path / "src").mkdir()
+    assert build.built_files(tmp_path) == []
+    (tmp_path / "src" / casclib_asset.FILENAME).write_bytes(b"x")
+    assert build.built_files(tmp_path) == manifest.BUILT_FILES
+    assert build.built_files(tmp_path / "elsewhere", require=True) == manifest.BUILT_FILES
+
+
+def test_a_missing_dll_stops_the_build_only_when_it_is_required(monkeypatch, capsys):
+    def cannot_build():
+        raise build.casclib_build.CasclibBuildError("cmake not found")
+    monkeypatch.setattr(build.casclib_build, "ensure", cannot_build)
+    assert build.ensure_casclib(required=False) is False
+    assert "reads no item icons" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        build.ensure_casclib(required=True)
+
+
+def test_ensure_casclib_reports_a_dll_that_is_there(monkeypatch):
+    monkeypatch.setattr(build.casclib_build, "ensure", lambda: False)
+    assert build.ensure_casclib(required=True) is True
 
 
 def test_fetched_files_exist_once_they_were_fetched():

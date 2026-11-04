@@ -23,7 +23,8 @@ plus
 The counters grow along curves of their own, so the lines on a history page differ. The default
 (--snapshots 1) makes no history and the same pages as before. Four of the five characters also carry invented
 equipment and a specialization (GEAR_BY_CHAR), which changes over the snapshots for the Character block of the
-history pages; the last character has none.
+history pages; the last character has none. Those pages show invented placeholder icons (a colored tile per
+slot, made here into <folder>/<lang>/icons/), never a picture of the game.
 
 Usage (from the repository root):
   python tools/make_demo.py --out <folder>             # both languages
@@ -33,6 +34,7 @@ Then one picture per page, 1920 x 1140 (see docs/DEVELOPMENT.md, "Landing page")
 need plotly.js: run python compiler/plotly_fetch.py once.
 """
 import argparse
+import colorsys
 import contextlib
 import io
 import random
@@ -42,9 +44,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+import blp_decode  # noqa: E402
 import i18n  # noqa: E402
 import stat_history  # noqa: E402
 import stat_parser  # noqa: E402
+import wow_icons  # noqa: E402
 
 LANGS = ("en", "de")
 MAX_SNAPSHOTS = 60
@@ -139,6 +143,7 @@ GEAR_BY_CHAR = {
     "Thalrin-Sunhaven": (65, "Holy", "Heilig", "HEALER", "ITEM_MOD_INTELLECT_SHORT", 280, 0.0),
 }
 GEAR_SLOTS = (1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+ICON_ID_BASE = 130000              # the demo items' icon id is this plus the slot
 GEAR_NAMES = {      # slot: (en, de); nothing here is a real item
     1: ("Helm of Ashen Oaths", "Helm der Aschenschwüre"),
     2: ("Lantern Pendant", "Laternenanhänger"),
@@ -304,7 +309,7 @@ def _gear_items(g, i, back):
         if slot == 16:
             stats["ITEM_MOD_DAMAGE_PER_SECOND_SHORT"] = round(ilvl * 0.11)
         item = {"itemID": 91000 + slot * 10 + old_trinket, "name": (OLD_TRINKET if old_trinket else GEAR_NAMES[slot])[i],
-                "quality": 4 if slot % 3 else 3, "ilvl": ilvl, "iconID": 130000 + slot, "stats": stats}
+                "quality": 4 if slot % 3 else 3, "ilvl": ilvl, "iconID": ICON_ID_BASE + slot, "stats": stats}
         if slot in GEAR_ENCHANT and not (slot in (11, 12) and back >= 6):
             item["enchantID"], item["enchantText"] = 7000 + slot, GEAR_ENCHANT[slot][i]
         if slot % 3:
@@ -316,6 +321,29 @@ def _gear_items(g, i, back):
             stats["EMPTY_SOCKET_PRISMATIC"] = 1
         items[slot] = item
     return items
+
+
+def placeholder_icon(slot):
+    """An invented 64 x 64 picture for the demo items: a tile with a lighter diamond, its color from the slot.
+    Nothing of the game: the pictures of the landing page never carry a Blizzard icon."""
+    red, green, blue = (int(c * 255) for c in colorsys.hsv_to_rgb((slot * 0.173) % 1.0, 0.55, 0.62))
+    pixels = bytearray()
+    for y in range(64):
+        for x in range(64):
+            if min(x, y, 63 - x, 63 - y) < 2:
+                pixels += bytes((20, 20, 20, 255))
+                continue
+            lift = 1.5 if abs(x - 31.5) + abs(y - 31.5) < 14 else 1.0
+            shade = 0.75 + 0.25 * y / 63                       # darker towards the bottom
+            pixels += bytes(min(255, int(c * lift * shade)) for c in (red, green, blue)) + b"\xff"
+    return blp_decode.to_png(64, 64, bytes(pixels))
+
+
+def make_placeholder_icons(folder):
+    """One placeholder PNG per demo slot in `folder`, named like the icons of the program (wow_icons.icon_path)."""
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    for slot in GEAR_SLOTS:
+        wow_icons.icon_path(folder, ICON_ID_BASE + slot).write_bytes(placeholder_icon(slot))
 
 
 def _lua_value(v):
@@ -407,10 +435,13 @@ def make(out_dir, lang, snapshots=1):
     lua = folder / "StatTracker.lua"
     db = folder / "demo.db"
     history = folder / "history"
+    icons = folder / "icons"
     if db.exists():
         db.unlink()                     # always from scratch: same input, same pages
-    for leftover in (history, folder / "backups"):
+    for leftover in (history, icons, folder / "backups"):
         shutil.rmtree(leftover, ignore_errors=True)
+    if snapshots > 1:
+        make_placeholder_icons(icons)
     page = folder / "stats.html"
     previous = i18n.get_language()
     i18n.set_language(lang)
@@ -419,7 +450,7 @@ def make(out_dir, lang, snapshots=1):
             lua.write_text(build_lua(lang, k, snapshots), encoding="utf-8")
             args = ["--input", str(lua), "--db", str(db), "--output", str(page)]
             if snapshots > 1:
-                args += ["--history-dir", str(history)]
+                args += ["--history-dir", str(history), "--icons-dir", str(icons)]
             _import(args, show_all=k == snapshots - 1)
     finally:
         i18n.set_language(previous)

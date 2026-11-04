@@ -8,6 +8,7 @@ import http.client
 import shutil
 import tkinter as tk
 import urllib.error
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -200,6 +201,28 @@ def test_reading_one_account_names_the_other_accounts_with_data(app, accounts_wi
     accounts_with_data("ACC1", "ACC2", "ACC3")
     note = [x for x in _parse_logging(app, monkeypatch) if x.startswith("Note:")]
     assert len(note) == 1 and "ACC2" in note[0] and "ACC3" in note[0] and "ACC1" not in note[0]
+
+
+def _icon_options_of_the_import(app, monkeypatch):
+    """What on_parse hands to run_parser: (history_dir, icons_dir, game_dir, product)."""
+    app.refresh_variants(keep="_retail_")
+    app.var_acc.set("ACC1")
+    calls = []
+    monkeypatch.setattr(gui_app, "run_parser", lambda *a, **k: calls.append(a) or (True, ""))
+    monkeypatch.setattr(app, "write", lambda text, tag=None: None)
+    assert app.on_parse() is True
+    return calls[0][3:]
+
+
+def test_the_import_reads_the_game_files_only_with_the_option_on(app, env, accounts_with_data, monkeypatch):
+    accounts_with_data("ACC1")
+    monkeypatch.setitem(app.cfg, "read_icons", True)
+    history, icons, game, product = _icon_options_of_the_import(app, monkeypatch)
+    assert history == wow_install.history_dir("_retail_") and icons == wow_install.icons_dir("_retail_")
+    assert Path(game) == env.wow and product == "wow"
+    monkeypatch.setitem(app.cfg, "read_icons", False)             # the icons already there are still shown
+    history, icons, game, product = _icon_options_of_the_import(app, monkeypatch)
+    assert icons == wow_install.icons_dir("_retail_") and game is None and product is None
 
 
 def test_no_account_note_when_there_is_only_one_account(app, accounts_with_data, monkeypatch):

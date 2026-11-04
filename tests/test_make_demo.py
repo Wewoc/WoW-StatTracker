@@ -8,6 +8,8 @@ import importlib.util
 import json
 import re
 import shutil
+import struct
+import zlib
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,7 @@ import plotly_asset
 import stat_derive
 import stat_history
 import stat_parser
+import wow_icons
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 TOOL = Path(__file__).resolve().parent.parent / "tools" / "make_demo.py"
@@ -243,3 +246,44 @@ def test_the_number_of_snapshots_is_checked(tmp_path, value):
     with pytest.raises(SystemExit):
         make_demo.main(["--out", str(tmp_path), "--lang", "en", "--snapshots", value])
     assert not (tmp_path / "en").exists()
+
+
+# ------------------------------------------------------------------ the placeholder icons
+def _embedded_icons(folder, key):
+    page = (folder / "history" / stat_history.page_name(key)).read_text(encoding="utf-8")
+    line = next(l for l in page.splitlines() if l.startswith("const DATA = "))
+    return json.loads(line[len("const DATA = "):].rstrip(";")).get("icons")
+
+
+def test_the_demo_icons_are_invented_64_pixel_tiles_one_per_slot_and_the_same_every_time(tmp_path):
+    images = {slot: make_demo.placeholder_icon(slot) for slot in make_demo.GEAR_SLOTS}
+    assert len(set(images.values())) == len(make_demo.GEAR_SLOTS)            # each slot has its own color
+    assert make_demo.placeholder_icon(5) == images[5]
+    for png in images.values():
+        assert png.startswith(stat_history.PNG_SIGNATURE)
+        width, height = struct.unpack(">II", png[16:24])
+        assert (width, height) == (64, 64)
+        assert len(zlib.decompress(png[png.index(b"IDAT") + 4:png.index(b"IEND") - 8])) == 64 * (64 * 4 + 1)
+    make_demo.make_placeholder_icons(tmp_path / "icons")
+    assert wow_icons.present(tmp_path / "icons") == {make_demo.ICON_ID_BASE + s for s in make_demo.GEAR_SLOTS}
+
+
+def test_every_demo_item_has_the_icon_id_of_its_slot():
+    items = make_demo._gear_items(make_demo.GEAR_BY_CHAR[make_demo.CHARS[0]["key"]], 0, 0)
+    assert {it["iconID"] for it in items.values()} == {make_demo.ICON_ID_BASE + s for s in items}
+
+
+def test_the_demo_history_pages_show_the_placeholders_and_a_character_without_gear_none(tmp_path, fake_plotly):
+    folder = make_demo.make(tmp_path / "out", "en", 3)
+    expected = {str(make_demo.ICON_ID_BASE + s) for s in make_demo.GEAR_SLOTS}
+    assert set(_embedded_icons(folder, make_demo.HISTORY_CHAR)) == expected
+    assert _embedded_icons(folder, make_demo.CHARS[-1]["key"]) is None
+
+
+def test_one_snapshot_makes_no_icons_and_a_new_run_starts_without_old_ones(tmp_path, fake_plotly):
+    assert not (make_demo.make(tmp_path / "one", "en") / "icons").exists()
+    folder = make_demo.make(tmp_path / "out", "en", 3)
+    stale = folder / "icons" / "999.png"
+    stale.write_bytes(b"left over")
+    make_demo.make(tmp_path / "out", "en", 3)
+    assert not stale.exists()

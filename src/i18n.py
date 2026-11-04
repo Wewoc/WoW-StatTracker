@@ -173,6 +173,17 @@ _STRINGS = {
               "BC Anniversary provides no statistics and does not work.",
     },
     "settings_check_updates": {"de": "Beim Start nach Updates suchen", "en": "Check for updates at start"},
+    "settings_read_icons": {
+        "de": "Item-Icons beim Einlesen aus den Spieldateien lesen",
+        "en": "Read item icons from the game files when importing",
+    },
+    "settings_read_icons_hint": {
+        "de": "Die Bilder gehören Blizzard. Sie werden nur auf diesem Rechner aus deiner WoW-Installation gelesen und in den "
+              "Verlaufsseiten gezeigt; eine Seite, die du weitergibst, enthält sie. Bereits gelesene Icons bleiben auch bei "
+              "ausgeschalteter Option sichtbar.",
+        "en": "The pictures belong to Blizzard. They are read on this computer from your WoW installation only and shown on "
+              "the history pages; a page you pass on contains them. Icons read earlier stay visible when this is off.",
+    },
     "settings_none_selected": {
         "de": "Mindestens eine Spielversion muss aktiviert sein.",
         "en": "At least one game version must be enabled.",
@@ -361,6 +372,20 @@ _STRINGS = {
     "parse_warn_history_char": {
         "de": "WARNUNG: Verlaufsseite von {key} nicht geschrieben: {error}",
         "en": "WARNING: history page of {key} not written: {error}",
+    },
+    "parse_out_icons": {
+        "de": "Icons:    {count} aus den Spieldateien gelesen ({path})",
+        "en": "Icons:    {count} read from the game files ({path})",
+    },
+    "parse_note_icons_missing": {
+        "de": "Hinweis:  {count} Item-Icons sind in den Spieldateien nicht zu finden; die Verlaufsseiten zeigen dort das "
+              "Symbol des Platzes (neuer Versuch nach dem nächsten Patch des Spiels).",
+        "en": "Note:     {count} item icons are not in the game files; the history pages show the slot symbol for them "
+              "(tried again after the next patch of the game).",
+    },
+    "parse_warn_icons": {
+        "de": "WARNUNG: Item-Icons nicht gelesen: {error}",
+        "en": "WARNING: item icons not read: {error}",
     },
 
     # ------------------------------------------------------------------- excel
@@ -557,6 +582,10 @@ _STRINGS = {
     "html_hist_gear_gems_note": {
         "de": "Die Werte eingesetzter Edelsteine stehen nicht in den gespeicherten Daten und fehlen in der Summe.",
         "en": "The stats of inserted gems are not in the stored data and are missing from the sum.",
+    },
+    "html_hist_gear_icons_note": {
+        "de": "Symbole der Gegenstände: © Blizzard Entertainment, aus den Spieldateien des Rechners gelesen, der diese Seite erzeugt hat.",
+        "en": "Item icons: © Blizzard Entertainment, read from the game files of the computer that made this page.",
     },
     "html_hist_plotly": {"de": "Diagramme: plotly.js {version} (MIT-Lizenz)", "en": "Charts: plotly.js {version} (MIT license)"},
     "html_hist_back": {"de": "← Übersicht", "en": "← Overview"},

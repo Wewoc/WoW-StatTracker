@@ -42,6 +42,8 @@ LEAF_MODULES = {
     "app_info": set(),
     "paths": {"app_info"},
     "plotly_asset": {"paths"},
+    "blp_decode": set(),
+    "casclib_asset": {"paths"},
     "i18n": set(),
 }
 
@@ -115,6 +117,7 @@ ALLOWED_WRITES = {
     "stat_parser": {"commit", "executescript", "mkdir", "sqlite3.connect", "write_text"},
     "updater": {"extractall", "mkdir", "open(write)", "shutil.copy2", "shutil.copyfileobj", "shutil.rmtree",
                 "subprocess.Popen", "touch", "unlink"},
+    "wow_icons": {"mkdir", "os.replace", "unlink", "write_bytes", "write_text"},      # data/icons/ and its memory file
     "wow_install": {"shutil.copytree", "shutil.rmtree", "unlink", "write_text"},
 }
 

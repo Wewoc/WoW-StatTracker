@@ -26,11 +26,21 @@ downloads the pinned version from `cdn.plot.ly` into `src/plotly.min.js` (git-ig
 its SHA-256 (`src/plotly_asset.py` holds version and hash; change them together). Run it once
 before using the history pages from source. The program itself never downloads it.
 
+`CascLib.dll` (reads the item icons from a local WoW installation) is not part of the repository either.
+`python compiler/casclib_build.py` fetches CascLib at the pinned commit with git, builds it with CMake and the
+Visual Studio Build Tools (C++ workload) and puts the checked x64 DLL into `src/CascLib.dll` (git-ignored).
+`src/casclib_asset.py` holds version and commit (change them together). CI and the release build run the script
+before the tests; `compiler/build.py` runs it too, and on a machine that cannot build the DLL it goes on without it
+(the program then reads no item icons) unless `--require-casclib` is given, which CI and the release build do.
+Without the build tools, copy a CascLib.dll of the pinned version to `src/CascLib.dll`. The program neither builds
+nor downloads it.
+
 ## Tests
 
 ```bash
 pip install -r requirements-dev.txt
 python compiler/plotly_fetch.py       # optional: lets the test for the real Plotly file run
+python compiler/casclib_build.py      # optional: lets the test with the real CascLib DLL run (needs the build tools)
 python -m pytest -q
 ```
 
@@ -84,6 +94,11 @@ the history page is `history/shot-history.html` (one character, four statistics 
 at scale 1.5, saved as `history-en.png` / `history-de.png`. The same page with the *Character* block
 opened is `history/shot-character.html`, saved as `character-en.png` / `character-de.png` (1280 x 900 at
 scale 1.5). It needs plotly.js: run `python compiler/plotly_fetch.py` once before.
+
+The demo history pages show invented placeholder tiles instead of item pictures (`make_demo` writes them to `<folder>/<lang>/icons/` and passes
+`--icons-dir`); no picture of the game goes near the repository. The Character block names Blizzard as the source of the pictures whenever one is shown,
+the placeholders included, so decide before making the Character picture again whether the placeholders and that credit belong in it (the pictures of
+0.1.11 show the slot symbols).
 
 ## Layout
 

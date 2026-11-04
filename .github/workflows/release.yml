@@ -18,6 +18,7 @@ jobs:
           python-version: "3.13"
       - run: pip install -r requirements-dev.txt pyinstaller
       - run: python compiler/plotly_fetch.py
+      - run: python compiler/casclib_build.py
       - run: python -m pytest -q
       - name: Tag must match APP_VERSION
         shell: python
@@ -28,7 +29,7 @@ jobs:
           tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
           if tag != app_info.APP_VERSION:
               sys.exit(f"tag {tag} != APP_VERSION {app_info.APP_VERSION}")
-      - run: python compiler/build.py --no-venv
+      - run: python compiler/build.py --no-venv --require-casclib
       - name: Release title and notes from the tag message
         shell: bash
         run: |

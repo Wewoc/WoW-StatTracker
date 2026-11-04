@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import app_info  # noqa: E402
+import casclib_asset  # noqa: E402
 import plotly_asset  # noqa: E402
 
 APP_NAME = app_info.APP_NAME
@@ -35,6 +36,13 @@ FETCHED_FILES = [
     ("src/" + plotly_asset.FILENAME, "."),
 ]
 
+# Bundled like FETCHED_FILES but built, not fetched, and optional on a machine without a C++ compiler:
+# compiler/casclib_build.py puts it in place, build.py bundles it when it is there and requires it
+# with --require-casclib (CI and release builds). Without it the program reads no item icons.
+BUILT_FILES = [
+    ("src/" + casclib_asset.FILENAME, "."),
+]
+
 # Modules that are only imported inside functions or try/except (found anyway,
 # listed for certainty).
 HIDDEN_IMPORTS = ["openpyxl"]
@@ -42,7 +50,7 @@ HIDDEN_IMPORTS = ["openpyxl"]
 # Shipped next to the exe (see app_info.PROGRAM_ITEMS):
 ADDON_SRC = "addon"                     # -> <dist>/addon/StatTracker/
 INFO_DIR = "info"
-INFO_FILES = ["README.md", "README.de.md", "CHANGELOG.md"]   # -> <dist>/info/
+INFO_FILES = ["README.md", "README.de.md", "CHANGELOG.md", "THIRD_PARTY_LICENSES.md"]   # -> <dist>/info/
 LICENSE_FILE = "LICENSE"                # -> <dist>/LICENSE
 
 ZIP_NAME = app_info.ZIP_ASSET_NAME

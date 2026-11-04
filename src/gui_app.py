@@ -31,14 +31,19 @@ from i18n import t
 
 
 # ============================================================ logic helpers (no widgets)
-def run_parser(sv_file, db_path, html_path, history_dir=None):
+def run_parser(sv_file, db_path, html_path, history_dir=None, icons_dir=None, game_dir=None, product=None):
     """Runs stat_parser.main() and returns (ok, output_text). history_dir: where the history pages go
-    (none are made if it is not given)."""
+    (none are made if it is not given). icons_dir: the folder whose item icons the pages show; with game_dir
+    (the WoW folder) and product as well, the import also reads the icons it lacks from the game files."""
     buf = io.StringIO()
     ok = True
     args = ["--input", str(sv_file), "--db", str(db_path), "--output", str(html_path)]
     if history_dir:
         args += ["--history-dir", str(history_dir)]
+        if icons_dir:
+            args += ["--icons-dir", str(icons_dir)]
+            if game_dir and product:
+                args += ["--game-dir", str(game_dir), "--product", str(product)]
     try:
         with contextlib.redirect_stdout(buf):
             stat_parser.main(args)
@@ -306,10 +311,10 @@ class App(tk.Tk):
         root, _forced = wow_install.resolve_root(self.var_wow.get())
         detected = wow_install.list_variants(root) if root else []
         result = gui_dialogs.ask_settings(self, detected, self.cfg["enabled_variants"],
-                                          self.cfg["check_updates"])
+                                          self.cfg["check_updates"], self.cfg["read_icons"])
         if not result:
             return
-        self.cfg["enabled_variants"], self.cfg["check_updates"] = result
+        self.cfg["enabled_variants"], self.cfg["check_updates"], self.cfg["read_icons"] = result
         self.save()
         self.refresh_variants(keep=self.var_variant.get())
 
@@ -378,7 +383,10 @@ class App(tk.Tk):
             return False
         self.save()
         db_path, html_path = wow_install.out_files(variant)
-        ok, out = run_parser(sv, db_path, html_path, wow_install.history_dir(variant))
+        # The icons already in data/ are always shown; the game files are read only with the option on (and a known product).
+        product = wow_install.VARIANT_PRODUCT.get(variant) if self.cfg["read_icons"] else None
+        ok, out = run_parser(sv, db_path, html_path, wow_install.history_dir(variant),
+                             wow_install.icons_dir(variant), root if product else None, product)
         for line in out.strip().splitlines():
             self.write(line, "err" if (not ok or line.startswith(("FEHLER", "WARNUNG", "ERROR", "WARNING"))) else None)
         self.write(t("log_parse_ok") if ok else t("log_parse_fail"), "ok" if ok else "err")

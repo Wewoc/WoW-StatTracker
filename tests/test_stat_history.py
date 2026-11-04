@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Wewoc (github.com/wewoc)
 # The history of one character (stat_history): order, gaps, units, and that reading never writes.
 
+import base64
 import hashlib
 import sqlite3
 
@@ -10,6 +11,7 @@ import pytest
 import i18n
 import stat_history
 import stat_parser
+import wow_icons
 
 META = {1: {"name": "Total deaths", "cat": "Combat"},
         2: {"name": "Gold earned", "cat": "Wealth"},
@@ -260,3 +262,74 @@ def test_unreadable_json_in_a_gear_row_leaves_only_that_field_empty(tmp_path):
     conn.close()
     helm = history(db)["gear"][0]["items"][0]
     assert helm["stats"] is None and helm["gem_ids"] is None and helm["name"] == "Helm"
+
+
+# ------------------------------------------------------------------ the item icons of a page
+PNG = stat_history.PNG_SIGNATURE + b"fake png data"
+
+
+def icon_db(tmp_path):
+    """A database whose character wore the items 1 and 2 (icon ids 1001 and 1002) and one without an icon."""
+    return make_db(tmp_path / "icons.db", [
+        gear_scan("2026-10-01 10:00:00", {1: item(1, "Helm", 600), 2: item(2, "Neck", 598)}),
+        gear_scan("2026-10-02 10:00:00", {1: item(1, "Helm", 600), 3: {"itemID": 3, "name": "No icon", "quality": 4, "ilvl": 1}}),
+    ])
+
+
+def payload_with_icons(db, icons_dir):
+    conn = stat_history.open_readonly(db)
+    try:
+        return stat_history.build_page_payload(conn, KEY, icons_dir=icons_dir)
+    finally:
+        conn.close()
+
+
+def put_icon(folder, icon_id, data=PNG):
+    folder.mkdir(parents=True, exist_ok=True)
+    wow_icons.icon_path(folder, icon_id).write_bytes(data)
+
+
+def test_the_icons_of_the_items_a_character_wore_are_embedded_as_data_uris(tmp_path):
+    icons = tmp_path / "icons"
+    for icon_id in (1001, 1002, 1003):                 # 1003 belongs to an item this character never wore
+        put_icon(icons, icon_id, PNG + str(icon_id).encode())
+    found = payload_with_icons(icon_db(tmp_path), icons)["icons"]
+    assert sorted(found) == ["1001", "1002"]
+    for icon_id, uri in found.items():
+        assert uri == "data:image/png;base64," + base64.b64encode(PNG + icon_id.encode()).decode("ascii")
+
+
+def test_no_icons_field_without_a_folder_without_files_or_for_a_character_without_gear(tmp_path):
+    db = icon_db(tmp_path)
+    assert "icons" not in payload_with_icons(db, None)
+    assert "icons" not in payload_with_icons(db, tmp_path / "no-such-folder")
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert "icons" not in payload_with_icons(db, empty)
+    put_icon(tmp_path / "icons", 1001)
+    plain = make_db(tmp_path / "plain.db", [scan("2026-10-01 10:00:00", {1: "1"}), scan("2026-10-02 10:00:00", {1: "2"})])
+    assert "icons" not in payload_with_icons(plain, tmp_path / "icons")
+
+
+def test_a_file_that_is_not_a_png_too_big_or_unreadable_is_left_out(tmp_path):
+    icons = tmp_path / "icons"
+    put_icon(icons, 1001, b"GIF89a not a png")
+    put_icon(icons, 1002, PNG + bytes(stat_history.MAX_ICON_BYTES))
+    wow_icons.icon_path(icons, 1003).mkdir()           # a folder where the file should be
+    assert "icons" not in payload_with_icons(icon_db(tmp_path), icons)
+    put_icon(icons, 1001)
+    assert list(payload_with_icons(icon_db(tmp_path), icons)["icons"]) == ["1001"]
+
+
+def test_the_icon_ids_come_from_the_items_of_every_scan_and_ignore_what_is_no_id():
+    gear = [None, {"items": [{"icon_id": 5}, {"icon_id": None}, {}, {"icon_id": True}, {"icon_id": "7"}]}, {"items": [{"icon_id": 5}, {"icon_id": 9}]}]
+    assert stat_history.icon_ids(gear) == {5, 9}
+    assert stat_history.icon_ids(None) == set()
+
+
+def test_reading_the_icons_leaves_the_database_alone(tmp_path):
+    db = icon_db(tmp_path)
+    before = digest(db)
+    put_icon(tmp_path / "icons", 1001)
+    payload_with_icons(db, tmp_path / "icons")
+    assert digest(db) == before

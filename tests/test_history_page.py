@@ -3,6 +3,7 @@
 # The history page: payload, the file stat_history.write_page makes, and what the template may not contain.
 # Runs with a fake plotly.js (the pin is bent to its hash); one test uses the real bundle if it was fetched.
 
+import base64
 import hashlib
 import json
 import re
@@ -16,6 +17,7 @@ import paths
 import plotly_asset
 import stat_history
 import stat_parser
+import wow_icons
 from plotly_asset import PlotlyAssetError
 from stat_history import HistoryPageError
 
@@ -197,3 +199,64 @@ def test_the_real_bundle_goes_into_a_real_page(payload, tmp_path, monkeypatch):
     assert len(raw) > 3_000_000
     assert raw.startswith(b"<!DOCTYPE html>") and b"plotly.js v" + plotly_asset.VERSION.encode() in raw
     assert embedded(raw)[1] == payload
+
+
+# ------------------------------------------------------------------ the item icons on the page
+def gear_db(tmp_path):
+    """A database whose character wore one item with the icon id 1001 in both scans."""
+    conn = stat_parser.init_db(tmp_path / "gear.db")
+    for at in ("2026-10-01 10:00:00", "2026-10-02 10:00:00"):
+        c = {"scannedAt": at, "scannedEpoch": 1, "class": "Mage", "level": 80, "faction": "Alliance", "stats": {1: "1"},
+             "gear": {1: {"itemID": 1, "name": "Helm", "quality": 4, "ilvl": 600, "iconID": 1001}}}
+        stat_parser.import_data(conn, {"meta": META, "chars": {KEY: c}})
+    return conn
+
+
+def icons_folder(tmp_path):
+    folder = tmp_path / "icons"
+    folder.mkdir()
+    wow_icons.icon_path(folder, 1001).write_bytes(stat_history.PNG_SIGNATURE + bytes(range(256)))
+    wow_icons.icon_path(folder, 1002).write_bytes(stat_history.PNG_SIGNATURE + b"another character's item")
+    return folder
+
+
+def test_the_page_carries_the_icons_of_its_character_and_nothing_else(site, tmp_path):
+    conn = gear_db(tmp_path)
+    page = tmp_path / "out" / "a.html"
+    stat_history.write_page(stat_history.build_page_payload(conn, KEY, icons_dir=icons_folder(tmp_path)), page)
+    _line, data = embedded(page.read_bytes())
+    assert list(data["icons"]) == ["1001"]
+    uri = data["icons"]["1001"]
+    assert uri == stat_history.ICON_URI_PREFIX + base64.b64encode(stat_history.PNG_SIGNATURE + bytes(range(256))).decode()
+    assert page.read_bytes().count(b"</script") == 2                # the data cannot end its script (plotly's and the page's)
+
+
+def test_the_icons_folder_reaches_the_pages_through_the_import_hook(site, tmp_path):
+    conn = gear_db(tmp_path)
+    folder = tmp_path / "hist"
+    links, lines = stat_parser.update_history_pages(conn, folder, tmp_path / "stats.html", {KEY}, icons_folder(tmp_path))
+    assert list(links["links"]) == [KEY] and not [l for l in lines if "WARN" in l.upper()]
+    _line, data = embedded((folder / stat_history.page_name(KEY)).read_bytes())
+    assert list(data["icons"]) == ["1001"]
+
+
+def test_without_an_icons_folder_the_page_has_no_icons_field(site, tmp_path):
+    conn = gear_db(tmp_path)
+    folder = tmp_path / "hist"
+    stat_parser.update_history_pages(conn, folder, tmp_path / "stats.html", {KEY})
+    _line, data = embedded((folder / stat_history.page_name(KEY)).read_bytes())
+    assert "icons" not in data and data["gear"]
+
+
+def test_the_template_shows_an_icon_only_from_the_page_data_and_checks_its_shape():
+    template = (SRC / stat_history.PAGE_TEMPLATE).read_text(encoding="utf-8")
+    assert "DATA.icons" in template and "style.backgroundImage" in template and "<img " not in template
+    assert "gIconsNote" in template and "UI.hist_gear_icons_note" in template          # the credit for the pictures
+    pattern = re.compile(re.search(r"const ICON_URI = /(.+)/;", template).group(1).replace("\\/", "/"))
+    good = stat_history.ICON_URI_PREFIX + base64.b64encode(stat_history.PNG_SIGNATURE + bytes(range(255))).decode("ascii")
+    assert "+" in good and "/" in good[len(stat_history.ICON_URI_PREFIX):] and good.endswith("=")
+    assert pattern.fullmatch(good)
+    for bad in ("data:image/svg+xml;base64,AAAA", 'data:image/png;base64,AA")', "data:image/png;base64,AA AA",
+                "data:image/png;base64,AA\n", "javascript:alert(1)", "https://example.test/a.png", "data:image/png;base64,",
+                "data:image/png,AAAA", good + ")"):
+        assert not pattern.fullmatch(bad), bad

@@ -15,6 +15,9 @@ dist/
 # plotly.js is fetched by compiler/plotly_fetch.py (pinned hash), not checked in
 src/plotly.min.js*
 
+# CascLib.dll (item icons) is built by compiler/casclib_build.py (pinned commit), not checked in
+src/CascLib.dll*
+
 # Instance data (portable mode: lives in data/, never checked in)
 data/
 config.json
