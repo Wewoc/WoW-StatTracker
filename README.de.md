@@ -31,13 +31,15 @@ Die Statistik-Seite zeigt Rasse, Klasse und Level unter jedem Namen. Ihr ausklap
 
 ![Der Gruppen-Block: Charaktere nach Fraktion gruppiert mit Anzahl, Durchschnittslevel, Spielzeit, Raten pro Stunde und zwei hinzugefügten Statistiken.](docs/images/groups-de.png)
 
-Jeder Charakter mit mindestens zwei Scans bekommt außerdem eine **Verlaufsseite**, verlinkt im Block *Verläufe* der Statistik-Seite: bis zu zehn Statistiken auswählen und als Linien über deine Scans ansehen, absolut oder als Index (erster Wert = 100). Ein Scan ohne Zahl hinterlässt eine Lücke, es wird nichts aufgefüllt. *2. Daten einlesen* erzeugt die Seiten (nur für Charaktere mit neuem Scan) und braucht kein Internet; die Links funktionieren, solange der Ordner `history` neben der Statistik-Seite liegt.
+Jeder Charakter mit mindestens zwei Scans bekommt außerdem eine **Verlaufsseite**, verlinkt im Block *Verläufe* der Statistik-Seite: bis zu zehn Statistiken auswählen und als Linien über deine Scans ansehen, absolut oder als Index (erster Wert = 100). Ein Scan ohne Zahl hinterlässt eine Lücke, es wird nichts aufgefüllt. *2. Daten einlesen* erzeugt die Seiten (für Charaktere mit neuem Scan oder neuen Item-Bildern) und braucht kein Internet; die Links funktionieren, solange der Ordner `history` neben der Statistik-Seite liegt.
 
-Zwei weitere Linien stehen dort zur Wahl: das ausgerüstete und das gesamte Itemlevel (Gegenstandsstufe) jedes Scans (das gesamte nimmt für jeden Slot das beste Teil, das der Charakter bei sich hat; es liegt höher, wenn in den Taschen ein besseres Teil wartet). Über dem Diagramm zeigt der ausklappbare Bereich *Charakter* die Ausrüstung eines Scans, angeordnet wie der Charakterbildschirm des Spiels: je Slot das Teil mit Itemlevel, Aufwertungsspur, Verzauberung, Werten und einem Hinweis auf einen leeren Edelsteinsockel, dazu die Summe der Zweitwerte (die Werte eingesetzter Edelsteine stehen nicht in den gespeicherten Daten und sind nicht enthalten). Jeder Scan lässt sich wählen und mit dem vorigen vergleichen; geänderte Slots sind markiert. Hemd und Wappenrock fehlen, und die Symbole zeichnet die Seite selbst: die Item-Bilder des Spiels werden nicht gezeigt.
+Zwei weitere Linien stehen dort zur Wahl: das ausgerüstete und das gesamte Itemlevel (Gegenstandsstufe) jedes Scans (das gesamte nimmt für jeden Slot das beste Teil, das der Charakter bei sich hat; es liegt höher, wenn in den Taschen ein besseres Teil wartet). Über dem Diagramm zeigt der ausklappbare Bereich *Charakter* die Ausrüstung eines Scans, angeordnet wie der Charakterbildschirm des Spiels: je Slot das Teil mit Itemlevel, Aufwertungsspur, Verzauberung, Werten und einem Hinweis auf einen leeren Edelsteinsockel, dazu die Summe der Zweitwerte (die Werte eingesetzter Edelsteine stehen nicht in den gespeicherten Daten und sind nicht enthalten). Jeder Scan lässt sich wählen und mit dem vorigen vergleichen; geänderte Slots sind markiert. Hemd und Wappenrock fehlen.
 
 ![Die Verlaufsseite eines Charakters: vier Statistiken als Index über zwölf Scans, links die Liste aller Statistiken.](docs/images/history-de.png)
 
 ![Der Bereich Charakter der Verlaufsseite: sechzehn Ausrüstungsslots mit Item, Itemlevel, Aufwertungsspur, Verzauberung und Werten; seit dem vorigen Scan geänderte Slots haben einen goldenen Rand.](docs/images/character-de.png)
+
+Die Slots zeigen die Item-Bilder des Spiels, wenn StatTracker sie hat. Beim Einlesen der Daten sucht es die Bilder der Gegenstände, die deine Charaktere getragen haben, in den Spieldateien deiner WoW-Installation (nur lesend, das Spiel darf laufen), legt jedes als kleine PNG-Datei in `data/icons` ab und bettet sie in die Verlaufsseiten ein; wo ein Bild fehlt, bleibt das Symbol des Slots. Gelesen werden nur die Bilder, die noch fehlen: Das erste Einlesen dauert einige Sekunden länger, spätere kaum; das Programm stellt dafür keine Netzwerkanfrage. Die Option *Item-Icons beim Einlesen aus den Spieldateien lesen* unter *Einstellungen ...* ist standardmäßig an; ausgeschaltet bleiben früher gelesene Bilder sichtbar. Die Bilder gehören Blizzard Entertainment: Sie entstehen auf deinem Rechner aus deiner eigenen Installation, sind nicht Teil von StatTracker oder der Bilder in dieser README, und eine Verlaufsseite, die du weitergibst, enthält die Bilder, die sie zeigt.
 
 ## Spielversionen
 
@@ -68,7 +70,7 @@ Beim Start (abschaltbar unter *Einstellungen ...*) fragt StatTracker bei GitHub 
 
 ## Wo liegen meine Daten?
 
-Neben dem Programm im Ordner `data`: `config.json`, `wow_stats*.db`, `stats*.html`, der Ordner `history` (`history_<Version>` bei den anderen Spielversionen; er lässt sich aus der Datenbank neu erzeugen), `stattracker.xlsx` und der Ordner `backups`. Sichere diesen Ordner, wenn dir die Historie wichtig ist.
+Neben dem Programm im Ordner `data`: `config.json`, `wow_stats*.db`, `stats*.html`, der Ordner `history` (`history_<Version>` bei den anderen Spielversionen; er lässt sich aus der Datenbank neu erzeugen), der Ordner `icons` (die aus dem Spiel gelesenen Item-Bilder, `icons_<Version>` bei den anderen Spielversionen; fehlende werden neu gelesen), `stattracker.xlsx` und der Ordner `backups`. Sichere diesen Ordner, wenn dir die Historie wichtig ist.
 
 Bevor ein Einlesen in eine vorhandene Datenbank schreibt, kopiert StatTracker sie nach `data/backups/`:
 
@@ -86,7 +88,7 @@ pip install -r requirements.txt
 python src/start.py
 ```
 
-Mehr in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+Ohne `src/CascLib.dll` läuft das Programm, liest aber keine Item-Bilder; wie man sie baut, steht in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), dort steht auch mehr.
 
 ## Haftungsausschluss
 
@@ -99,3 +101,5 @@ StatTracker installiert und entfernt Dateien in deinem WoW-Ordner, ersetzt beim 
 Copyright (C) 2026 Wewoc. GNU General Public License v3.0 oder neuer - siehe [LICENSE](LICENSE). Dies ist ein Fan-Werkzeug; World of Warcraft ist eine Marke von Blizzard Entertainment, die mit diesem Projekt nicht verbunden ist.
 
 Software von Dritten: Die Verlaufsseiten enthalten [plotly.js](https://github.com/plotly/plotly.js) 2.27.0, Copyright 2012-2023 Plotly, Inc., MIT-Lizenz. Sie ist nicht Teil dieses Repositorys: Der Build lädt sie einmal herunter und prüft sie gegen eine feste SHA-256-Summe, der Lizenzhinweis bleibt im Kopf der eingebetteten Datei. Die Seiten stellen keine Netzwerkanfragen.
+
+CascLib von Ladislav Zezula (MIT-Lizenz, <https://github.com/ladislav-zezula/CascLib>) liest die Spieldateien für die Item-Bilder: Der Build holt ihren Quelltext bei einem festen Commit von GitHub und baut daraus `CascLib.dll`, die zum Programm gehört. Der Lizenztext steht in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) (im Ordner `info` des Releases).

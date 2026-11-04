@@ -95,6 +95,11 @@ at scale 1.5, saved as `history-en.png` / `history-de.png`. The same page with t
 opened is `history/shot-character.html`, saved as `character-en.png` / `character-de.png` (1280 x 900 at
 scale 1.5). It needs plotly.js: run `python compiler/plotly_fetch.py` once before.
 
+The demo history pages show invented placeholder tiles instead of item pictures (`make_demo` writes them to `<folder>/<lang>/icons/` and passes
+`--icons-dir`); no picture of the game goes near the repository. The Character block names Blizzard as the source of the pictures whenever one is shown,
+the placeholders included, so decide before making the Character picture again whether the placeholders and that credit belong in it (the pictures of
+0.1.11 show the slot symbols).
+
 ## Layout
 
 ```

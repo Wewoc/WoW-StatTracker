@@ -13,7 +13,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 SCOPE_DIRS = ["src", "tests", "compiler", "tools", "addon", "docs", ".github"]
-SCOPE_FILES = ["README.md", "README.de.md", "CHANGELOG.md", "requirements.txt", "requirements-dev.txt", ".gitignore"]
+SCOPE_FILES = ["README.md", "README.de.md", "CHANGELOG.md", "THIRD_PARTY_LICENSES.md", "requirements.txt", "requirements-dev.txt",
+               ".gitignore"]
 TEXT_SUFFIXES = {".py", ".md", ".txt", ".bat", ".json", ".toml", ".cfg", ".ini", ".yml", ".yaml",
                  ".ps1", ".lua", ".toc", ".html", ""}
 

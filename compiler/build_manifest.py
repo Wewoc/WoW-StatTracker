@@ -50,7 +50,7 @@ HIDDEN_IMPORTS = ["openpyxl"]
 # Shipped next to the exe (see app_info.PROGRAM_ITEMS):
 ADDON_SRC = "addon"                     # -> <dist>/addon/StatTracker/
 INFO_DIR = "info"
-INFO_FILES = ["README.md", "README.de.md", "CHANGELOG.md"]   # -> <dist>/info/
+INFO_FILES = ["README.md", "README.de.md", "CHANGELOG.md", "THIRD_PARTY_LICENSES.md"]   # -> <dist>/info/
 LICENSE_FILE = "LICENSE"                # -> <dist>/LICENSE
 
 ZIP_NAME = app_info.ZIP_ASSET_NAME

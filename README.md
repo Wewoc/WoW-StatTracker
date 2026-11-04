@@ -31,13 +31,15 @@ The stats page shows race, class and level under each name. Its collapsible *Gro
 
 ![The Groups block: characters grouped by faction with number of characters, average level, played time, rates per hour and two added statistics.](docs/images/groups-en.png)
 
-Every character with at least two scans also gets a **history page**, linked from the *History* block of the stats page: pick up to ten statistics and see them as lines over your scans, as absolute values or as an index (first value = 100). A scan without a number leaves a gap, nothing is filled in. *2. Read data* makes the pages (only for characters with a new scan) and needs no internet; the links work as long as the `history` folder lies next to the stats page.
+Every character with at least two scans also gets a **history page**, linked from the *History* block of the stats page: pick up to ten statistics and see them as lines over your scans, as absolute values or as an index (first value = 100). A scan without a number leaves a gap, nothing is filled in. *2. Read data* makes the pages (for characters with a new scan or new item pictures) and needs no internet; the links work as long as the `history` folder lies next to the stats page.
 
-Two more lines are on offer there: the equipped and the overall item level of every scan (the overall one takes the best piece of each slot among everything the character carries, so it is higher when a better piece waits in the bags). Above the chart a collapsible *Character* block shows the equipment of one scan, arranged like the character screen of the game: for every slot the item with its item level, upgrade track, enchantment, stats and a note on an empty gem socket, plus the sum of the secondary stats (the values of inserted gems are not in the stored data and are not part of it). You can pick any scan and compare it with the previous one; slots that changed are marked. The shirt and the tabard are left out, and the symbols are drawn by the page: the item pictures of the game are not shown.
+Two more lines are on offer there: the equipped and the overall item level of every scan (the overall one takes the best piece of each slot among everything the character carries, so it is higher when a better piece waits in the bags). Above the chart a collapsible *Character* block shows the equipment of one scan, arranged like the character screen of the game: for every slot the item with its item level, upgrade track, enchantment, stats and a note on an empty gem socket, plus the sum of the secondary stats (the values of inserted gems are not in the stored data and are not part of it). You can pick any scan and compare it with the previous one; slots that changed are marked. The shirt and the tabard are left out.
 
 ![The history page of one character: four statistics shown as an index over twelve scans, with the list of all statistics on the left.](docs/images/history-en.png)
 
 ![The Character block of the history page: sixteen equipment slots with item, item level, upgrade track, enchantment and stats; slots changed since the previous scan have a gold edge.](docs/images/character-en.png)
+
+The slots show the item pictures of the game when StatTracker has them. While reading the data it looks up the pictures of the items your characters wore in the game files of your WoW installation (read-only, the game may be running), keeps each as a small PNG file in `data/icons` and embeds them in the history pages; where a picture is missing the page keeps the symbol of the slot. Only the pictures that are still missing are read, so the first read takes a few seconds longer and later ones hardly any; the program makes no network request for them. The option *Read item icons from the game files when importing* in *Settings ...* is on by default; with it off, the pictures read earlier stay visible. The pictures belong to Blizzard Entertainment: they are made on your computer from your own installation, they are not part of StatTracker or of the pictures in this README, and a history page that you pass on contains the pictures it shows.
 
 ## Game versions
 
@@ -68,7 +70,7 @@ At start (switch off in *Settings ...*) StatTracker asks GitHub whether a newer 
 
 ## Where is my data?
 
-Next to the program, in the `data` folder: `config.json`, `wow_stats*.db`, `stats*.html`, the `history` folder (`history_<version>` for the other game versions; it can be made again from the database), `stattracker.xlsx` and the `backups` folder. Back that folder up if you care about the history.
+Next to the program, in the `data` folder: `config.json`, `wow_stats*.db`, `stats*.html`, the `history` folder (`history_<version>` for the other game versions; it can be made again from the database), the `icons` folder (the item pictures read from the game, `icons_<version>` for the other game versions; missing ones are read again), `stattracker.xlsx` and the `backups` folder. Back that folder up if you care about the history.
 
 Before an import writes to an existing database, StatTracker copies it into `data/backups/`:
 
@@ -86,7 +88,7 @@ pip install -r requirements.txt
 python src/start.py
 ```
 
-More in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+Without `src/CascLib.dll` the program runs but reads no item pictures; how to build it is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), which has more.
 
 ## Disclaimer
 
@@ -99,3 +101,5 @@ StatTracker installs and removes files in your WoW folder, replaces its own prog
 Copyright (C) 2026 Wewoc. GNU General Public License v3.0 or later - see [LICENSE](LICENSE). This is a fan tool; World of Warcraft is a trademark of Blizzard Entertainment, which is not affiliated with this project.
 
 Third-party software: the history pages embed [plotly.js](https://github.com/plotly/plotly.js) 2.27.0, Copyright 2012-2023 Plotly, Inc., MIT license. It is not part of this repository: the build downloads it once and checks it against a fixed SHA-256, and its license notice stays in the header of the embedded file. The pages make no network requests.
+
+CascLib by Ladislav Zezula (MIT license, <https://github.com/ladislav-zezula/CascLib>) reads the game files for the item pictures: the build fetches its source from GitHub at a fixed commit and builds `CascLib.dll`, which is part of the program. The license text is in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) (in the `info` folder of the release).
