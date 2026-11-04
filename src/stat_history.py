@@ -12,10 +12,13 @@
 # write_page() puts the data and the pinned plotly.js (plotly_asset) into history.html and
 # writes that one file; write_pages() decides which characters need a new page (a new scan, no
 # page yet, or pages from another program version). Both are the only writers of the history pages.
-# Needs stat_parser (schema check, names of the played-time statistics), plotly_asset, i18n,
-# paths and app_info. stat_parser imports this module late, inside main(), because it needs
-# stat_parser itself.
+# The item icons the page may show are read from the icons folder (wow_icons makes it) and embedded as
+# data URIs, only those of the items this character wore; without a folder or a file the page keeps its
+# slot symbols. Needs stat_parser (schema check, names of the played-time statistics), plotly_asset,
+# wow_icons (the file names of the icons), i18n, paths and app_info. stat_parser imports this module
+# late, inside main(), because it needs stat_parser itself.
 
+import base64
 import hashlib
 import json
 import os
@@ -29,6 +32,7 @@ import i18n
 import paths
 import plotly_asset
 import stat_parser
+import wow_icons
 
 # Text of a coin amount ('12g 5s 3c'); the same shape stat_parser.to_number turns into copper.
 COIN_TEXT = re.compile(r"(?:\d[\d.,]*\s*[gsc]\s*)+")
@@ -44,6 +48,10 @@ PAGE_PREFIX = "history-"                        # file names: history-<name>-<ha
 NAME_PART_MAX = 40
 GENERATOR_FILE = ".generator"                   # in the pages folder: the program version that wrote the pages
 MIN_SCANS = 2                                   # a character needs this many scans to get a page
+
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+ICON_URI_PREFIX = "data:image/png;base64,"
+MAX_ICON_BYTES = 256 * 1024                     # a 64 x 64 icon is a few KB; a bigger file is not one of ours
 
 
 class HistoryPageError(Exception):
@@ -159,16 +167,42 @@ def build_history(conn, char_key):
             "gear": _gear_history(conn, char_key, scans, position, spec)}
 
 
-def build_page_payload(conn, char_key, back=None):
+def icon_ids(gear):
+    """The icon ids of every item in the `gear` part of build_history (None = no gear)."""
+    return {item["icon_id"] for entry in (gear or []) if entry for item in entry["items"]
+            if isinstance(item.get("icon_id"), int) and not isinstance(item.get("icon_id"), bool)}
+
+
+def icon_uris(icons_dir, ids):
+    """{str(icon id): 'data:image/png;base64,...'} for those of `ids` that have a PNG in the icons folder.
+    A missing folder, a missing or unreadable file, one that is too big or not a PNG is left out (the page
+    then shows the slot symbol); nothing is guessed and nothing is read but these files."""
+    found = {}
+    for icon_id in sorted(ids):
+        path = wow_icons.icon_path(icons_dir, icon_id)
+        try:
+            if path.stat().st_size > MAX_ICON_BYTES:
+                continue
+            data = path.read_bytes()
+        except OSError:
+            continue
+        if data.startswith(PNG_SIGNATURE):
+            found[str(icon_id)] = ICON_URI_PREFIX + base64.b64encode(data).decode("ascii")
+    return found
+
+
+def build_page_payload(conn, char_key, back=None, icons_dir=None):
     """build_history() plus what the page needs besides the numbers: texts in the current language
     (`ui`, and `names` of the equipment: slots by number, item stats by raw key, upgrade tracks by id),
     the program data for the footer, the plotly.js version, and `back`, the link to the stats page
-    (relative, already URL-quoted; None = no link). None if the database has no scan of the
-    character."""
+    (relative, already URL-quoted; None = no link). With `icons_dir`, `icons`: the icons of the items this
+    character wore that the folder has, by icon id, as data URIs (no such field if there is none).
+    None if the database has no scan of the character."""
     history = build_history(conn, char_key)
     if history is None:
         return None
     lang = i18n.get_language()
+    icons = icon_uris(icons_dir, icon_ids(history["gear"])) if icons_dir else {}
     return {**history,
             "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "lang": lang,
@@ -178,7 +212,8 @@ def build_page_payload(conn, char_key, back=None):
             "app": {"version": app_info.APP_VERSION, "copyright": app_info.COPYRIGHT,
                     "license": app_info.LICENSE_NAME, "site": app_info.SITE_URL},
             "plotly": plotly_asset.VERSION,
-            "back": back}
+            "back": back,
+            **({"icons": icons} if icons else {})}
 
 
 def write_page(payload, out_path):
@@ -229,11 +264,12 @@ def _generator_version(folder):
         return None
 
 
-def write_pages(conn, folder, changed, back_href=None):
+def write_pages(conn, folder, changed, back_href=None, icons_dir=None):
     """Brings the history pages in `folder` up to date. A character with at least MIN_SCANS scans
     gets a page if it is in `changed` (a scan was imported just now), if its page is missing, or if
     the pages were written by another program version (then all are written again). Nothing is
-    written for the rest, so an import that brings nothing new leaves every file alone.
+    written for the rest, so an import that brings nothing new leaves every file alone. `icons_dir`:
+    where the item icons for the pages are (see build_page_payload; None = no icons).
 
     Returns {"links": {char_key: {"file", "scans"}}   the pages that exist now (an old page stays linked
                                                        if writing the new one failed)
@@ -252,7 +288,7 @@ def write_pages(conn, folder, changed, back_href=None):
         target = folder / page_name(key)
         if not blocked and (everything or key in changed or not target.is_file()):
             try:
-                write_page(build_page_payload(conn, key, back_href), target)
+                write_page(build_page_payload(conn, key, back_href, icons_dir), target)
                 written.append(key)
             except plotly_asset.PlotlyAssetError as exc:
                 failed.append((None, str(exc)))

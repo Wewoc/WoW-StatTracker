@@ -8,10 +8,12 @@
 # a SQLite database (with history) and builds a self-contained stats page from it
 # (data embedded, no web server needed). Before it writes to an existing database it takes a
 # copy of it (db_backup). With --history-dir it also keeps the history pages of the characters
-# up to date (stat_history, imported late in update_history_pages) and links them from the page.
+# up to date (stat_history, imported late in update_history_pages) and links them from the page;
+# with --icons-dir as well, those pages show the item icons that folder holds.
 #
 # Usage:
 #     python stat_parser.py --input PATH\StatTracker.lua [--db FILE] [--output FILE] [--history-dir DIR]
+#                           [--icons-dir DIR]
 # No external dependencies.
 
 import argparse
@@ -876,10 +878,11 @@ def write_html(payload, out_path):
 
 
 # ------------------------------------------------------------- history pages
-def update_history_pages(conn, history_dir, html_path, changed):
+def update_history_pages(conn, history_dir, html_path, changed, icons_dir=None):
     """Brings the history pages of the characters up to date (stat_history.write_pages) and returns
     (links for the stats page or None, lines to print). A failure here never stops the import or the
-    stats page: it becomes a warning line, and the page then links only the pages that exist."""
+    stats page: it becomes a warning line, and the page then links only the pages that exist.
+    `icons_dir`: the folder whose item icons the pages embed (None = pages without icons)."""
     import stat_history          # late: stat_history imports this module
     folder, page = Path(history_dir), Path(html_path)
     try:
@@ -888,7 +891,7 @@ def update_history_pages(conn, history_dir, html_path, changed):
     except ValueError:           # another drive: there is no relative link
         rel = back = None
     try:
-        result = stat_history.write_pages(conn, folder, changed, back)
+        result = stat_history.write_pages(conn, folder, changed, back, icons_dir)
     except Exception as exc:     # not worth losing the import for: the pages are an extra
         return None, [t("parse_warn_history", error=f"{type(exc).__name__}: {exc}")]
     lines = []
@@ -925,6 +928,8 @@ def main(argv=None):
     ap.add_argument("--db", default=str(paths.data_dir() / "wow_stats.db"))
     ap.add_argument("--output", default=str(paths.data_dir() / "stats.html"))
     ap.add_argument("--history-dir", help="folder for the history pages of the characters (no pages if not given)")
+    ap.add_argument("--icons-dir", help="folder with the item icons the history pages show (no icons if not given; "
+                                        "only used together with --history-dir)")
     a = ap.parse_args(argv)
 
     src = find_input(a.input)
@@ -941,7 +946,7 @@ def main(argv=None):
         before = last_scan_times(conn)
         new, skipped, changed = import_data(conn, parsed["StatTrackerDB"])
         fixed = refresh_numbers(conn)
-        history, history_lines = (update_history_pages(conn, a.history_dir, a.output, changed)
+        history, history_lines = (update_history_pages(conn, a.history_dir, a.output, changed, a.icons_dir)
                                   if a.history_dir else (None, []))
         payload = build_payload(conn, history=history)
     finally:

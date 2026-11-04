@@ -5,7 +5,8 @@
 # StatTracker - the item icons of the history pages: reads them from the local WoW installation
 # (CascLib, local storage only) and keeps them as PNG files in data/icons/ (see wow_install.icons_dir()).
 #
-# Single owner of that folder: the only writer; stat_history only reads it. The game files are read, never
+# Single owner of that folder: the only writer, and the one place that names the files (icon_path); stat_history
+# only reads it. The game files are read, never
 # changed. No texts: extract() returns what happened and the caller says it in the user's language.
 # Fail-soft, the icons are an extra: a missing DLL, an installation that cannot be opened or a file that
 # cannot be read ends in IconRun.error, never in an exception, and the slot symbols stay.
@@ -140,6 +141,11 @@ def _is_id(value):
     return isinstance(value, int) and not isinstance(value, bool) and 0 < value < ID_LIMIT
 
 
+def icon_path(icons_dir, icon_id):
+    """The file of the icon with this file data id in the icons folder (the one place that names it)."""
+    return Path(icons_dir) / f"{icon_id}.png"
+
+
 def present(icons_dir):
     """The ids that have a PNG in the folder (nothing else in it counts)."""
     try:
@@ -175,8 +181,7 @@ def _write_atomic(target, write):
 
 
 def _store(icons_dir, icon_id, png):
-    target = Path(icons_dir) / f"{icon_id}.png"
-    _write_atomic(target, lambda part: part.write_bytes(png))
+    _write_atomic(icon_path(icons_dir, icon_id), lambda part: part.write_bytes(png))
 
 
 def _remember(icons_dir, build, ids):

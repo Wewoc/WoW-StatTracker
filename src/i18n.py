@@ -558,6 +558,10 @@ _STRINGS = {
         "de": "Die Werte eingesetzter Edelsteine stehen nicht in den gespeicherten Daten und fehlen in der Summe.",
         "en": "The stats of inserted gems are not in the stored data and are missing from the sum.",
     },
+    "html_hist_gear_icons_note": {
+        "de": "Symbole der Gegenstände: © Blizzard Entertainment, aus den Spieldateien des Rechners gelesen, der diese Seite erzeugt hat.",
+        "en": "Item icons: © Blizzard Entertainment, read from the game files of the computer that made this page.",
+    },
     "html_hist_plotly": {"de": "Diagramme: plotly.js {version} (MIT-Lizenz)", "en": "Charts: plotly.js {version} (MIT license)"},
     "html_hist_back": {"de": "← Übersicht", "en": "← Overview"},
     "html_hist_links_title": {"de": "Verläufe", "en": "History"},
