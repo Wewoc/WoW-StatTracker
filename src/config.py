@@ -10,6 +10,8 @@
 #   variant           last selected game version
 #   accounts          {variant: account folder name}
 #   check_updates     look for a new release at start (needs REPO_CONFIRMED)
+#   read_icons        when importing, read the item icons of the stored equipment from the game files
+#                     of the WoW installation (default on; off = icons already in data/ are still shown)
 
 import json
 import os
@@ -48,6 +50,7 @@ def defaults() -> dict:
         "variant": DEFAULT_VARIANT,
         "accounts": {},
         "check_updates": True,
+        "read_icons": True,
     }
 
 
@@ -69,6 +72,8 @@ def _sanitize(raw: dict) -> dict:
                            if isinstance(k, str) and isinstance(v, str)}
     if isinstance(raw.get("check_updates"), bool):
         cfg["check_updates"] = raw["check_updates"]
+    if isinstance(raw.get("read_icons"), bool):
+        cfg["read_icons"] = raw["read_icons"]
     return cfg
 
 

@@ -9,11 +9,13 @@
 # (data embedded, no web server needed). Before it writes to an existing database it takes a
 # copy of it (db_backup). With --history-dir it also keeps the history pages of the characters
 # up to date (stat_history, imported late in update_history_pages) and links them from the page;
-# with --icons-dir as well, those pages show the item icons that folder holds.
+# with --icons-dir as well, those pages show the item icons that folder holds, and with --game-dir and
+# --product the import first reads the icons of the stored equipment that the folder lacks from the game
+# files (wow_icons, imported late in update_icons); the characters whose icons are new get their page written.
 #
 # Usage:
 #     python stat_parser.py --input PATH\StatTracker.lua [--db FILE] [--output FILE] [--history-dir DIR]
-#                           [--icons-dir DIR]
+#                           [--icons-dir DIR [--game-dir WOW_FOLDER --product wow]]
 # No external dependencies.
 
 import argparse
@@ -877,6 +879,44 @@ def write_html(payload, out_path):
     out_path.write_text(tpl.replace(marker, data), encoding="utf-8")
 
 
+# ------------------------------------------------------------- item icons
+ICON_CHUNK = 500                 # ids per query (SQLite limits the number of parameters)
+
+
+def _chars_with_icons(conn, icon_ids):
+    """The characters that wore an item with one of these icon ids in any stored scan."""
+    ids, chars = sorted(icon_ids), set()
+    for start in range(0, len(ids), ICON_CHUNK):
+        part = ids[start:start + ICON_CHUNK]
+        marks = ",".join("?" * len(part))
+        chars.update(r[0] for r in conn.execute(
+            f"SELECT DISTINCT s.char_key FROM scan_gear g JOIN scans s ON s.scan_id = g.scan_id "
+            f"WHERE g.icon_id IN ({marks})", part))
+    return chars
+
+
+def update_icons(conn, icons_dir, game_dir, product, extract=None):
+    """Reads the item icons of the stored equipment from the game files (wow_icons.extract: only those the
+    folder does not have yet) and returns (the characters whose icons are new, lines to print). Those characters
+    get their history page written again even without a new scan. A failure here never stops the import: the
+    icons are an extra, it becomes a warning line and the pages keep their slot symbols. `extract` is for tests."""
+    import wow_icons             # late: it loads ctypes and wow_install only when icons are wanted
+    try:
+        ids = [r[0] for r in conn.execute("SELECT DISTINCT icon_id FROM scan_gear WHERE icon_id IS NOT NULL")]
+        run = (extract or wow_icons.extract)(ids, icons_dir, game_dir, product)
+        chars = _chars_with_icons(conn, run.written) if run.written else set()
+    except Exception as exc:     # a bug or an odd installation must not cost the import
+        return set(), [t("parse_warn_icons", error=f"{type(exc).__name__}: {exc}")]
+    lines = []
+    if run.written:
+        lines.append(t("parse_out_icons", count=len(run.written), path=icons_dir))
+    if run.unreadable:
+        lines.append(t("parse_note_icons_missing", count=len(run.unreadable)))
+    if run.error:
+        lines.append(t("parse_warn_icons", error=run.error))
+    return chars, lines
+
+
 # ------------------------------------------------------------- history pages
 def update_history_pages(conn, history_dir, html_path, changed, icons_dir=None):
     """Brings the history pages of the characters up to date (stat_history.write_pages) and returns
@@ -930,6 +970,9 @@ def main(argv=None):
     ap.add_argument("--history-dir", help="folder for the history pages of the characters (no pages if not given)")
     ap.add_argument("--icons-dir", help="folder with the item icons the history pages show (no icons if not given; "
                                         "only used together with --history-dir)")
+    ap.add_argument("--game-dir", help="the WoW folder (with .build.info): with --product, --icons-dir and --history-dir "
+                                       "the import also reads the item icons it lacks from the game files")
+    ap.add_argument("--product", help="the product of the game version in .build.info, e.g. wow (see --game-dir)")
     a = ap.parse_args(argv)
 
     src = find_input(a.input)
@@ -946,6 +989,10 @@ def main(argv=None):
         before = last_scan_times(conn)
         new, skipped, changed = import_data(conn, parsed["StatTrackerDB"])
         fixed = refresh_numbers(conn)
+        icon_lines = []
+        if a.history_dir and a.icons_dir and a.game_dir and a.product:
+            icon_chars, icon_lines = update_icons(conn, a.icons_dir, a.game_dir, a.product)
+            changed = set(changed) | icon_chars
         history, history_lines = (update_history_pages(conn, a.history_dir, a.output, changed, a.icons_dir)
                                   if a.history_dir else (None, []))
         payload = build_payload(conn, history=history)
@@ -959,6 +1006,8 @@ def main(argv=None):
         print(t("parse_out_numbers", count=fixed))
     print(t("parse_out_db", path=a.db))
     print(t("parse_out_html", path=a.output, chars=len(payload["chars"]), stats=len(payload["stats"])))
+    for line in icon_lines:
+        print(line)
     for line in history_lines:
         print(line)
     for line in import_notes(parsed["StatTrackerDB"], before, new):
