@@ -24,7 +24,9 @@ The counters grow along curves of their own, so the lines on a history page diff
 (--snapshots 1) makes no history and the same pages as before. Four of the five characters also carry invented
 equipment and a specialization (GEAR_BY_CHAR), which changes over the snapshots for the Character block of the
 history pages; the last character has none. Those pages show invented placeholder icons (a colored tile per
-slot, made here into <folder>/<lang>/icons/), never a picture of the game.
+slot, made here into <folder>/<lang>/icons/), unless --icons-from-game WOW_FOLDER is given: then the pages show the pictures
+of the game for sixteen fixed ids (GAME_ICON_IDS), read from that WoW installation into the same folder, which therefore has to lie
+outside the repository; only the finished screenshot goes into docs/images/.
 
 Usage (from the repository root):
   python tools/make_demo.py --out <folder>             # both languages
@@ -144,6 +146,12 @@ GEAR_BY_CHAR = {
 }
 GEAR_SLOTS = (1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
 ICON_ID_BASE = 130000              # the demo items' icon id is this plus the slot
+# For the Character picture of the landing page (--icons-from-game): the file data ids of the pictures of one real set
+# of sixteen items, one per slot. Only numbers: the pictures are read from a WoW installation when the demo is made,
+# stay in the output folder and never go into the repository; only the finished screenshot does.
+GAME_ICON_IDS = {1: 133111, 2: 632840, 3: 135102, 5: 132639, 6: 7082300, 7: 457953, 8: 7082301, 9: 132607,
+                 10: 7082304, 11: 133661, 12: 629698, 13: 643912, 14: 643421, 15: 622728, 16: 801001, 17: 464338}
+ICON_IDS = {slot: ICON_ID_BASE + slot for slot in GEAR_SLOTS}      # what the demo items carry; make() swaps it for a run
 GEAR_NAMES = {      # slot: (en, de); nothing here is a real item
     1: ("Helm of Ashen Oaths", "Helm der Aschenschwüre"),
     2: ("Lantern Pendant", "Laternenanhänger"),
@@ -309,7 +317,7 @@ def _gear_items(g, i, back):
         if slot == 16:
             stats["ITEM_MOD_DAMAGE_PER_SECOND_SHORT"] = round(ilvl * 0.11)
         item = {"itemID": 91000 + slot * 10 + old_trinket, "name": (OLD_TRINKET if old_trinket else GEAR_NAMES[slot])[i],
-                "quality": 4 if slot % 3 else 3, "ilvl": ilvl, "iconID": ICON_ID_BASE + slot, "stats": stats}
+                "quality": 4 if slot % 3 else 3, "ilvl": ilvl, "iconID": ICON_IDS[slot], "stats": stats}
         if slot in GEAR_ENCHANT and not (slot in (11, 12) and back >= 6):
             item["enchantID"], item["enchantText"] = 7000 + slot, GEAR_ENCHANT[slot][i]
         if slot % 3:
@@ -344,6 +352,17 @@ def make_placeholder_icons(folder):
     Path(folder).mkdir(parents=True, exist_ok=True)
     for slot in GEAR_SLOTS:
         wow_icons.icon_path(folder, ICON_ID_BASE + slot).write_bytes(placeholder_icon(slot))
+
+
+def read_game_icons(folder, game_dir, product="wow"):
+    """The pictures of GAME_ICON_IDS, read from the WoW installation into `folder` (wow_icons: local files, read only).
+    Stops with a message if one is missing: a picture with a few symbols among real icons would look like a bug."""
+    wanted = set(GAME_ICON_IDS.values())
+    run = wow_icons.extract(wanted, folder, game_dir, product)
+    missing = sorted(wanted - wow_icons.present(folder))
+    if run.error or missing:
+        raise SystemExit("The pictures of the game could not be read: "
+                         + (run.error or "missing " + ", ".join(str(i) for i in missing)))
 
 
 def _lua_value(v):
@@ -427,9 +446,11 @@ def _import(args, show_all):
             print(line)
 
 
-def make(out_dir, lang, snapshots=1):
+def make(out_dir, lang, snapshots=1, game=None):
     """Writes the demo for one language into <out_dir>/<lang>/ and returns that folder. With snapshots > 1
-    the characters get that many scans, imported one after the other, and the history pages."""
+    the characters get that many scans, imported one after the other, and the history pages, which show
+    invented placeholder tiles for the items; with `game` = (WoW folder, product) they show the pictures of the
+    game for GAME_ICON_IDS instead, read from that installation into <out_dir>/<lang>/icons/."""
     folder = Path(out_dir) / lang
     folder.mkdir(parents=True, exist_ok=True)
     lua = folder / "StatTracker.lua"
@@ -440,12 +461,17 @@ def make(out_dir, lang, snapshots=1):
         db.unlink()                     # always from scratch: same input, same pages
     for leftover in (history, icons, folder / "backups"):
         shutil.rmtree(leftover, ignore_errors=True)
-    if snapshots > 1:
-        make_placeholder_icons(icons)
     page = folder / "stats.html"
     previous = i18n.get_language()
+    base_ids = dict(ICON_IDS)
     i18n.set_language(lang)
     try:
+        if snapshots > 1:
+            if game:
+                ICON_IDS.update(GAME_ICON_IDS)
+                read_game_icons(icons, *game)
+            else:
+                make_placeholder_icons(icons)
         for k in range(snapshots):
             lua.write_text(build_lua(lang, k, snapshots), encoding="utf-8")
             args = ["--input", str(lua), "--db", str(db), "--output", str(page)]
@@ -454,6 +480,8 @@ def make(out_dir, lang, snapshots=1):
             _import(args, show_all=k == snapshots - 1)
     finally:
         i18n.set_language(previous)
+        ICON_IDS.clear()
+        ICON_IDS.update(base_ids)
     for name, text in shot_variants(page.read_text(encoding="utf-8")).items():
         (folder / name).write_text(text, encoding="utf-8")
     shot_source = history / stat_history.page_name(HISTORY_CHAR)
@@ -470,11 +498,18 @@ def main(argv=None):
     ap.add_argument("--lang", choices=LANGS + ("both",), default="both")
     ap.add_argument("--snapshots", type=int, default=1,
                     help=f"scans per character, 1 to {MAX_SNAPSHOTS} (default 1; more also makes the history pages)")
+    ap.add_argument("--icons-from-game", metavar="WOW_FOLDER",
+                    help="show the pictures of the game instead of placeholder tiles on the history pages: read from this "
+                         "WoW installation into <out>/<lang>/icons/ (needs --snapshots 2 or more; keep --out outside the repository)")
+    ap.add_argument("--product", default="wow", help="the product of the game version in .build.info (default wow)")
     a = ap.parse_args(argv)
     if not 1 <= a.snapshots <= MAX_SNAPSHOTS:
         ap.error(f"--snapshots must be between 1 and {MAX_SNAPSHOTS}")
+    if a.icons_from_game and a.snapshots < 2:
+        ap.error("--icons-from-game needs --snapshots 2 or more: the pictures are for the history pages")
+    game = (a.icons_from_game, a.product) if a.icons_from_game else None
     for lang in (LANGS if a.lang == "both" else (a.lang,)):
-        print(make(a.out, lang, a.snapshots))
+        print(make(a.out, lang, a.snapshots, game))
 
 
 if __name__ == "__main__":

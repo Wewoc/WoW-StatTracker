@@ -287,3 +287,70 @@ def test_one_snapshot_makes_no_icons_and_a_new_run_starts_without_old_ones(tmp_p
     stale.write_bytes(b"left over")
     make_demo.make(tmp_path / "out", "en", 3)
     assert not stale.exists()
+
+
+# --------------------------------------------------- the pictures of the game for the Character picture
+GAME_PNG = stat_history.PNG_SIGNATURE + b"a stand-in for a picture of the game"
+
+
+class FakeGame:
+    """Stands in for wow_icons.extract: writes a file for every id it is asked for, except `skip`, or reports `error`."""
+
+    def __init__(self, skip=(), error=None):
+        self.skip, self.error, self.calls = set(skip), error, []
+
+    def __call__(self, wanted, icons_dir, game_dir, product, **_):
+        self.calls.append((set(wanted), Path(icons_dir), Path(game_dir), product))
+        written = sorted(set(wanted) - self.skip)
+        for icon_id in written:
+            Path(icons_dir).mkdir(parents=True, exist_ok=True)
+            wow_icons.icon_path(icons_dir, icon_id).write_bytes(GAME_PNG)
+        return wow_icons.IconRun(written=written, error=self.error)
+
+
+def test_the_game_icon_ids_are_one_real_id_for_each_demo_slot():
+    ids = make_demo.GAME_ICON_IDS
+    assert set(ids) == set(make_demo.GEAR_SLOTS) and len(set(ids.values())) == len(ids)
+    assert all(isinstance(i, int) and i > 0 for i in ids.values())
+    assert not set(ids.values()) & {make_demo.ICON_ID_BASE + s for s in make_demo.GEAR_SLOTS}      # none is a placeholder id
+
+
+def test_with_the_game_option_the_demo_uses_the_real_ids_and_makes_no_placeholders(tmp_path, fake_plotly, monkeypatch):
+    fake = FakeGame()
+    monkeypatch.setattr(wow_icons, "extract", fake)
+    folder = make_demo.make(tmp_path / "out", "en", 3, game=(tmp_path / "wow", "wow"))
+    real = set(make_demo.GAME_ICON_IDS.values())
+    assert set(_embedded_icons(folder, make_demo.HISTORY_CHAR)) == {str(i) for i in real}
+    assert wow_icons.present(folder / "icons") == real                      # nothing but the pictures of the game
+    assert fake.calls == [(real, folder / "icons", tmp_path / "wow", "wow")]
+    assert _embedded_icons(folder, make_demo.CHARS[-1]["key"]) is None
+
+
+def test_the_ids_of_the_demo_items_are_back_after_a_run_with_game_pictures_and_after_a_failed_one(tmp_path, fake_plotly, monkeypatch):
+    base = dict(make_demo.ICON_IDS)
+    monkeypatch.setattr(wow_icons, "extract", FakeGame())
+    make_demo.make(tmp_path / "ok", "en", 3, game=(tmp_path / "wow", "wow"))
+    assert make_demo.ICON_IDS == base
+    monkeypatch.setattr(wow_icons, "extract", FakeGame(skip=[make_demo.GAME_ICON_IDS[1]]))
+    with pytest.raises(SystemExit, match="missing"):
+        make_demo.make(tmp_path / "bad", "en", 3, game=(tmp_path / "wow", "wow"))
+    assert make_demo.ICON_IDS == base
+    placeholders = make_demo.make(tmp_path / "plain", "en", 3)              # a later run without the option is as before
+    assert set(_embedded_icons(placeholders, make_demo.HISTORY_CHAR)) == {str(make_demo.ICON_ID_BASE + s) for s in make_demo.GEAR_SLOTS}
+
+
+def test_a_game_that_cannot_be_read_stops_the_demo_with_its_message(tmp_path, fake_plotly, monkeypatch):
+    monkeypatch.setattr(wow_icons, "extract", FakeGame(error="the game files cannot be opened"))
+    with pytest.raises(SystemExit, match="cannot be opened"):
+        make_demo.make(tmp_path / "out", "en", 3, game=(tmp_path / "wow", "wow"))
+
+
+def test_the_command_line_hands_the_game_folder_on_and_needs_history_pages_for_it(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(make_demo, "make", lambda out, lang, snapshots=1, game=None: seen.append((lang, snapshots, game)) or tmp_path)
+    make_demo.main(["--out", str(tmp_path), "--lang", "en", "--snapshots", "3", "--icons-from-game", "W", "--product", "wowf"])
+    make_demo.main(["--out", str(tmp_path), "--lang", "de", "--snapshots", "3"])
+    assert seen == [("en", 3, ("W", "wowf")), ("de", 3, None)]
+    with pytest.raises(SystemExit) as stop:
+        make_demo.main(["--out", str(tmp_path), "--icons-from-game", "W"])               # one snapshot: no history pages
+    assert stop.value.code == 2
