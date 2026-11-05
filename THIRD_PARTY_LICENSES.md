@@ -44,5 +44,6 @@ a fixed SHA-256.
 
 The pictures of the items are the property of Blizzard Entertainment. StatTracker does not ship them: it reads them
 on your computer from your own installation and keeps them in the `data` folder. A history page that you pass on
-contains the pictures it shows. World of Warcraft is a trademark of Blizzard Entertainment, which is not affiliated
+contains the pictures it shows; the Character screenshots of the landing page and the READMEs (`docs/images/character-en.png`,
+`character-de.png`) show a few of them, made from invented demo data. World of Warcraft is a trademark of Blizzard Entertainment, which is not affiliated
 with this project.

@@ -92,13 +92,15 @@ last one is exactly the single scan of the default run, so the pictures above st
 import writes `<folder>/<lang>/history/` and the stats page gets its *History* block. The picture of
 the history page is `history/shot-history.html` (one character, four statistics as an index), 1280 x 840
 at scale 1.5, saved as `history-en.png` / `history-de.png`. The same page with the *Character* block
-opened is `history/shot-character.html`, saved as `character-en.png` / `character-de.png` (1280 x 900 at
-scale 1.5). It needs plotly.js: run `python compiler/plotly_fetch.py` once before.
+opened is `history/shot-character.html`, saved as `character-en.png` / `character-de.png` (1280 x 1100 at
+scale 1.5 = 1920 x 1650). It needs plotly.js: run `python compiler/plotly_fetch.py` once before.
 
-The demo history pages show invented placeholder tiles instead of item pictures (`make_demo` writes them to `<folder>/<lang>/icons/` and passes
-`--icons-dir`); no picture of the game goes near the repository. The Character block names Blizzard as the source of the pictures whenever one is shown,
-the placeholders included, so decide before making the Character picture again whether the placeholders and that credit belong in it (the pictures of
-0.1.11 show the slot symbols).
+By default the demo history pages show invented placeholder tiles instead of item pictures (`make_demo` writes them to `<folder>/<lang>/icons/` and
+passes `--icons-dir`). The Character picture of the landing page and the READMEs (`character-en.png` / `character-de.png`) is made with
+`--icons-from-game <WoW folder>` instead (and `--product`, default `wow`): the demo then reads sixteen fixed pictures of the game (`GAME_ICON_IDS`, only
+ids are in the source) from that installation into the output folder, which has to lie outside the repository. Only the finished screenshot goes into
+`docs/images/` (decision of the maintainer, 2026-11-05: one picture with a few game icons, credited to Blizzard Entertainment under the block and on the
+page). In PowerShell, Edge returns before it has written the file unless its output is piped, for example `| Select-Object -Last 1`.
 
 ## Layout
 
