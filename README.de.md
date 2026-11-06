@@ -65,6 +65,7 @@ Im Dropdown erscheinen nur Spielversionen, die du aktiviert hast. Standard ist n
 | Spielversion | Stand |
 |---|---|
 | Retail (`_retail_`) | getestet, funktioniert |
+| WoW Forever (`_forever_`) | getestet, funktioniert; noch nicht alle Statistiken sind freigeschaltet, das hängt von der Charakterstufe ab |
 | BC Anniversary (`_anniversary_`) | getestet, **funktioniert nicht**: Diese Spielversion stellt keine Statistiken bereit, es gibt also nichts auszulesen |
 | alle anderen | ungetestet |
 

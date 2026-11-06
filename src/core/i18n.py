@@ -166,10 +166,14 @@ _STRINGS = {
     # ---------------------------------------------------------------- settings
     "settings_variants": {"de": "Aktivierte Spielversionen:", "en": "Enabled game versions:"},
     "settings_variants_hint": {
-        "de": "Nur aktivierte Spielversionen erscheinen in der Auswahl. Standard: nur Retail (getestet). "
-              "BC Anniversary stellt keine Statistiken bereit und funktioniert nicht.",
-        "en": "Only enabled game versions appear in the selection. Default: Retail only (tested). "
-              "BC Anniversary provides no statistics and does not work.",
+        "de": "Nur aktivierte Spielversionen erscheinen in der Auswahl. Getestet: Retail und WoW Forever "
+              "(bei Forever sind noch nicht alle Statistiken freigeschaltet, das hängt von der Charakterstufe ab). "
+              "Alle anderen Spielversionen sind ungetestet; BC Anniversary stellt keine Statistiken bereit "
+              "und funktioniert nicht.",
+        "en": "Only enabled game versions appear in the selection. Tested: Retail and WoW Forever "
+              "(on Forever not all statistics are unlocked yet, that depends on the character level). "
+              "All other game versions are untested; BC Anniversary provides no statistics "
+              "and does not work.",
     },
     "settings_check_updates": {"de": "Beim Start nach Updates suchen", "en": "Check for updates at start"},
     "settings_read_icons": {

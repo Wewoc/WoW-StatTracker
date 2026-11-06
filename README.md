@@ -65,6 +65,7 @@ Only game versions you enabled show up in the dropdown. The default is **Retail*
 | Game version | Status |
 |---|---|
 | Retail (`_retail_`) | tested, works |
+| WoW Forever (`_forever_`) | tested, works; not all statistics are unlocked yet, that depends on the character level |
 | BC Anniversary (`_anniversary_`) | tested, **does not work**: this game version provides no statistics, so there is nothing to read |
 | all others | untested |
 

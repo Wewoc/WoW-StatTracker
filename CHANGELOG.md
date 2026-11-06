@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- Changed: the note about game versions in the *Settings* tab now stands above the check boxes, in the accent colour instead of the dimmed hint colour, and names what is tested: Retail and WoW Forever. It says that on Forever not all statistics are unlocked yet (that depends on the character level), that all other game versions are untested, and that BC Anniversary provides no statistics. The old wording "Default: Retail only" is gone; the default is unchanged
+- Docs: both READMEs and the landing page now list WoW Forever as tested and working, next to Retail
+- Note: the addon itself is unchanged, but its version follows the program version, so after updating the window asks once to run *1. Install / update addon*. Tried with Retail and with WoW Forever (a character of low level; some statistics did not appear yet). The look of the note in the window was not checked by hand
+
 ## 0.2.0
 
 - New: a new program window. It is made with PyQt6 instead of Tk and has three tabs: *Settings* (game folder, game version, account, options, the buttons and the log), *Page* (the stats page, shown inside the window: no browser has to be set up) and *Top 5*. The window and the stats page follow one of six colour schemes (*Design* in the *Settings* tab; the change applies after a restart)
@@ -13,7 +19,7 @@
 - Changed: the addon itself is unchanged, but its version follows the program version, so after updating the window asks once to run *1. Install / update addon*
 - Note: the licenses of the Qt stack (PyQt6 under the GPL v3, Qt 6 under the LGPL v3, Qt WebEngine on Chromium) and where the source code of Qt can be found are in `THIRD_PARTY_LICENSES.md` and `LICENSE-LGPL-3.0.txt` in the `info` folder of the release; the notice also names Python, PyInstaller and openpyxl
 - Note: with the update check switched off, the program and its browser engine opened no network connection in a test run of 75 seconds (watched in the process table every 0.4 s, and no new name appeared in the DNS cache of Windows); this shows no connection, it does not prove there can never be one
-- Note: tried with Retail on Windows. Not tried: the snapshot in Edge or Chrome, and the update from an earlier version to this one with a release download
+- Note: tried with Retail on Windows, and the update from 0.1.12 to this version with the release download (it works; the rollback after a failed update is only tested by the automated tests). Not tried: the snapshot in Edge or Chrome
 - Docs: both READMEs and the landing page describe the window, the Top 5 and the snapshot; the pictures of the landing page show the new window and the tiles
 - Developer: the source is organized in folders (`core`, `game`, `store`, `rules`, `pages` with `pages/blocks`, `export`, `app`) with the direction of imports checked by a test; the parser is split into `lua_reader`, `stat_values`, `db_schema`, `importer`, `page_payload` and `outputs`; the stats page is a template with numbered places and one table (`pages/blocks/layout.py`) that says which block fills which place; the rules of the blocks are in `rules/` (pure calculation, tested); the window talks to the page through `app/page_bridge.py` (QWebChannel). The window tests run without a screen (`QT_QPA_PLATFORM=offscreen`); the suite has more than 1,100 tests
 
