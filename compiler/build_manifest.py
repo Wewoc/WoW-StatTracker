@@ -4,7 +4,7 @@
 # compiler/build_manifest.py - single source of truth for the PyInstaller build.
 #
 # No logic: build.py reads this. Names and the list of release items come from
-# src/app_info.py (also read by the updater at runtime), so build and updater
+# src/core/app_info.py (also read by the updater at runtime), so build and updater
 # can never disagree about what a release contains.
 
 import sys
@@ -12,9 +12,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-import app_info  # noqa: E402
-import casclib_asset  # noqa: E402
-import plotly_asset  # noqa: E402
+from core import app_info  # noqa: E402
+from game import casclib_asset  # noqa: E402
+from pages import plotly_asset  # noqa: E402
 
 APP_NAME = app_info.APP_NAME
 ENTRY_POINT = "src/start.py"
@@ -43,6 +43,17 @@ BUILT_FILES = [
     ("src/" + casclib_asset.FILENAME, "."),
 ]
 
+# Taken out of the bundle after PyInstaller made it (paths inside _internal): what the program never uses. The developer
+# tools of the browser engine (never switched on), the texts Qt ships for its own dialogs (the program loads no QTranslator),
+# and every language pack of the engine except KEEP_LOCALES. en-US is the engine's fallback and must stay: bundle_problems
+# insists on it. Measured on 2026-11-05: 83 + 9 + 42 MB unpacked.
+TRIM_GLOBS = [
+    "PyQt6/Qt6/resources/qtwebengine_devtools_resources*.pak",
+    "PyQt6/Qt6/translations/*.qm",
+]
+LOCALES_DIR = "PyQt6/Qt6/translations/qtwebengine_locales"
+KEEP_LOCALES = ["en-US", "de"]
+
 # Modules that are only imported inside functions or try/except (found anyway,
 # listed for certainty).
 HIDDEN_IMPORTS = ["openpyxl"]
@@ -50,7 +61,7 @@ HIDDEN_IMPORTS = ["openpyxl"]
 # Shipped next to the exe (see app_info.PROGRAM_ITEMS):
 ADDON_SRC = "addon"                     # -> <dist>/addon/StatTracker/
 INFO_DIR = "info"
-INFO_FILES = ["README.md", "README.de.md", "CHANGELOG.md", "THIRD_PARTY_LICENSES.md"]   # -> <dist>/info/
+INFO_FILES = ["README.md", "README.de.md", "CHANGELOG.md", "THIRD_PARTY_LICENSES.md", "LICENSE-LGPL-3.0.txt"]   # -> <dist>/info/
 LICENSE_FILE = "LICENSE"                # -> <dist>/LICENSE
 
 ZIP_NAME = app_info.ZIP_ASSET_NAME

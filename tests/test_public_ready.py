@@ -13,7 +13,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 SCOPE_DIRS = ["src", "tests", "compiler", "tools", "addon", "docs", ".github"]
-SCOPE_FILES = ["README.md", "README.de.md", "CHANGELOG.md", "THIRD_PARTY_LICENSES.md", "requirements.txt", "requirements-dev.txt",
+SCOPE_FILES = ["README.md", "README.de.md", "CHANGELOG.md", "THIRD_PARTY_LICENSES.md", "LICENSE-LGPL-3.0.txt", "requirements.txt", "requirements-dev.txt",
                ".gitignore"]
 TEXT_SUFFIXES = {".py", ".md", ".txt", ".bat", ".json", ".toml", ".cfg", ".ini", ".yml", ".yaml",
                  ".ps1", ".lua", ".toc", ".html", ""}
@@ -71,7 +71,7 @@ def test_no_instance_data_in_the_checkout():
 
 def test_every_python_file_has_the_license_header():
     missing = []
-    for path in list((ROOT / "src").glob("*.py")) + list((ROOT / "compiler").glob("*.py")) \
+    for path in list((ROOT / "src").rglob("*.py")) + list((ROOT / "compiler").glob("*.py")) \
             + list((ROOT / "tests").glob("*.py")) + list((ROOT / "tools").glob("*.py")):
         head = path.read_text(encoding="utf-8").splitlines()[:3]
         if not any("SPDX-License-Identifier: GPL-3.0-or-later" in line for line in head):

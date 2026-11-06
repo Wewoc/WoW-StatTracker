@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-import app_info
+from core import app_info
 import build
 import build_manifest as manifest
-import casclib_asset
-import plotly_asset
+from game import casclib_asset
+from pages import plotly_asset
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -54,6 +54,10 @@ def fake_bundle(tmp_path, skip_file=None, skip_module=None, toc="ok"):
     for src, _dest in manifest.DATA_FILES + manifest.FETCHED_FILES + manifest.BUILT_FILES:
         if Path(src).name != skip_file:
             (inside / Path(src).name).write_text("x", encoding="utf-8")
+    if skip_file != "en-US.pak":
+        locales = inside / manifest.LOCALES_DIR
+        locales.mkdir(parents=True)
+        (locales / "en-US.pak").write_text("x", encoding="utf-8")
     modules = sorted(build.expected_modules(ROOT) - {skip_module})
     toc_path = tmp_path / "PYZ-00.toc"
     if toc == "ok":
@@ -75,7 +79,7 @@ def test_a_data_file_missing_from_the_bundle_is_reported(tmp_path, name):
     assert len(problems) == 1 and name in problems[0]
 
 
-@pytest.mark.parametrize("module", ["stat_history", "stat_parser", "export_xlsx", "updater", "openpyxl", "ctypes"])
+@pytest.mark.parametrize("module", ["pages.stat_history", "app.stat_parser", "export.export_xlsx", "core.updater", "core", "openpyxl", "ctypes"])
 def test_a_module_missing_from_the_bundle_is_reported(tmp_path, module):
     """Imports inside functions are the ones PyInstaller can miss; a bundle without them starts and then fails."""
     dist, toc = fake_bundle(tmp_path, skip_module=module)
@@ -85,7 +89,7 @@ def test_a_module_missing_from_the_bundle_is_reported(tmp_path, module):
 
 def test_the_entry_script_is_not_expected_in_the_module_table():
     assert Path(manifest.ENTRY_POINT).stem not in build.expected_modules(ROOT)
-    assert {"stat_history", "openpyxl"} <= build.expected_modules(ROOT)
+    assert {"pages.stat_history", "pages", "openpyxl"} <= build.expected_modules(ROOT)
 
 
 @pytest.mark.parametrize("toc", ["garbage", "absent"])
@@ -102,7 +106,7 @@ def test_the_built_file_is_the_casclib_dll_and_not_a_checked_in_or_fetched_one()
 
 
 def test_a_built_file_that_is_in_the_checkout_must_be_in_the_bundle(tmp_path, monkeypatch):
-    monkeypatch.setattr(manifest, "BUILT_FILES", [("src/blp_decode.py", ".")])      # stands in: it exists
+    monkeypatch.setattr(manifest, "BUILT_FILES", [("src/game/blp_decode.py", ".")])      # stands in: it exists
     dist, toc = fake_bundle(tmp_path, skip_file="blp_decode.py")
     problems = build.bundle_problems(ROOT, dist, toc)
     assert len(problems) == 1 and "blp_decode.py" in problems[0]
@@ -144,3 +148,42 @@ def test_fetched_files_exist_once_they_were_fetched():
     missing = [src for src, _ in manifest.FETCHED_FILES if not (ROOT / src).is_file()]
     if missing:
         pytest.skip(f"not fetched yet ({', '.join(missing)}): python compiler/plotly_fetch.py")
+
+
+# ------------------------------------------------------------------------ the trimmed files
+def engine_tree(tmp_path):
+    """A bundle folder with the files the trim looks at, in the places PyInstaller puts them."""
+    dist = tmp_path / "dist" / "StatTracker"
+    qt = dist / build.CONTENTS_DIR / "PyQt6" / "Qt6"
+    for name in ("resources/qtwebengine_devtools_resources.pak", "resources/qtwebengine_devtools_resources.debug.pak",
+                 "resources/qtwebengine_resources.pak", "translations/qt_de.qm", "translations/qtbase_fr.qm",
+                 "translations/qtwebengine_locales/en-US.pak", "translations/qtwebengine_locales/de.pak",
+                 "translations/qtwebengine_locales/fr.pak", "translations/qtwebengine_locales/zh-TW.pak"):
+        path = qt / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x" * 10)
+    return dist, qt
+
+
+def test_the_trim_removes_the_developer_tools_the_qt_texts_and_the_other_languages(tmp_path):
+    dist, qt = engine_tree(tmp_path)
+    count, size = build.trim_bundle(dist)
+    assert (count, size) == (6, 60)
+    left = sorted(str(p.relative_to(qt)).replace("\\", "/") for p in qt.rglob("*") if p.is_file())
+    assert left == ["resources/qtwebengine_resources.pak", "translations/qtwebengine_locales/de.pak",
+                    "translations/qtwebengine_locales/en-US.pak"]
+
+
+def test_the_trim_keeps_exactly_the_listed_languages_and_the_fallback_is_one_of_them():
+    assert "en-US" in manifest.KEEP_LOCALES and "de" in manifest.KEEP_LOCALES
+
+
+def test_trimming_a_bundle_without_the_engine_is_not_an_error(tmp_path):
+    (tmp_path / "dist" / "StatTracker" / build.CONTENTS_DIR).mkdir(parents=True)
+    assert build.trim_bundle(tmp_path / "dist" / "StatTracker") == (0, 0)
+
+
+def test_a_bundle_without_the_fallback_language_pack_is_reported(tmp_path):
+    dist, toc = fake_bundle(tmp_path, skip_file="en-US.pak")
+    problems = build.bundle_problems(ROOT, dist, toc)
+    assert len(problems) == 1 and "fallback language pack" in problems[0]

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Wewoc (github.com/wewoc)
 # compiler/casclib_build.py
-# Builds the pinned CascLib (see src/casclib_asset.py) into src/CascLib.dll.
+# Builds the pinned CascLib (see src/game/casclib_asset.py) into src/CascLib.dll.
 #
 # Build and CI only - the program never builds or downloads it. The source comes from GitHub over
 # https with git, at the pinned commit; the commit is checked before anything is built. A DLL that is
@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-import casclib_asset  # noqa: E402
+from game import casclib_asset  # noqa: E402
 
 WORK_DIR = ROOT / "build" / "casclib"
 MACHINE_X64 = 0x8664

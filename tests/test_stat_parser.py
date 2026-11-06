@@ -8,9 +8,12 @@ from datetime import datetime
 
 import pytest
 
-import app_info
-import i18n
-import stat_parser
+from app import stat_parser
+from core import app_info
+from core import i18n
+from store import importer
+from store import lua_reader
+from store import stat_values
 
 SAMPLE = """
 StatTrackerDB = {
@@ -47,7 +50,7 @@ def run(sv, tmp_path, extra=()):
 
 
 def test_lua_reader_handles_tables_strings_numbers():
-    parsed = stat_parser.LuaReader(SAMPLE).parse_file()
+    parsed = lua_reader.LuaReader(SAMPLE).parse_file()
     db = parsed["StatTrackerDB"]
     assert db["auto"] is True
     assert db["chars"]["Alice-Realm"]["level"] == 80
@@ -55,8 +58,8 @@ def test_lua_reader_handles_tables_strings_numbers():
 
 
 def test_lua_reader_reports_line_number_on_error():
-    with pytest.raises(stat_parser.LuaError, match="line 2"):
-        stat_parser.LuaReader("a = 1\n= 2").parse_file()
+    with pytest.raises(lua_reader.LuaError, match="line 2"):
+        lua_reader.LuaReader("a = 1\n= 2").parse_file()
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -71,12 +74,12 @@ def test_lua_reader_reports_line_number_on_error():
     ("12 %", None),
 ])
 def test_to_number(text, expected):
-    assert stat_parser.to_number(text) == expected
+    assert stat_values.to_number(text) == expected
 
 
 def test_clean_text_converts_coin_icons():
     raw = "12|TInterface\\MoneyFrame\\UI-GoldIcon:0|t 5|TInterface\\MoneyFrame\\UI-SilverIcon:0|t"
-    assert stat_parser.clean_text(raw) == "12g 5s"
+    assert stat_values.clean_text(raw) == "12g 5s"
 
 
 def test_import_creates_db_and_html(sv, tmp_path, capsys):
@@ -134,43 +137,43 @@ PREVIOUS = {"A-B": "2026-10-01 10:00:00"}
 
 def test_the_gap_is_measured_to_the_oldest_scan_of_the_file_that_is_newer():
     db = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}, "history": {"A-B": _ring("2026-10-09 10:00:00", "2026-10-08 10:00:00")}}
-    (line,) = stat_parser.import_notes(db, PREVIOUS, 3)
+    (line,) = importer.import_notes(db, PREVIOUS, 3)
     assert "7 days" in line and "2026-10-08 10:00:00" in line and "A-B" in line     # not the 9 days to the newest scan
 
 
 def test_a_file_that_reaches_back_to_the_previous_scan_has_no_gap():
     db = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}, "history": {"A-B": _ring("2026-10-05 10:00:00", "2026-10-01 10:00:00")}}
-    assert stat_parser.import_notes(db, PREVIOUS, 2) == []
+    assert importer.import_notes(db, PREVIOUS, 2) == []
     older = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}, "history": {"A-B": _ring("2026-09-20 10:00:00")}}      # beyond it
-    assert stat_parser.import_notes(older, PREVIOUS, 2) == []
+    assert importer.import_notes(older, PREVIOUS, 2) == []
 
 
 def test_the_order_in_the_history_does_not_matter_for_the_gap():
     db = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}, "history": {"A-B": _ring("2026-10-08 10:00:00", "2026-10-09 10:00:00")}}
-    assert "7 days" in stat_parser.import_notes(db, PREVIOUS, 3)[0]
+    assert "7 days" in importer.import_notes(db, PREVIOUS, 3)[0]
 
 
 def test_a_file_of_version_3_behaves_as_before():
     db = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}}
-    assert "9 days" in stat_parser.import_notes(db, PREVIOUS, 1)[0]
+    assert "9 days" in importer.import_notes(db, PREVIOUS, 1)[0]
 
 
 def test_the_largest_gap_of_all_characters_is_named():
     db = {"chars": {"A-B": _scan("2026-10-04 10:00:00"), "C-D": _scan("2026-10-12 10:00:00")}}
     before = {"A-B": "2026-10-01 10:00:00", "C-D": "2026-10-01 10:00:00"}
-    (line,) = stat_parser.import_notes(db, before, 2)
+    (line,) = importer.import_notes(db, before, 2)
     assert "C-D" in line and "11 days" in line
 
 
 def test_odd_history_gives_no_error_and_changes_nothing_for_the_gap():
     for history in ("text", 5, {"A-B": "text"}, {"A-B": {"x": _scan("2026-10-01 10:00:00")}}, {"A-B": {1: "text", 2: {}, 3: _scan("later")}}):
         db = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}, "history": history}
-        assert "9 days" in stat_parser.import_notes(db, PREVIOUS, 1)[0]
+        assert "9 days" in importer.import_notes(db, PREVIOUS, 1)[0]
 
 
 def test_nothing_new_still_names_the_newest_scan_of_the_file():
     db = {"chars": {"A-B": _scan("2026-10-10 10:00:00")}, "history": {"A-B": _ring("2026-10-09 10:00:00")}}
-    (line,) = stat_parser.import_notes(db, PREVIOUS, 0, now=datetime(2026, 10, 13, 12, 0))
+    (line,) = importer.import_notes(db, PREVIOUS, 0, now=datetime(2026, 10, 13, 12, 0))
     assert "2026-10-10 10:00:00" in line and "3 days old" in line
 
 
@@ -211,9 +214,9 @@ def test_an_import_without_a_new_scan_says_how_old_the_file_is(sv, tmp_path, cap
 
 def test_the_age_is_counted_in_whole_days_from_the_given_time():
     db = {"chars": {"A-B": {"scannedAt": "2026-10-10 10:00:00"}}}
-    lines = stat_parser.import_notes(db, {}, 0, now=datetime(2026, 10, 13, 12, 0))
+    lines = importer.import_notes(db, {}, 0, now=datetime(2026, 10, 13, 12, 0))
     assert len(lines) == 1 and "3 days old" in lines[0]
-    behind = stat_parser.import_notes(db, {}, 0, now=datetime(2026, 10, 1))      # the clock is behind the scan
+    behind = importer.import_notes(db, {}, 0, now=datetime(2026, 10, 1))      # the clock is behind the scan
     assert "0 days old" in behind[0]
 
 
@@ -221,8 +224,8 @@ def test_the_age_is_counted_in_whole_days_from_the_given_time():
     {}, {"chars": []}, {"chars": {"A-B": "text"}}, {"chars": {"A-B": {}}}, {"chars": {"A-B": {"scannedAt": "yesterday"}}},
 ])
 def test_odd_data_gives_no_notes_and_no_error(db):
-    assert stat_parser.import_notes(db, {"A-B": "2026-10-01 10:00:00"}, 1) == []
-    assert stat_parser.import_notes(db, {}, 0) == []
+    assert importer.import_notes(db, {"A-B": "2026-10-01 10:00:00"}, 1) == []
+    assert importer.import_notes(db, {}, 0) == []
 
 
 def _payload_from_html(path):
@@ -243,6 +246,19 @@ def test_payload_carries_language_and_ui_strings(sv, tmp_path):
     played = {s["id"]: s for s in data["stats"]}[-1]
     assert played["name"] == "Gesamte Spielzeit"
     assert played["v"]["Alice-Realm"][0] == "1 Tage, 1 Std., 1 Min., 1 Sek."
+
+
+def test_a_statistic_with_a_coin_text_is_marked_gold_in_the_payload_and_no_other_is(sv, tmp_path):
+    run(sv, tmp_path)
+    stats = {s["id"]: s for s in _payload_from_html(tmp_path / "out" / "x.html")["stats"]}
+    assert stats[2].get("gold") is True                                  # "12g 5s 3c"
+    assert not any("gold" in stats[i] for i in (1, 3, -1, -2))           # "1.234", "0.20", the played time
+
+
+@pytest.mark.parametrize("text,coin", [("12g 5s 3c", True), (" 3g ", True), ("5s", True), ("1.234g", True), ("12", False), ("g", False),
+                                       ("", False), ("--", False), ("12g x", False), ("1 Tag, 2 Std.", False)])
+def test_is_coin_text(text, coin):
+    assert stat_values.is_coin_text(text) is coin
 
 
 def test_output_language_follows_current_language_even_for_old_rows(sv, tmp_path):
@@ -288,7 +304,7 @@ def test_refresh_numbers_corrects_old_rows(sv, tmp_path):
     conn = sqlite3.connect(tmp_path / "x.db")
     conn.execute("UPDATE stat_values SET value_num=20 WHERE stat_id=3")   # the old "0.20 -> 20" bug
     conn.commit()
-    assert stat_parser.refresh_numbers(conn) == 1
+    assert importer.refresh_numbers(conn) == 1
     assert conn.execute("SELECT value_num FROM stat_values WHERE stat_id=3").fetchone()[0] == 0.2
     conn.close()
 
@@ -375,8 +391,10 @@ def test_localized_race_and_stable_file_are_kept_apart(sv, tmp_path):
 
 def test_template_puts_what_the_character_selection_drives_below_it():
     """Rule of the page: blocks with a selection of their own or none (rates, Groups, history links) above the character
-    selection, what it drives (Reputation, the table) below it."""
+    selection, what it drives (Reputation, the filter row with the counter and the table) below it; the filter row sits right above the counter and
+    the table it filters (maintainer, 2026-11-05: place 8 holds the three, test_stat_table checks their order)."""
     from pathlib import Path
     html = (Path(__file__).resolve().parent.parent / "src" / "template.html").read_text(encoding="utf-8")
-    order = [html.index(f'id="{name}"') for name in ("rates", "groups", "history", "chars", "rep", "count", "t")]
+    marks = {"top5": 'data-slot="10"', "rates": 'data-slot="1"', "groups": 'data-slot="2"', "history": 'data-slot="3"', "chars": 'data-slot="4"', "rep": 'data-slot="5"', "table": 'data-slot="8"'}   # written by Python
+    order = [html.index(marks.get(name, f'id="{name}"')) for name in ("top5", "rates", "groups", "history", "chars", "rep", "table")]
     assert order == sorted(order)

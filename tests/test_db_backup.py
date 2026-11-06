@@ -13,10 +13,11 @@ from pathlib import Path
 
 import pytest
 
-import db_backup
-import export_xlsx
-import stat_parser
-from db_backup import BackupError
+from app import stat_parser
+from export import export_xlsx
+from store import db_backup
+from store import db_schema
+from store.db_backup import BackupError
 
 SRC = Path(db_backup.__file__).parent
 DAY = date(2026, 10, 31)
@@ -205,7 +206,7 @@ def lua_with_scan(path, scanned_at):
 def existing_db(folder, name="wow_stats.db"):
     """A database that already holds a scan, at the current schema version, without any copy yet."""
     db = folder / name
-    stat_parser.init_db(db).close()
+    db_schema.init_db(db).close()
     conn = sqlite3.connect(db)
     conn.execute("INSERT INTO scans(char_key, scanned_at) VALUES ('A-B', '2026-10-01 10:00:00')")
     conn.commit()
@@ -226,19 +227,19 @@ def content_scans(path):
 
 
 def test_a_new_database_gets_no_backup(tmp_path):
-    stat_parser.init_db(tmp_path / "wow_stats.db").close()
+    db_schema.init_db(tmp_path / "wow_stats.db").close()
     assert not (tmp_path / "backups").exists()
 
 
 def test_an_existing_database_is_copied_once_a_day_and_the_copy_is_reported(tmp_path, capsys):
     db = existing_db(tmp_path)
-    stat_parser.init_db(db).close()
+    db_schema.init_db(db).close()
     daily = tmp_path / "backups" / "daily"
     (copy,) = list(daily.iterdir())
     assert copy.name == f"wow_stats.{date.today().isoformat()}.bak"
-    assert content(copy) == (1, stat_parser.SCHEMA_VERSION)
+    assert content(copy) == (1, db_schema.SCHEMA_VERSION)
     assert f"Backup:   {copy}" in capsys.readouterr().out
-    stat_parser.init_db(db).close()                          # same day: nothing new, nothing printed
+    db_schema.init_db(db).close()                          # same day: nothing new, nothing printed
     assert names(daily) == [copy.name]
     assert "Backup:" not in capsys.readouterr().out
     assert names(tmp_path / "backups" / "migration") == []
@@ -246,10 +247,10 @@ def test_an_existing_database_is_copied_once_a_day_and_the_copy_is_reported(tmp_
 
 def test_before_a_migration_a_permanent_copy_with_the_old_state_is_made(tmp_path, monkeypatch, capsys):
     db = existing_db(tmp_path)                               # the current schema, one scan
-    current = stat_parser.SCHEMA_VERSION
-    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", current + 1)    # a pretend next schema
-    monkeypatch.setattr(stat_parser, "MIGRATIONS", {**stat_parser.MIGRATIONS, current + 1: lambda conn: None})
-    stat_parser.init_db(db).close()
+    current = db_schema.SCHEMA_VERSION
+    monkeypatch.setattr(db_schema, "SCHEMA_VERSION", current + 1)    # a pretend next schema
+    monkeypatch.setattr(db_schema, "MIGRATIONS", {**db_schema.MIGRATIONS, current + 1: lambda conn: None})
+    db_schema.init_db(db).close()
     (copy,) = list((tmp_path / "backups" / "migration").iterdir())
     assert copy.name.startswith("wow_stats.") and copy.name.endswith(f".pre-v{current + 1}.bak")
     assert content(copy) == (1, current)                     # the state before the migration
@@ -263,11 +264,11 @@ def test_the_migration_copy_survives_a_failing_migration(tmp_path, monkeypatch):
         raise RuntimeError("boom")
 
     db = existing_db(tmp_path)
-    current = stat_parser.SCHEMA_VERSION
-    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", current + 1)
-    monkeypatch.setattr(stat_parser, "MIGRATIONS", {**stat_parser.MIGRATIONS, current + 1: broken})
+    current = db_schema.SCHEMA_VERSION
+    monkeypatch.setattr(db_schema, "SCHEMA_VERSION", current + 1)
+    monkeypatch.setattr(db_schema, "MIGRATIONS", {**db_schema.MIGRATIONS, current + 1: broken})
     with pytest.raises(RuntimeError, match="boom"):
-        stat_parser.init_db(db)
+        db_schema.init_db(db)
     (copy,) = list((tmp_path / "backups" / "migration").iterdir())
     assert content(copy) == (1, current) and content(db) == (1, current)
 
@@ -275,11 +276,11 @@ def test_the_migration_copy_survives_a_failing_migration(tmp_path, monkeypatch):
 def test_a_database_from_a_newer_program_gets_no_backup_and_stays_untouched(tmp_path):
     db = existing_db(tmp_path)
     conn = sqlite3.connect(db)
-    conn.execute(f"PRAGMA user_version = {stat_parser.SCHEMA_VERSION + 1}")
+    conn.execute(f"PRAGMA user_version = {db_schema.SCHEMA_VERSION + 1}")
     conn.close()
     before = digest(db)
     with pytest.raises(SystemExit):
-        stat_parser.init_db(db)
+        db_schema.init_db(db)
     assert digest(db) == before and not (tmp_path / "backups").exists()
 
 
@@ -292,7 +293,7 @@ def test_old_daily_copies_are_rotated_by_the_import(tmp_path):
     migration = tmp_path / "backups" / "migration"
     migration.mkdir()
     (migration / "wow_stats.20200101-000000.pre-v1.bak").write_bytes(b"x")
-    stat_parser.init_db(db).close()
+    db_schema.init_db(db).close()
     kept = {f"wow_stats.2020-01-{d:02d}.bak" for d in range(3, 9)}      # 8 old + today = 9, newest 7 stay
     assert set(names(daily)) == kept | {f"wow_stats.{date.today().isoformat()}.bak"}
     assert names(migration) == ["wow_stats.20200101-000000.pre-v1.bak"]
@@ -302,7 +303,7 @@ def test_a_rotation_problem_is_only_a_warning(tmp_path, monkeypatch, capsys):
     db = existing_db(tmp_path)
     stuck = tmp_path / "backups" / "daily" / "wow_stats.2020-01-01.bak"
     monkeypatch.setattr(db_backup, "rotate", lambda path: [stuck])
-    conn = stat_parser.init_db(db)
+    conn = db_schema.init_db(db)
     conn.close()
     out = capsys.readouterr().out
     assert "WARNING: old backups could not be deleted" in out and str(stuck) in out
@@ -347,7 +348,7 @@ def test_a_damaged_database_is_found_even_when_it_still_opens(tmp_path):
     damage_file(db)
     conn = sqlite3.connect(db)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == stat_parser.SCHEMA_VERSION    # opens fine
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == db_schema.SCHEMA_VERSION    # opens fine
         problems = db_backup.damage(conn)
     finally:
         conn.close()
@@ -371,7 +372,7 @@ def test_a_damaged_database_stops_the_import_and_leaves_the_copies_alone(tmp_pat
     damage_file(db)
     before = digest(db)
     with pytest.raises(SystemExit) as exc:
-        stat_parser.init_db(db)
+        db_schema.init_db(db)
     message = str(exc.value)
     assert message.startswith("ERROR: the database fails its integrity check")
     assert "Nothing was changed" in message and str(tmp_path / "backups") in message
@@ -382,11 +383,11 @@ def test_a_damaged_database_stops_the_import_and_leaves_the_copies_alone(tmp_pat
 def test_a_damaged_database_is_not_migrated(tmp_path, monkeypatch):
     db = existing_db(tmp_path)
     damage_file(db)
-    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", stat_parser.SCHEMA_VERSION + 1)
-    monkeypatch.setattr(stat_parser, "MIGRATIONS",
-                        {**stat_parser.MIGRATIONS, stat_parser.SCHEMA_VERSION: lambda conn: pytest.fail("migrated")})
+    monkeypatch.setattr(db_schema, "SCHEMA_VERSION", db_schema.SCHEMA_VERSION + 1)
+    monkeypatch.setattr(db_schema, "MIGRATIONS",
+                        {**db_schema.MIGRATIONS, db_schema.SCHEMA_VERSION: lambda conn: pytest.fail("migrated")})
     with pytest.raises(SystemExit) as exc:
-        stat_parser.init_db(db)
+        db_schema.init_db(db)
     assert "integrity check" in str(exc.value)
     assert names(tmp_path / "backups" / "migration") == []
 
@@ -394,9 +395,9 @@ def test_a_damaged_database_is_not_migrated(tmp_path, monkeypatch):
 def test_the_check_runs_when_a_copy_is_due_not_at_every_import(tmp_path):
     """Once a day (with the copy of the day) is enough to guard the copies and costs a scan of the file."""
     db = existing_db(tmp_path)
-    stat_parser.init_db(db).close()                       # the copy of the day exists now
+    db_schema.init_db(db).close()                       # the copy of the day exists now
     damage_file(db)
-    stat_parser.init_db(db).close()                       # same day: no copy due, no check, no error
+    db_schema.init_db(db).close()                       # same day: no copy due, no check, no error
 
 
 def test_the_first_import_into_a_new_database_and_a_repeat_work_as_before(tmp_path):
@@ -413,7 +414,7 @@ def test_the_first_import_into_a_new_database_and_a_repeat_work_as_before(tmp_pa
 
 def test_the_excel_export_ignores_the_backup_folders_and_makes_no_copy(tmp_path):
     db = existing_db(tmp_path)
-    stat_parser.init_db(db).close()                          # makes backups/daily/<today>.bak
+    db_schema.init_db(db).close()                          # makes backups/daily/<today>.bak
     (tmp_path / "backups" / "daily" / "wow_stats_stray.db").write_bytes(b"x")   # even a stray .db there
     (tmp_path / "backups" / "migration").mkdir()
     (tmp_path / "backups" / "migration" / "wow_stats.20200101-000000.pre-v2.bak").write_bytes(b"x")

@@ -40,3 +40,9 @@ _update_success.flag
 # Local working instructions for the coding assistant (not part of the project)
 CLAUDE.md
 ROADMAP.md
+
+# Local audit concepts, prompts and results (not part of the project)
+audit/
+
+# Local step journal and backups of the restructure work (not part of the project)
+changelog/

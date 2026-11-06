@@ -11,8 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import paths  # noqa: E402
-import updater  # noqa: E402
+from core import paths  # noqa: E402
+from core import updater  # noqa: E402
 
 SUCCESS_FLAG_DELAY_MS = 800  # after the window has been drawn
 
@@ -27,25 +27,31 @@ def log_crash(exc_type, exc, tb):
     except OSError:
         pass
     try:
-        from tkinter import messagebox
-        messagebox.showerror("StatTracker", text[-1500:])
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        if QApplication.instance() is not None:
+            QMessageBox.critical(None, "StatTracker", text[-1500:])
     except Exception:  # last resort: the error is in crash.log if writable
         pass
 
 
 def main():
-    import gui_app
-    app = gui_app.App()
-    app.report_callback_exception = log_crash
+    from app import main_window      # first: QtWebEngine has to be imported before the QApplication exists
+    from PyQt6.QtCore import QTimer
+    from PyQt6.QtWidgets import QApplication
+    sys.excepthook = log_crash       # an error inside a slot is reported (crash.log, dialog) and the window goes on
+    qapp = QApplication(sys.argv)    # with the program name: the browser engine refuses an empty argument list
+    qapp.setApplicationName("StatTracker")
+    window = main_window.MainWindow()
+    window.show()
     if paths.is_frozen():
         # startup handshake for the self-updater (see updater_helper.ps1)
-        app.after(SUCCESS_FLAG_DELAY_MS, lambda: updater.write_success_flag(paths.base_dir()))
-    app.mainloop()
+        QTimer.singleShot(SUCCESS_FLAG_DELAY_MS, lambda: updater.write_success_flag(paths.base_dir()))
+    return qapp.exec()
 
 
 if __name__ == "__main__":
     try:
-        main()
+        sys.exit(main())
     except Exception:
         log_crash(*sys.exc_info())
         sys.exit(1)

@@ -1,1 +1,5 @@
 openpyxl
+# The window: PyQt6 with the embedded browser (PyQt6-WebEngine brings Chromium). Range-pinned to the minor version
+# in use, like Garmin Local Archive (a jump of the minor version needs a review).
+PyQt6>=6.11,<6.12
+PyQt6-WebEngine>=6.11,<6.12

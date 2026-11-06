@@ -7,15 +7,21 @@ from pathlib import Path
 
 import pytest
 
-import i18n
+from core import i18n
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 NAME_PREFIXES = ("class_", "race_", "standing_", "slot_", "itemstat_", "track_")
 TEMPLATES = ("template.html", "history.html")          # the pages whose texts come from the html_* keys
+BLOCKS = SRC / "pages" / "blocks"                       # the block modules read html_* texts as ui(payload, "name")
 
 
 def _templates():
     return {name: (SRC / name).read_text(encoding="utf-8") for name in TEMPLATES}
+
+
+def _block_texts():
+    source = "\n".join(p.read_text(encoding="utf-8") for p in sorted(BLOCKS.glob("*.py")))
+    return set(re.findall(r'\bui\(\s*\w+\s*,\s*"(\w+)"', source))
 
 
 def _fields(text):
@@ -34,7 +40,7 @@ def test_placeholders_match_between_languages():
 
 
 def _code_files():
-    return [p for p in SRC.glob("*.py") if p.name != "i18n.py"]
+    return [p for p in SRC.rglob("*.py") if p.name != "i18n.py"]
 
 
 def test_every_key_used_in_code_exists():
@@ -57,7 +63,7 @@ def test_every_key_is_used_somewhere():
     unused = []
     for key in i18n._STRINGS:
         if key.startswith("html_"):
-            if f"UI.{key[len('html_'):]}" not in template:
+            if f"UI.{key[len('html_'):]}" not in template and key[len('html_'):] not in _block_texts():
                 unused.append(key)
         elif key.startswith("unit_"):
             if 'f"unit_{' not in code:
@@ -94,6 +100,13 @@ def test_html_strings_cover_the_template(name):
     for lang in ("de", "en"):
         provided = set(i18n.html_strings(lang))
         assert used <= provided, (name, lang, used - provided)
+
+
+@pytest.mark.parametrize("lang", ("de", "en"))
+def test_html_strings_cover_the_blocks(lang):
+    used = _block_texts()
+    assert used, "the blocks read no page text at all: is the pattern still right?"
+    assert used <= set(i18n.html_strings(lang)), used - set(i18n.html_strings(lang))
 
 
 CLASS_FILES = {"WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "DEATHKNIGHT", "SHAMAN", "MAGE",

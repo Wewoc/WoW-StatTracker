@@ -4,6 +4,7 @@
 # deterministic, shows every kind of rate result, and uses nothing but invented names.
 
 import hashlib
+import html
 import importlib.util
 import json
 import re
@@ -14,13 +15,14 @@ from pathlib import Path
 
 import pytest
 
-import i18n
-import paths
-import plotly_asset
-import stat_derive
-import stat_history
-import stat_parser
-import wow_icons
+from core import i18n
+from core import paths
+from game import wow_icons
+from pages import plotly_asset
+from pages import stat_history
+from rules import stat_derive, table_rules
+from store import importer
+from store import lua_reader
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 TOOL = Path(__file__).resolve().parent.parent / "tools" / "make_demo.py"
@@ -89,8 +91,8 @@ def test_demo_reputation_is_invented_and_leaves_the_last_character_without(tmp_p
 
 def _demo_scans(lang, k=None, snapshots=1):
     """{char key: read_scan result} of the demo file, read the way the importer reads it."""
-    db = stat_parser.LuaReader(make_demo.build_lua(lang, k, snapshots)).parse_file()["StatTrackerDB"]
-    return {key: stat_parser.read_scan(c) for key, c in db["chars"].items()}
+    db = lua_reader.LuaReader(make_demo.build_lua(lang, k, snapshots)).parse_file()["StatTrackerDB"]
+    return {key: importer.read_scan(c) for key, c in db["chars"].items()}
 
 
 @pytest.mark.parametrize("lang", ["en", "de"])
@@ -133,11 +135,43 @@ def test_demo_is_deterministic():
 def test_screenshot_variants_leave_the_real_page_alone(tmp_path):
     folder = make_demo.make(tmp_path, "en")
     page = (folder / "stats.html").read_text(encoding="utf-8")
-    assert 'class="rates" open' not in page and "sortChar = \"Korvak" not in page
-    assert 'class="rates" open' in (folder / "shot-rates.html").read_text(encoding="utf-8")
-    assert 'sortChar = "Korvak-Ironmaw"' in (folder / "shot-compare.html").read_text(encoding="utf-8")
-    assert '$("groups").open = true' not in page
-    assert '$("groups").open = true' in (folder / "shot-groups.html").read_text(encoding="utf-8")
+    shots = {name: (folder / name).read_text(encoding="utf-8") for name in ("shot-stats.html", "shot-rates.html", "shot-compare.html", "shot-groups.html")}
+    assert "  STT.start();\n" in page and all("  STT.start();\n" not in text for text in shots.values())     # only the copies are not locked
+    assert 'id="rates" open' not in page and 'id="groups" open' not in page
+    assert 'id="rates" open' in shots["shot-rates.html"] and 'id="groups" open' in shots["shot-groups.html"]
+    assert not (folder / "_shot.html").exists()
+
+
+def test_the_comparison_picture_has_one_character_off_and_the_table_sorted_by_another(tmp_path):
+    folder = make_demo.make(tmp_path, "en")
+    shot = (folder / "shot-compare.html").read_text(encoding="utf-8")
+    assert re.search(r'id="chk_Selwyn-Moonvale" data-pick data-name="Selwyn-Moonvale">', shot)                  # not checked
+    assert re.search(r'id="chk_Korvak-Ironmaw" data-pick data-name="Korvak-Ironmaw" checked>', shot)
+    assert "<th class=\"num\" data-action=\"sort\" data-key=\"Selwyn-Moonvale\">" not in shot             # no column for it
+    keys = [c["key"] for c in make_demo.payload_of(shot)["chars"] if c["key"] != "Selwyn-Moonvale"]
+    stats = make_demo.payload_of(shot)["stats"]
+    expected = [s["name"] for s in table_rules.sort_stats(table_rules.filter_stats(stats, keys, "", "", False, True), "Korvak-Ironmaw", -1)]
+    shown = [html.unescape(name) for name in re.findall(r'<td class="cat">.*?</td><td>(.*?)</td>', shot.split('id="t"')[1])]
+    assert shown == expected and len(shown) > 10
+
+
+def test_the_groups_picture_is_by_faction_with_two_added_statistics(tmp_path):
+    folder = make_demo.make(tmp_path, "en")
+    shot = (folder / "shot-groups.html").read_text(encoding="utf-8")
+    assert '<option value="faction" selected>' in shot
+    assert "Jumps (Sum)" in shot and "Total gold acquired (Average)" in shot
+
+
+def test_the_demo_has_five_top_tiles_and_the_page_shows_them_above_everything(tmp_path):
+    folder = make_demo.make(tmp_path, "en")
+    data = _data(folder)
+    assert data["top5"] == list(make_demo.DEMO_TOP5) and len(data["top5"]) == 5
+    page = (folder / "stats.html").read_text(encoding="utf-8")
+    assert page.count('<div class="tile">') == 5 and page.index('id="top5"') < page.index('id="rates"')
+    block = page.split('id="top5"')[1].split('<div data-slot="1">')[0]
+    for name in ("Total gold acquired", "Creatures killed", "Total deaths", "Jumps"):
+        assert name in block, name
+    assert "Class: Paladin" in block and "Faction: Alliance" in block and "Mirella-Dawnspire" in block
 
 
 def test_language_is_restored(tmp_path):

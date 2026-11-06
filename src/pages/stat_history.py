@@ -1,0 +1,302 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Wewoc (github.com/wewoc)
+# stat_history.py
+# StatTracker - the history of one character: every stored scan as one column of values
+# per statistic, as plain data, and the stand-alone history page made from it.
+#
+# Reads the statistics database, never writes it: open_readonly() opens it read-only (no
+# init_db, so no backup, no migration, no new file) after db_schema.check_schema. Raw values
+# as stored (value_num), no rates, no reset detection, no smoothing. Since schema 3 it also hands
+# over the specialization, item level and equipped items of every scan (scan_gear), as stored.
+# write_page() puts the data and the pinned plotly.js (plotly_asset) into history.html and
+# writes that one file; write_pages() decides which characters need a new page (a new scan, no
+# page yet, or pages from another program version). Both are the only writers of the history pages.
+# The item icons the page may show are read from the icons folder (wow_icons makes it) and embedded as
+# data URIs, only those of the items this character wore; without a folder or a file the page keeps its
+# slot symbols. Needs db_schema (schema check) and stat_values (names of the played-time statistics), plotly_asset,
+# wow_icons (the file names of the icons), i18n, paths and app_info. outputs.py calls it
+# (update_history_pages); this module does not import stat_parser, so there is no import cycle.
+
+import base64
+import hashlib
+import json
+import os
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+
+from core import app_info
+from core import i18n
+from core import paths
+from game import wow_icons
+from pages import plotly_asset
+from store import db_schema
+from store import stat_values
+
+RACE_COLUMNS = ("class_file", "race", "race_file")     # scans.* since schema 2
+SPEC_COLUMNS = tuple(name for name, _kind in db_schema.SCAN_COLUMNS_V3)      # scans.* since schema 3
+
+PAGE_TEMPLATE = "history.html"                  # bundled next to template.html
+DATA_MARKER = "/*__DATA__*/null"                # replaced by the page data (JSON)
+PLOTLY_MARKER = "<!--__PLOTLY__-->"             # replaced by the inline plotly.js <script>
+
+PAGE_PREFIX = "history-"                        # file names: history-<name>-<hash>.html
+NAME_PART_MAX = 40
+GENERATOR_FILE = ".generator"                   # in the pages folder: the program version that wrote the pages
+MIN_SCANS = 2                                   # a character needs this many scans to get a page
+
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+ICON_URI_PREFIX = "data:image/png;base64,"
+MAX_ICON_BYTES = 256 * 1024                     # a 64 x 64 icon is a few KB; a bigger file is not one of ours
+
+
+class HistoryPageError(Exception):
+    """The history page cannot be made: template missing or without its markers, file not writable.
+    (A missing or wrong plotly.js raises plotly_asset.PlotlyAssetError.)"""
+
+
+def open_readonly(db_path):
+    """Read-only connection to an existing statistics database, schema checked (a database newer
+    than this program exits with the usual message). A missing file raises sqlite3.OperationalError
+    instead of being created."""
+    path = Path(db_path)
+    conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        db_schema.check_schema(conn, path)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
+
+
+def _unit(stat_id, all_coin):
+    if stat_id < 0:
+        return "seconds"          # played time (stat_values.PLAYED_STATS), value_num in seconds
+    return "gold" if all_coin else "number"      # gold values are copper
+
+
+def _json_of(text, kind):
+    """The JSON text of a gear column as `kind` (list or dict), or None if it is missing or not that."""
+    if text is None:
+        return None
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return None
+    return value if isinstance(value, kind) else None
+
+
+def _gear_history(conn, char_key, scans, position, spec):
+    """The specialization, item level and equipped items of every scan (see build_history), or None if the
+    database has no such part (schema 2 or older) or no scan of this character has any. `scans` are the
+    rows of build_history, whose last len(spec) columns are the `spec` columns."""
+    if not spec:
+        return None
+    have = {r[1] for r in conn.execute("PRAGMA table_info(scan_gear)")}
+    if not set(db_schema.GEAR_COLUMNS) <= have:
+        return None
+    entries = [{**dict(zip(spec, row[-len(spec):])), "items": []} for row in scans]
+    columns = ", ".join(f"g.{c}" for c in db_schema.GEAR_COLUMNS)
+    for scan_id, *values in conn.execute(
+            f"SELECT g.scan_id, {columns} FROM scan_gear g JOIN scans s ON s.scan_id = g.scan_id "
+            "WHERE s.char_key=? ORDER BY g.scan_id, g.slot", (char_key,)):
+        item = dict(zip(db_schema.GEAR_COLUMNS, values))
+        item["gem_ids"], item["stats"] = _json_of(item["gem_ids"], list), _json_of(item["stats"], dict)
+        entries[position[scan_id]]["items"].append(item)
+    entries = [e if e["items"] or any(e[c] is not None for c in spec) else None for e in entries]
+    return entries if any(entries) else None
+
+
+def build_history(conn, char_key):
+    """The history of one character, or None if the database has no scan of it:
+        {"char":  {key, class, level, faction, class_file, race, race_file}   latest scan; the race
+                                                                               fields are None before schema 2
+         "scans": [scanned_at, ...]                     oldest first, as stored
+         "level": [level, ...]                          one per scan
+         "stats": [{id, name, cat, unit, v}, ...]       sorted like the stats page; v has one entry per
+                                                        scan: value_num, or None where the scan has no
+                                                        number (missing, or text such as '--')
+         "gear":  [entry or None, ...] or None}         one per scan: {spec_id, spec_name, role, ilvl_total,
+                                                        ilvl_equipped, items: [{slot, item_id, name, quality,
+                                                        ilvl, icon_id, enchant_id, enchant_text, upg_track_id,
+                                                        upg_track, upg_level, upg_max, sockets, gem_ids, stats}]}
+                                                        with the items by slot (the shirt included); None for a
+                                                        scan without such data, and as a whole where the database
+                                                        has no such part (before schema 3) or no scan has any
+    Only statistics with at least one number for this character are listed. unit is "seconds" for
+    played time, "gold" if every number came from a coin text, otherwise "number". Names of the played
+    time statistics are in the current language."""
+    have = {r[1] for r in conn.execute("PRAGMA table_info(scans)")}
+    race = [c for c in RACE_COLUMNS if c in have]
+    spec = list(SPEC_COLUMNS) if all(c in have for c in SPEC_COLUMNS) else []
+    names = ["scan_id", "scanned_at", "class", "level", "faction", *race, *spec]
+    scans = conn.execute(f"SELECT {', '.join(names)} FROM scans WHERE char_key=? ORDER BY scanned_at, scan_id",
+                         (char_key,)).fetchall()
+    if not scans:
+        return None
+    position = {row[0]: i for i, row in enumerate(scans)}
+    latest = dict(zip(names, scans[-1]))
+
+    defs = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT stat_id,name,category FROM stat_defs")}
+    for sid, label in stat_values.played_labels().items():
+        if sid in defs:
+            defs[sid] = label
+
+    values, all_coin = {}, {}
+    for scan_id, stat_id, text, num in conn.execute(
+            "SELECT v.scan_id, v.stat_id, v.value_text, v.value_num FROM stat_values v "
+            "JOIN scans s ON s.scan_id = v.scan_id WHERE s.char_key=?", (char_key,)):
+        if num is None or stat_id not in defs:
+            continue
+        values.setdefault(stat_id, [None] * len(scans))[position[scan_id]] = num
+        coin = bool(stat_values.COIN_TEXT.fullmatch(stat_values.clean_text(text)))
+        all_coin[stat_id] = all_coin.get(stat_id, True) and coin
+
+    stats = [{"id": sid, "name": defs[sid][0], "cat": defs[sid][1], "unit": _unit(sid, all_coin[sid]), "v": v}
+             for sid, v in values.items()]
+    stats.sort(key=lambda s: (s["cat"], s["name"]))
+    return {"char": {"key": char_key, "class": latest["class"], "level": latest["level"],
+                     "faction": latest["faction"], **{c: latest.get(c) for c in RACE_COLUMNS}},
+            "scans": [row[1] for row in scans],
+            "level": [row[3] for row in scans],
+            "stats": stats,
+            "gear": _gear_history(conn, char_key, scans, position, spec)}
+
+
+def icon_ids(gear):
+    """The icon ids of every item in the `gear` part of build_history (None = no gear)."""
+    return {item["icon_id"] for entry in (gear or []) if entry for item in entry["items"]
+            if isinstance(item.get("icon_id"), int) and not isinstance(item.get("icon_id"), bool)}
+
+
+def icon_uris(icons_dir, ids):
+    """{str(icon id): 'data:image/png;base64,...'} for those of `ids` that have a PNG in the icons folder.
+    A missing folder, a missing or unreadable file, one that is too big or not a PNG is left out (the page
+    then shows the slot symbol); nothing is guessed and nothing is read but these files."""
+    found = {}
+    for icon_id in sorted(ids):
+        path = wow_icons.icon_path(icons_dir, icon_id)
+        try:
+            if path.stat().st_size > MAX_ICON_BYTES:
+                continue
+            data = path.read_bytes()
+        except OSError:
+            continue
+        if data.startswith(PNG_SIGNATURE):
+            found[str(icon_id)] = ICON_URI_PREFIX + base64.b64encode(data).decode("ascii")
+    return found
+
+
+def build_page_payload(conn, char_key, back=None, icons_dir=None):
+    """build_history() plus what the page needs besides the numbers: texts in the current language
+    (`ui`, and `names` of the equipment: slots by number, item stats by raw key, upgrade tracks by id),
+    the program data for the footer, the plotly.js version, and `back`, the link to the stats page
+    (relative, already URL-quoted; None = no link). With `icons_dir`, `icons`: the icons of the items this
+    character wore that the folder has, by icon id, as data URIs (no such field if there is none).
+    None if the database has no scan of the character."""
+    history = build_history(conn, char_key)
+    if history is None:
+        return None
+    lang = i18n.get_language()
+    icons = icon_uris(icons_dir, icon_ids(history["gear"])) if icons_dir else {}
+    return {**history,
+            "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "lang": lang,
+            "ui": i18n.html_strings(lang),
+            "names": {"slot": i18n.names("slot_", lang), "stat": i18n.names("itemstat_", lang),
+                      "track": i18n.names("track_", lang)},
+            "app": {"version": app_info.APP_VERSION, "copyright": app_info.COPYRIGHT,
+                    "license": app_info.LICENSE_NAME, "site": app_info.SITE_URL},
+            "plotly": plotly_asset.VERSION,
+            "back": back,
+            **({"icons": icons} if icons else {})}
+
+
+def write_page(payload, out_path):
+    """Writes the history page: history.html with the payload and the verified plotly.js inside.
+    All or nothing - the file is written next to its target and renamed. Raises HistoryPageError, or
+    PlotlyAssetError if plotly.js is missing or does not match its pin; nothing is written then."""
+    tpl_path = paths.resource_dir() / PAGE_TEMPLATE
+    try:
+        tpl = tpl_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise HistoryPageError(f"History page template not readable: {tpl_path} ({exc})") from exc
+    for marker in (DATA_MARKER, PLOTLY_MARKER):
+        if tpl.count(marker) != 1:
+            raise HistoryPageError(f"Marker {marker} must occur exactly once in {tpl_path}")
+    script = plotly_asset.script_tag()
+    # '<' as <: valid JSON, and nothing in the data can end the script or open a comment
+    data = json.dumps(payload, ensure_ascii=False).replace("<", r"\u003c")
+    page = tpl.replace(DATA_MARKER, data).replace(PLOTLY_MARKER, script)
+
+    out_path = Path(out_path)
+    part = out_path.with_name(out_path.name + ".part")
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        part.write_bytes(page.encode("utf-8"))      # bytes: the embedded plotly.js keeps its line endings
+        os.replace(part, out_path)
+    except OSError as exc:
+        part.unlink(missing_ok=True)
+        raise HistoryPageError(f"History page not writable: {out_path} ({exc})") from exc
+
+
+def history_counts(conn):
+    """{char_key: number of stored scans} for every character in the database."""
+    return dict(conn.execute("SELECT char_key, COUNT(*) FROM scans GROUP BY char_key"))
+
+
+def page_name(char_key):
+    """File name of the history page of a character: its name made safe for a file system, plus a
+    short hash of the exact key, so that names which differ only in case, an apostrophe or an umlaut
+    can never meet in one file."""
+    part = "".join(ch if ch.isalnum() else "_" for ch in char_key)[:NAME_PART_MAX]
+    return f"{PAGE_PREFIX}{part}-{hashlib.sha256(char_key.encode('utf-8')).hexdigest()[:8]}.html"
+
+
+def _generator_version(folder):
+    try:
+        return (Path(folder) / GENERATOR_FILE).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+
+
+def write_pages(conn, folder, changed, back_href=None, icons_dir=None):
+    """Brings the history pages in `folder` up to date. A character with at least MIN_SCANS scans
+    gets a page if it is in `changed` (a scan was imported just now), if its page is missing, or if
+    the pages were written by another program version (then all are written again). Nothing is
+    written for the rest, so an import that brings nothing new leaves every file alone. `icons_dir`:
+    where the item icons for the pages are (see build_page_payload; None = no icons).
+
+    Returns {"links": {char_key: {"file", "scans"}}   the pages that exist now (an old page stays linked
+                                                       if writing the new one failed)
+             "written": [char_key, ...],
+             "failed": [(char_key or None, message), ...]}   None: all pages (plotly.js is missing or wrong)
+    One character failing does not stop the others; a missing plotly.js stops all writing. Only the
+    expected errors of one page are caught here (HistoryPageError, OSError, sqlite3.Error); the caller
+    decides what a failure means for the import."""
+    folder = Path(folder)
+    changed = set(changed)
+    eligible = {key: n for key, n in history_counts(conn).items() if n >= MIN_SCANS}
+    everything = bool(eligible) and _generator_version(folder) != app_info.APP_VERSION
+    links, written, failed = {}, [], []
+    blocked = False
+    for key in sorted(eligible):
+        target = folder / page_name(key)
+        if not blocked and (everything or key in changed or not target.is_file()):
+            try:
+                write_page(build_page_payload(conn, key, back_href, icons_dir), target)
+                written.append(key)
+            except plotly_asset.PlotlyAssetError as exc:
+                failed.append((None, str(exc)))
+                blocked = True
+            except (HistoryPageError, OSError, sqlite3.Error) as exc:
+                failed.append((key, str(exc)))
+        if target.is_file():
+            links[key] = {"file": target.name, "scans": eligible[key]}
+    if everything and not failed:
+        try:
+            (folder / GENERATOR_FILE).write_text(app_info.APP_VERSION, encoding="utf-8")
+        except OSError as exc:
+            failed.append((None, str(exc)))
+    return {"links": links, "written": written, "failed": failed}

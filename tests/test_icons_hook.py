@@ -11,12 +11,16 @@ from pathlib import Path
 
 import pytest
 
-import paths
-import plotly_asset
-import stat_history
-import stat_parser
-import wow_icons
-from wow_icons import IconRun
+from app import actions
+from app import stat_parser
+from core import paths
+from game import wow_icons
+from game.wow_icons import IconRun
+from pages import outputs
+from pages import plotly_asset
+from pages import stat_history
+from store import db_schema
+from store import importer
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 FAKE = b"/*! fake plotly */\r\nwindow.Plotly = {};\r\n"
@@ -103,11 +107,11 @@ def imports(tmp_path, res):
 
 
 def database(tmp_path, *scans):
-    conn = stat_parser.init_db(tmp_path / "hook.db")
+    conn = db_schema.init_db(tmp_path / "hook.db")
     for key, at, icon in scans:
         c = {"scannedAt": at, "scannedEpoch": 1, "class": "Mage", "level": 80, "faction": "Alliance", "stats": {1: "1"},
              "gear": {1: {"itemID": icon, "name": "Helm", "quality": 4, "ilvl": 600, "iconID": icon}}}
-        stat_parser.import_data(conn, {"meta": {1: {"name": "Total deaths", "cat": "Combat"}}, "chars": {key: c}})
+        importer.import_data(conn, {"meta": {1: {"name": "Total deaths", "cat": "Combat"}}, "chars": {key: c}})
     return conn
 
 
@@ -115,7 +119,7 @@ def database(tmp_path, *scans):
 def test_the_icon_ids_of_the_stored_equipment_are_asked_for_and_the_characters_with_new_icons_named(tmp_path):
     conn = database(tmp_path, (A, "2026-10-01 10:00:00", 1001), (A, "2026-10-02 10:00:00", 1002), (B, "2026-10-01 10:00:00", 2002))
     extract = Extract(tmp_path / "icons", readable=[2002], unreadable=[7, 8])
-    chars, lines = stat_parser.update_icons(conn, tmp_path / "icons", tmp_path / "wow", "wow", extract)
+    chars, lines = outputs.update_icons(conn, tmp_path / "icons", tmp_path / "wow", "wow", extract)
     assert extract.calls == [([1001, 1002, 2002], tmp_path / "icons", tmp_path / "wow", "wow")]
     assert chars == {B}
     assert any(l.startswith("Icons:") and "1 read" in l for l in lines)
@@ -125,19 +129,19 @@ def test_the_icon_ids_of_the_stored_equipment_are_asked_for_and_the_characters_w
 
 def test_two_characters_with_the_same_item_both_get_their_page_written(tmp_path):
     conn = database(tmp_path, (A, "2026-10-01 10:00:00", 1001), (B, "2026-10-01 10:00:00", 1001))
-    chars, _lines = stat_parser.update_icons(conn, tmp_path / "icons", tmp_path / "wow", "wow", Extract(tmp_path / "icons", readable=[1001]))
+    chars, _lines = outputs.update_icons(conn, tmp_path / "icons", tmp_path / "wow", "wow", Extract(tmp_path / "icons", readable=[1001]))
     assert chars == {A, B}
 
 
 def test_nothing_new_means_no_characters_and_no_line(tmp_path):
     conn = database(tmp_path, (A, "2026-10-01 10:00:00", 1001))
-    assert stat_parser.update_icons(conn, tmp_path / "icons", tmp_path / "wow", "wow", Extract(tmp_path / "icons")) == (set(), [])
+    assert outputs.update_icons(conn, tmp_path / "icons", tmp_path / "wow", "wow", Extract(tmp_path / "icons")) == (set(), [])
 
 
 def test_a_run_that_stops_early_is_a_warning_and_what_it_stored_still_counts(tmp_path):
     conn = database(tmp_path, (A, "2026-10-01 10:00:00", 1001))
     extract = Extract(tmp_path / "icons", readable=[1001], error="the game files cannot be opened")
-    chars, lines = stat_parser.update_icons(conn, tmp_path / "icons", tmp_path / "wow", "wow", extract)
+    chars, lines = outputs.update_icons(conn, tmp_path / "icons", tmp_path / "wow", "wow", extract)
     assert chars == {A}
     assert lines[-1] == "WARNING: item icons not read: the game files cannot be opened"
 
@@ -147,15 +151,15 @@ def test_a_bug_in_the_reading_is_a_warning_line_and_never_an_exception(tmp_path)
 
     def broken(*_a, **_k):
         raise RuntimeError("boom")
-    chars, lines = stat_parser.update_icons(conn, tmp_path / "icons", tmp_path / "wow", "wow", broken)
+    chars, lines = outputs.update_icons(conn, tmp_path / "icons", tmp_path / "wow", "wow", broken)
     assert chars == set() and lines == ["WARNING: item icons not read: RuntimeError: boom"]
 
 
 def test_the_german_lines_are_german(tmp_path):
-    import i18n
+    from core import i18n
     i18n.set_language("de")
     conn = database(tmp_path, (A, "2026-10-01 10:00:00", 1001))
-    _chars, lines = stat_parser.update_icons(conn, tmp_path / "icons", tmp_path / "wow", "wow",
+    _chars, lines = outputs.update_icons(conn, tmp_path / "icons", tmp_path / "wow", "wow",
                                              Extract(tmp_path / "icons", readable=[1001], unreadable=[5]))
     assert lines[0].startswith("Icons:") and "gelesen" in lines[0] and lines[1].startswith("Hinweis:")
 
@@ -224,15 +228,14 @@ def test_a_failing_reader_costs_neither_the_import_nor_the_page(imports, monkeyp
 
 # ------------------------------------------------------------------ the window
 def test_the_window_passes_the_icon_options_on(monkeypatch):
-    gui_app = pytest.importorskip("gui_app")
     seen = []
-    monkeypatch.setattr(gui_app.stat_parser, "main", lambda args: seen.append(args))
+    monkeypatch.setattr(actions.stat_parser, "main", lambda args: seen.append(args))
     base = ["--input", "a.lua", "--db", "x.db", "--output", "s.html"]
-    gui_app.run_parser("a.lua", "x.db", "s.html", "hist", "icons", "wow folder", "wow")
+    actions.run_parser("a.lua", "x.db", "s.html", "hist", "icons", "wow folder", "wow")
     assert seen[-1] == base + ["--history-dir", "hist", "--icons-dir", "icons", "--game-dir", "wow folder", "--product", "wow"]
-    gui_app.run_parser("a.lua", "x.db", "s.html", "hist", "icons")
+    actions.run_parser("a.lua", "x.db", "s.html", "hist", "icons")
     assert seen[-1] == base + ["--history-dir", "hist", "--icons-dir", "icons"]
-    gui_app.run_parser("a.lua", "x.db", "s.html", "hist", "icons", "wow folder", None)          # product unknown: nothing to read
+    actions.run_parser("a.lua", "x.db", "s.html", "hist", "icons", "wow folder", None)          # product unknown: nothing to read
     assert "--game-dir" not in seen[-1]
-    gui_app.run_parser("a.lua", "x.db", "s.html", None, "icons", "wow folder", "wow")           # no pages: icons make no sense
+    actions.run_parser("a.lua", "x.db", "s.html", None, "icons", "wow folder", "wow")           # no pages: icons make no sense
     assert seen[-1] == base

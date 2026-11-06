@@ -8,9 +8,12 @@ import hashlib
 
 import pytest
 
-import i18n
-import stat_parser
-from stat_parser import DATA_VERSION
+from app import stat_parser
+from core import i18n
+from pages import page_payload
+from store import db_schema
+from store import importer
+from store.importer import DATA_VERSION
 
 
 def lua_file(folder, version_line='["version"] = 2,'):
@@ -66,7 +69,7 @@ def test_a_newer_or_unreadable_version_is_refused_before_anything_is_written(tmp
 
 def test_a_refused_file_leaves_an_existing_database_untouched_and_takes_no_copy(tmp_path):
     db = tmp_path / "wow_stats.db"
-    stat_parser.init_db(db).close()
+    db_schema.init_db(db).close()
     before = digest(db)
     with pytest.raises(SystemExit):
         run(tmp_path, f'["version"] = {DATA_VERSION + 1},')
@@ -87,14 +90,14 @@ def test_the_message_exists_in_both_languages(tmp_path):
 
 
 def test_check_accepts_a_table_without_a_version_and_ignores_other_shapes():
-    stat_parser.check_data_version({"chars": {}}, "x.lua")
-    stat_parser.check_data_version("not a table", "x.lua")     # import_data reports that case as before
+    importer.check_data_version({"chars": {}}, "x.lua")
+    importer.check_data_version("not a table", "x.lua")     # import_data reports that case as before
 
 
 # ------------------------------------------------------------------ version 4: older scans (history) and the new parts
 import sqlite3
 
-from stat_parser import LuaReader
+from store.lua_reader import LuaReader
 
 
 def scan_lua(at, extra="", played=True):
@@ -209,20 +212,20 @@ def test_a_history_entry_without_played_time_is_reported_like_a_newest_scan(tmp_
 
 
 def test_import_data_names_a_character_whose_only_new_scan_is_in_the_history(tmp_path):
-    conn = stat_parser.init_db(tmp_path / "x.db")
+    conn = db_schema.init_db(tmp_path / "x.db")
     newest = {"scannedAt": "2026-10-03 10:00:00", "stats": {1: "5"}}
     older = {"scannedAt": "2026-10-02 10:00:00", "stats": {1: "5"}}
     db = {"meta": {1: {"name": "x", "cat": "y"}}, "chars": {"A-B": newest}}
-    assert stat_parser.import_data(conn, db) == (1, 0, ["A-B"])
+    assert importer.import_data(conn, db) == (1, 0, ["A-B"])
     db["history"] = {"A-B": {1: older}}
-    assert stat_parser.import_data(conn, db) == (1, 1, ["A-B"])      # only the history brought something new
-    assert stat_parser.import_data(conn, db) == (0, 2, [])
+    assert importer.import_data(conn, db) == (1, 1, ["A-B"])      # only the history brought something new
+    assert importer.import_data(conn, db) == (0, 2, [])
     conn.close()
 
 
 # --- read_scan: the parts added by version 4 are optional and checked, a wrong type is NULL, never a stop
 def read(table_text):
-    return stat_parser.read_scan(LuaReader("X = " + table_text).parse_file()["X"])
+    return importer.read_scan(LuaReader("X = " + table_text).parse_file()["X"])
 
 
 NEW_PARTS = '''{ scannedAt = "2026-10-01 10:00:00", stats = { [1] = "5" },
@@ -408,7 +411,7 @@ def test_a_file_without_rep_meta_still_imports(tmp_path):
 # --- what the stats page gets of the reputation (build_payload)
 def test_the_payload_carries_the_reputation_of_the_newest_scan(tmp_path):
     conn = import_parts(tmp_path, NEW_PARTS)
-    rep = stat_parser.build_payload(conn, "en")["rep"]
+    rep = page_payload.build_payload(conn, "en")["rep"]
     assert rep["defs"] == {2696: "Amani", 2698: "Midnight"}                    # a faction without a name has no entry
     assert rep["chars"]["A-B"] == [
         {"id": 2698, "hdr": 1},                                                # a category: no kind, no numbers
@@ -422,20 +425,20 @@ def test_the_payload_carries_the_reputation_of_the_newest_scan(tmp_path):
 def test_the_reputation_of_an_older_scan_is_not_used_for_a_newer_one_without(tmp_path):
     conn = import_parts(tmp_path, scan_lua("2026-10-05 10:00:00"),
                         older=[NEW_PARTS])                                     # the list is in the older scan only
-    assert "rep" not in stat_parser.build_payload(conn, "en")
+    assert "rep" not in page_payload.build_payload(conn, "en")
     conn.close()
 
 
 def test_the_payload_has_no_reputation_when_no_scan_has_one(tmp_path):
     conn = import_parts(tmp_path, scan_lua("2026-10-05 10:00:00"))
-    assert "rep" not in stat_parser.build_payload(conn, "de")
+    assert "rep" not in page_payload.build_payload(conn, "de")
     conn.close()
 
 
 @pytest.mark.parametrize("lang", ["de", "en"])
 def test_the_payload_names_the_eight_reputation_levels(tmp_path, lang):
     conn = import_parts(tmp_path, NEW_PARTS)
-    standing = stat_parser.build_payload(conn, lang)["names"]["standing"]
+    standing = page_payload.build_payload(conn, lang)["names"]["standing"]
     assert sorted(standing, key=int) == [str(n) for n in range(1, 9)] and all(standing.values())
     assert standing["4"] == "Neutral"
     conn.close()

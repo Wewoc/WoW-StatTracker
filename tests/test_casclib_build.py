@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-import casclib_asset
+from game import casclib_asset
 import casclib_build
 from casclib_build import CasclibBuildError
 

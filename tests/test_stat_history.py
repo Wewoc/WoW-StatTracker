@@ -8,10 +8,12 @@ import sqlite3
 
 import pytest
 
-import i18n
-import stat_history
-import stat_parser
-import wow_icons
+from core import i18n
+from game import wow_icons
+from pages import stat_history
+from store import db_schema
+from store import importer
+from store import stat_values
 
 META = {1: {"name": "Total deaths", "cat": "Combat"},
         2: {"name": "Gold earned", "cat": "Wealth"},
@@ -43,9 +45,9 @@ def item(item_id, name, ilvl, **extra):
 
 def make_db(path, scans, key=KEY):
     """A database made the way the importer makes it: one import per scan, in the given order."""
-    conn = stat_parser.init_db(path)
+    conn = db_schema.init_db(path)
     for c in scans:
-        stat_parser.import_data(conn, {"meta": META, "chars": {key: c}})
+        importer.import_data(conn, {"meta": META, "chars": {key: c}})
     conn.close()
     return path
 
@@ -107,10 +109,10 @@ def test_a_statistic_that_is_a_coin_text_only_sometimes_is_not_gold(tmp_path):
 
 def test_coin_texts_are_the_ones_to_number_reads_as_copper():
     for text in ("12g 5s 3c", "5s 3c", "3c", "1.234g"):
-        assert stat_history.COIN_TEXT.fullmatch(text)
-        assert stat_parser.to_number(text) is not None
+        assert stat_values.COIN_TEXT.fullmatch(text)
+        assert stat_values.to_number(text) is not None
     for text in ("1.234", "0.20", "--", "Kodo", "3 d 4 h"):
-        assert not stat_history.COIN_TEXT.fullmatch(text)
+        assert not stat_values.COIN_TEXT.fullmatch(text)
 
 
 def test_played_time_is_in_seconds_and_named_in_the_current_language(tmp_path):
@@ -121,7 +123,7 @@ def test_played_time_is_in_seconds_and_named_in_the_current_language(tmp_path):
     i18n.set_language("de")
     de = by_id(history(db))[-1]
     assert en["v"] == de["v"] == [7200, 10800]
-    assert de["name"] == stat_parser.played_labels()[-1][0]
+    assert de["name"] == stat_values.played_labels()[-1][0]
     assert en["name"] != de["name"]
 
 
@@ -172,7 +174,7 @@ def test_a_missing_file_is_not_created(tmp_path):
 def test_a_database_from_a_newer_program_is_refused_untouched(tmp_path):
     db = tmp_path / "x.db"
     conn = sqlite3.connect(db)
-    conn.execute(f"PRAGMA user_version = {stat_parser.SCHEMA_VERSION + 1}")
+    conn.execute(f"PRAGMA user_version = {db_schema.SCHEMA_VERSION + 1}")
     conn.commit()
     conn.close()
     before = digest(db)
@@ -210,7 +212,7 @@ def test_a_database_at_schema_2_has_no_gear_block(tmp_path):
     conn = sqlite3.connect(db)
     for table in ("scan_gear", "scan_reputation", "rep_defs"):
         conn.execute(f"DROP TABLE {table}")
-    for column in stat_parser.SCAN_COLUMNS_V3:
+    for column in db_schema.SCAN_COLUMNS_V3:
         conn.execute(f"ALTER TABLE scans DROP COLUMN {column[0]}")
     conn.execute("PRAGMA user_version = 2")
     conn.commit()

@@ -8,11 +8,14 @@ same pictures can be made again after the stats page changes.
 
 Per language (the statistic names come from the client, so each language gets its own
 database) it writes a SavedVariables-style StatTracker.lua, runs the normal stat_parser
-on it and also writes four variants of the page for the screenshots:
+on it (with five invented Top 5 tiles, DEMO_TOP5) and also writes four variants of the page for the screenshots. They are made like the program
+shows a page after you used it: a View (pages/blocks/view.py) gets the actions of the blocks and the page is written from it, and the script that
+locks the controls of a page without the program is left out of these copies (the real page is not touched):
   shot-stats.html    the page as it is
   shot-rates.html    the same, with the rates block opened
   shot-compare.html  one character deselected, sorted by the first character
   shot-groups.html   the Groups block opened: by faction, two more statistics added
+The pictures of the program window (Settings and Top 5 tab) are made from this output by tools/make_window_shots.py.
 
 With --snapshots N (N > 1) every character gets N scans, three days apart, the last one being
 exactly the single scan of the default run. They are imported one after the other like the program
@@ -39,18 +42,22 @@ import argparse
 import colorsys
 import contextlib
 import io
+import json
 import random
+import re
 import shutil
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-import blp_decode  # noqa: E402
-import i18n  # noqa: E402
-import stat_history  # noqa: E402
-import stat_parser  # noqa: E402
-import wow_icons  # noqa: E402
+from app import stat_parser  # noqa: E402
+from core import i18n  # noqa: E402
+from game import blp_decode  # noqa: E402
+from game import wow_icons  # noqa: E402
+from pages import outputs, stat_history  # noqa: E402
+from pages.blocks import layout  # noqa: E402
+from pages.blocks.view import View  # noqa: E402
 
 LANGS = ("en", "de")
 MAX_SNAPSHOTS = 60
@@ -183,12 +190,19 @@ GEAR_GEM = 90301                    # an invented gem id
 MOUNT = ("Favourite mount", "Lieblingsreittier", "Character", "Charakter")
 GENERIC_FIRST_ID = 9001            # far away from the real IDs used above
 
-COMPARE_JS = ('$("chk_Selwyn-Moonvale").checked = false; '
-              'sortChar = "Korvak-Ironmaw"; sortDir = -1; render();')
-# the demo statistics 9003 (Jumps, a counter) and 328 (Total gold acquired, shown in gold)
-GROUPS_JS = ('$("groups").open = true; $("groupBy").value = "faction"; '
-             '[["9003", "sum"], ["328", "avg"]].forEach(p => { $("xstat").value = p[0]; $("xagg").value = p[1]; '
-             '$("xadd").click(); }); renderGroups();')
+COMPARE_OFF = "Selwyn-Moonvale"          # the character deselected in the comparison picture
+COMPARE_SORT = "Korvak-Ironmaw"          # the table is sorted by this character, the biggest number first
+# the demo statistics 9003 (Jumps, a counter) and 328 (Total gold acquired, shown in gold), added to the Groups picture
+GROUP_EXTRAS = (("9003", "sum"), ("328", "avg"))
+# the five tiles of the demo (the settings of the program, config.top5): gold of everybody, the kills of one faction, the most deaths of one
+# class, the played time of all and the jumps of one character
+DEMO_TOP5 = (
+    {"stat": 328, "agg": "sum", "by": "all", "value": ""},
+    {"stat": 107, "agg": "sum", "by": "faction", "value": "Alliance"},
+    {"stat": 60, "agg": "max", "by": "class", "value": "PALADIN"},
+    {"stat": -1, "agg": "sum", "by": "all", "value": ""},
+    {"stat": 9003, "agg": "max", "by": "char", "value": "Mirella-Dawnspire"},
+)
 # on the history page: Creatures killed (107), Total deaths (60), Total gold acquired (328) and Jumps (9003), as an index
 HISTORY_JS = ('chosen.clear(); [107, 60, 328, 9003].forEach(id => chosen.add(id)); '
               '$("mode").value = "index"; renderList(); renderChart();')
@@ -417,15 +431,43 @@ def build_lua(lang, k=None, snapshots=1):
     return "\n".join(out)
 
 
-def shot_variants(html):
-    """The screenshot pages made from the generated one: {file name: html}. Only these copies
-    get the extra lines; the real template is not touched."""
-    rates = html.replace('<details class="rates"', '<details class="rates" open', 1)
-    compare = html.replace("init();\n</script>", f"init();\n{COMPARE_JS}\n</script>", 1)
-    groups = html.replace("init();\n</script>", f"init();\n{GROUPS_JS}\n</script>", 1)
-    assert rates != html and compare != html and groups != html, "template changed: adjust shot_variants"
-    return {"shot-stats.html": html, "shot-rates.html": rates, "shot-compare.html": compare,
-            "shot-groups.html": groups}
+def payload_of(html):
+    """The data a written stats page carries (what the page hands to the program when it is shown in the window)."""
+    return json.loads(re.search(r"const DATA = (.*?);\s*const \$ =", html, re.S).group(1).replace("<\\/", "</"))
+
+
+def _shot_page(payload, view, scratch):
+    """The page written from `view` (outputs.write_html), as a copy for a screenshot: without the call that locks the controls of a page that has no
+    connection to the program (a picture should look like the page in the window)."""
+    outputs.write_html(payload, scratch, view)
+    text = Path(scratch).read_text(encoding="utf-8")
+    Path(scratch).unlink()
+    assert "  STT.start();\n" in text, "template changed: adjust _shot_page"
+    return text.replace("  STT.start();\n", "", 1)
+
+
+def _opened(html, marker):
+    """The block that starts with `marker` (a <details ...> tag) opened."""
+    assert html.count(marker) == 1, f"template changed: adjust shot_variants ({marker})"
+    return html.replace(marker, marker[:-1] + " open>", 1)
+
+
+def shot_variants(html, scratch):
+    """The screenshot pages made from the generated one: {file name: html}. Only these copies are changed; the real page and the template are not.
+    `scratch` is a path for a file that is written and removed again."""
+    payload = payload_of(html)
+    stats = _shot_page(payload, View(payload), scratch)
+    rates = _opened(stats, '<details class="rates" id="rates">')
+    view = View(payload)
+    view.select([c["key"] for c in payload["chars"] if c["key"] != COMPARE_OFF])
+    layout.dispatch(view, 8, "sort", {"key": COMPARE_SORT, "controls": {}})
+    compare = _shot_page(payload, view, scratch)
+    view = View(payload)
+    layout.dispatch(view, 2, "by", {"value": "faction", "controls": {}})
+    for stat, agg in GROUP_EXTRAS:
+        layout.dispatch(view, 2, "add", {"controls": {"xstat": stat, "xagg": agg}})
+    groups = _opened(_shot_page(payload, view, scratch), '<details class="rates groups" id="groups">')
+    return {"shot-stats.html": stats, "shot-rates.html": rates, "shot-compare.html": compare, "shot-groups.html": groups}
 
 
 def history_shot(html, js=HISTORY_JS):
@@ -474,7 +516,7 @@ def make(out_dir, lang, snapshots=1, game=None):
                 make_placeholder_icons(icons)
         for k in range(snapshots):
             lua.write_text(build_lua(lang, k, snapshots), encoding="utf-8")
-            args = ["--input", str(lua), "--db", str(db), "--output", str(page)]
+            args = ["--input", str(lua), "--db", str(db), "--output", str(page), "--top5", json.dumps(list(DEMO_TOP5))]
             if snapshots > 1:
                 args += ["--history-dir", str(history), "--icons-dir", str(icons)]
             _import(args, show_all=k == snapshots - 1)
@@ -482,7 +524,7 @@ def make(out_dir, lang, snapshots=1, game=None):
         i18n.set_language(previous)
         ICON_IDS.clear()
         ICON_IDS.update(base_ids)
-    for name, text in shot_variants(page.read_text(encoding="utf-8")).items():
+    for name, text in shot_variants(page.read_text(encoding="utf-8"), folder / "_shot.html").items():
         (folder / name).write_text(text, encoding="utf-8")
     shot_source = history / stat_history.page_name(HISTORY_CHAR)
     if snapshots > 1 and shot_source.is_file():
