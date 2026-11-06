@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-import app_info
-import wow_install
+from core import app_info
+from game import wow_install
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -58,7 +58,7 @@ def test_repository_is_the_published_one_everywhere():
     stale = re.compile(r"github\.com/Wewoc/StatTracker\b|repos/Wewoc/StatTracker\b")
     files = [ROOT / n for n in ("README.md", "README.de.md", "CHANGELOG.md", "docs/index.html", "docs/DEVELOPMENT.md",
                                 "addon/StatTracker/StatTracker.toc")]
-    files += list((ROOT / "src").glob("*.py")) + list((ROOT / ".github").rglob("*.yml"))
+    files += list((ROOT / "src").rglob("*.py")) + list((ROOT / ".github").rglob("*.yml"))
     for path in files:
         assert not stale.search(path.read_text(encoding="utf-8")), f"old repository name in {path.name}"
     for name in ("docs/index.html", "addon/StatTracker/StatTracker.toc"):   # the READMEs live in the repo and need no link to it

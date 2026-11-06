@@ -48,3 +48,17 @@ def test_both_language_versions_of_each_text_exist():
 
 def test_the_page_says_the_data_is_invented():
     assert "invented demo data" in HTML and "erfundene Demodaten" in HTML
+
+
+def test_the_item_pictures_of_the_game_are_credited_to_blizzard_on_the_page():
+    assert HTML.count("© Blizzard Entertainment") >= 2          # the note under the screenshots and the caption of the Character picture
+    assert "Only the item pictures in the Character screenshot" in HTML and "Nur die Item-Bilder im Screenshot" in HTML
+
+
+def test_the_declared_size_of_every_image_is_its_real_size():
+    for tag in re.findall(r"<img\b[^>]*>", HTML):
+        name = re.search(r'src="images/([^"]+)"', tag).group(1)
+        header = (DOCS / "images" / name).read_bytes()[:24]
+        real = (int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big"))
+        declared = (int(re.search(r'width="(\d+)"', tag).group(1)), int(re.search(r'height="(\d+)"', tag).group(1)))
+        assert real == declared, (name, real, declared)

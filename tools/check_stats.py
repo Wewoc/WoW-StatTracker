@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-import paths  # noqa: E402
+from core import paths  # noqa: E402
 
 DEFAULT_PICKS = [  # exact names from the German retail client
     "Gesamte Spielzeit", "Tode insgesamt", "Quests abgeschlossen", "Erhaltenes Gold insgesamt",

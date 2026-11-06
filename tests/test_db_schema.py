@@ -9,9 +9,10 @@ import sqlite3
 
 import pytest
 
-import export_xlsx
-import stat_parser
-from stat_parser import SCHEMA_VERSION
+from app import stat_parser
+from export import export_xlsx
+from store import db_schema
+from store.db_schema import SCHEMA_VERSION
 
 # The layout of v0.1.0 to v0.1.2, written out here on purpose: the test must not follow the code.
 V01_LAYOUT = """
@@ -88,13 +89,13 @@ def digest(path):
 
 def test_every_version_up_to_the_current_one_has_a_migration():
     assert SCHEMA_VERSION >= 1
-    assert set(stat_parser.MIGRATIONS) == set(range(1, SCHEMA_VERSION + 1))
+    assert set(db_schema.MIGRATIONS) == set(range(1, SCHEMA_VERSION + 1))
 
 
 def test_new_database_gets_the_current_version(tmp_path):
     db = tmp_path / "new.db"
-    conn = stat_parser.init_db(db)
-    assert stat_parser.schema_version(conn) == SCHEMA_VERSION
+    conn = db_schema.init_db(db)
+    assert db_schema.schema_version(conn) == SCHEMA_VERSION
     conn.close()
     assert version(db) == SCHEMA_VERSION
     assert rows(db) == [[], [], []]
@@ -103,7 +104,7 @@ def test_new_database_gets_the_current_version(tmp_path):
 def test_empty_existing_file_counts_as_new(tmp_path):
     db = tmp_path / "empty.db"
     db.touch()
-    stat_parser.init_db(db).close()
+    db_schema.init_db(db).close()
     assert version(db) == SCHEMA_VERSION and rows(db) == [[], [], []]
 
 
@@ -111,7 +112,7 @@ def test_v01_database_is_stamped_and_keeps_every_row(tmp_path):
     db = make_v01(tmp_path / "old.db")
     assert version(db) == 0
     before = rows(db)
-    stat_parser.init_db(db).close()
+    db_schema.init_db(db).close()
     assert version(db) == SCHEMA_VERSION
     assert before[2] == [(1, 1, "1.234", 1234)]          # the fixture really holds a value
     assert rows(db) == before
@@ -125,12 +126,12 @@ def migration_copies(folder):
 def test_schema_1_gets_the_race_columns_and_every_old_scan_stays_empty(tmp_path):
     db = make_v01(tmp_path / "v1.db", user_version=1)
     before = rows(db)
-    stat_parser.init_db(db).close()
+    db_schema.init_db(db).close()
     assert version(db) == SCHEMA_VERSION
     assert rows(db) == before                                # the old columns are untouched
     names = [c for c, _t in columns(db)]
     assert names[6:9] == ["class_file", "race", "race_file"]            # schema 2 comes right after the v0.1 columns
-    assert names[9:] == [c for c, _k in stat_parser.SCAN_COLUMNS_V3]    # and schema 3 after that
+    assert names[9:] == [c for c, _k in db_schema.SCAN_COLUMNS_V3]    # and schema 3 after that
     conn = sqlite3.connect(db)
     assert conn.execute("SELECT class_file, race, race_file, spec_id, spec_name, role, ilvl_total, ilvl_equipped "
                         "FROM scans").fetchall() == [(None,) * 8]
@@ -142,7 +143,7 @@ def test_schema_1_gets_the_race_columns_and_every_old_scan_stays_empty(tmp_path)
 
 def test_schema_0_takes_both_steps_and_leaves_one_permanent_copy(tmp_path):
     db = make_v01(tmp_path / "v0.db")
-    stat_parser.init_db(db).close()
+    db_schema.init_db(db).close()
     assert version(db) == SCHEMA_VERSION
     (copy,) = migration_copies(tmp_path)
     assert copy.name.endswith(f".pre-v{SCHEMA_VERSION}.bak") and version(copy) == 0
@@ -180,22 +181,22 @@ NEW_TABLES = ["rep_defs", "scan_gear", "scan_reputation"]
 
 
 def test_a_new_database_has_the_tables_of_schema_3(tmp_path):
-    stat_parser.init_db(tmp_path / "new.db").close()
+    db_schema.init_db(tmp_path / "new.db").close()
     assert sorted(layout(tmp_path / "new.db")) == sorted(["scans", "stat_defs", "stat_values", *NEW_TABLES])
 
 
 @pytest.mark.parametrize("start", ["v0", "v1", "v2"])
 def test_a_migrated_database_has_exactly_the_layout_of_a_new_one(tmp_path, start):
-    stat_parser.init_db(tmp_path / "new.db").close()
+    db_schema.init_db(tmp_path / "new.db").close()
     old = {"v0": lambda p: make_v01(p), "v1": lambda p: make_v01(p, user_version=1), "v2": make_v2}[start](tmp_path / "old.db")
-    stat_parser.init_db(old).close()
+    db_schema.init_db(old).close()
     assert layout(old) == layout(tmp_path / "new.db")                  # columns, order, keys, indexes: all of it
 
 
 def test_schema_2_gets_schema_3_and_every_old_scan_keeps_its_row_and_stays_empty(tmp_path):
     db = make_v2(tmp_path / "v2.db")
     before = rows(db)
-    stat_parser.init_db(db).close()
+    db_schema.init_db(db).close()
     assert version(db) == 3 and rows(db) == before
     conn = sqlite3.connect(db)
     assert conn.execute("SELECT class_file, spec_id, spec_name, role, ilvl_total, ilvl_equipped FROM scans").fetchall() == \
@@ -210,18 +211,18 @@ def test_schema_2_gets_schema_3_and_every_old_scan_keeps_its_row_and_stays_empty
 def test_a_failing_step_to_schema_3_leaves_the_database_at_schema_2(tmp_path, monkeypatch):
     db = make_v2(tmp_path / "v2.db")
     before = layout(db)
-    monkeypatch.setattr(stat_parser, "TABLES_V3", (*stat_parser.TABLES_V3[:1], "CREATE TABLE broken ("))
+    monkeypatch.setattr(db_schema, "TABLES_V3", (*db_schema.TABLES_V3[:1], "CREATE TABLE broken ("))
     with pytest.raises(sqlite3.OperationalError):
-        stat_parser.init_db(db)
+        db_schema.init_db(db)
     assert version(db) == 2 and layout(db) == before                   # the added columns and the first table were rolled back
     assert migration_copies(tmp_path)                                  # the copy before the step stays
 
 
 def test_opening_again_changes_nothing(tmp_path):
     db = make_v01(tmp_path / "old.db")
-    stat_parser.init_db(db).close()
+    db_schema.init_db(db).close()
     first = digest(db)
-    stat_parser.init_db(db).close()
+    db_schema.init_db(db).close()
     assert digest(db) == first
 
 
@@ -229,7 +230,7 @@ def test_database_from_a_newer_program_is_refused_untouched(tmp_path):
     db = make_v01(tmp_path / "future.db", user_version=SCHEMA_VERSION + 1)
     before = digest(db)
     with pytest.raises(SystemExit) as exc:
-        stat_parser.init_db(db)
+        db_schema.init_db(db)
     message = str(exc.value)
     assert str(db) in message and str(SCHEMA_VERSION + 1) in message and str(SCHEMA_VERSION) in message
     assert digest(db) == before
@@ -252,21 +253,21 @@ def test_main_refuses_a_newer_database_before_it_writes_anything(tmp_path):
 def test_connection_keeps_its_normal_transaction_handling(tmp_path):
     # import_data commits only at its end; a migration must not leave the connection in autocommit
     for db in (tmp_path / "new.db", make_v01(tmp_path / "old.db")):
-        conn = stat_parser.init_db(db)
+        conn = db_schema.init_db(db)
         assert conn.isolation_level == ""
         conn.close()
 
 
 def test_migrations_run_in_order_and_each_raises_the_number(tmp_path, monkeypatch):
     order = []
-    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", 3)
-    monkeypatch.setattr(stat_parser, "MIGRATIONS", {
+    monkeypatch.setattr(db_schema, "SCHEMA_VERSION", 3)
+    monkeypatch.setattr(db_schema, "MIGRATIONS", {
         1: lambda conn: order.append(1),
         2: lambda conn: order.append(2),
         3: lambda conn: order.append(3),
     })
     db = make_v01(tmp_path / "old.db")
-    stat_parser.init_db(db).close()
+    db_schema.init_db(db).close()
     assert order == [1, 2, 3] and version(db) == 3
 
 
@@ -276,12 +277,12 @@ def test_failed_migration_rolls_back_and_keeps_the_last_good_version(tmp_path, m
         conn.execute("DELETE FROM stat_values")
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(stat_parser, "SCHEMA_VERSION", 2)
-    monkeypatch.setattr(stat_parser, "MIGRATIONS", {1: lambda conn: None, 2: broken})
+    monkeypatch.setattr(db_schema, "SCHEMA_VERSION", 2)
+    monkeypatch.setattr(db_schema, "MIGRATIONS", {1: lambda conn: None, 2: broken})
     db = make_v01(tmp_path / "old.db")
     before = rows(db)
     with pytest.raises(RuntimeError, match="boom"):
-        stat_parser.init_db(db)
+        db_schema.init_db(db)
     assert version(db) == 1                               # step 1 is complete, step 2 left no trace
     assert rows(db) == before
     conn = sqlite3.connect(db)

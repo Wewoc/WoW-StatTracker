@@ -5,54 +5,63 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>StatTracker</title>
 <style>
-  :root { --bg:#121212; --panel:#1b1b1b; --line:#2e2e2e; --fg:#e0e0e0; --dim:#8a8a8a; --gold:#f4c430; --best:#5dd16b; }
+  :root { --bg:#121212; --panel:#1b1b1b; --line:#2e2e2e; --fg:#e0e0e0; --dim:#8a8a8a; --gold:#f4c430; --best:#5dd16b;
+          --field:#101010; --head:#1e1e1e; --hover:#1a1a1a; --track:#2a2a2a; }
   * { box-sizing: border-box; }
   body { font-family: system-ui, Arial, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 16px; }
   h1 { color: var(--gold); margin: 0 0 4px; font-size: 1.4rem; }
   .sub { color: var(--dim); font-size: .85rem; margin-bottom: 12px; }
   .bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; background: var(--panel);
          border: 1px solid var(--line); padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; }
-  input[type=search], select { background: #101010; color: var(--fg); border: 1px solid var(--line);
+  input[type=search], select { background: var(--field); color: var(--fg); border: 1px solid var(--line);
          padding: 6px 8px; border-radius: 4px; font-size: .9rem; }
   input[type=search] { min-width: 220px; }
-  button { background: #101010; color: var(--fg); border: 1px solid var(--line); padding: 4px 10px;
+  button { background: var(--field); color: var(--fg); border: 1px solid var(--line); padding: 4px 10px;
            border-radius: 4px; font-size: .85rem; cursor: pointer; }
   button:hover { border-color: var(--gold); color: var(--gold); }
   button:disabled { color: var(--dim); border-color: var(--line); opacity: .5; cursor: default; }
   label { font-size: .85rem; cursor: pointer; white-space: nowrap; }
-  .chars label { background:#101010; border:1px solid var(--line); padding:3px 8px; border-radius:12px; }
+  .chars label { background:var(--field); border:1px solid var(--line); padding:3px 8px; border-radius:12px; }
   .count { color: var(--dim); font-size: .85rem; margin: 6px 2px; }
   .wrap { overflow: auto; max-height: calc(100vh - 230px); border: 1px solid var(--line); border-radius: 6px; }
   table { border-collapse: collapse; width: 100%; }
   th, td { border-bottom: 1px solid var(--line); padding: 6px 10px; text-align: left; font-size: .88rem; }
-  th { position: sticky; top: 0; background: #1e1e1e; color: var(--gold); z-index: 1; cursor: pointer; user-select: none; }
+  th { position: sticky; top: 0; background: var(--head); color: var(--gold); z-index: 1; cursor: pointer; user-select: none; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   td.cat { color: var(--dim); font-size: .8rem; }
   td.best { color: var(--best); font-weight: 700; }
-  tr:hover td { background: #1a1a1a; }
+  tr:hover td { background: var(--hover); }
   .small { font-size: .72rem; color: var(--dim); font-weight: 400; display: block; }
+  .sugg { position: relative; display: inline-block; }
+  .sugg-list { position: absolute; top: 100%; left: 0; z-index: 10; min-width: 100%; width: max-content; max-width: 560px; max-height: 340px; overflow: auto;
+               margin: 2px 0 0; padding: 4px 0; list-style: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  .sugg-list[hidden] { display: none; }
+  .sugg-list li { padding: 4px 12px; cursor: pointer; font-size: .88rem; }
+  .sugg-list li:hover, .sugg-list li.active { background: var(--hover); }
+  .sugg-list li.info { color: var(--dim); font-size: .78rem; cursor: default; }
+  .sugg-list li.info:hover { background: none; }
   .empty { padding: 24px; color: var(--dim); }
   details.rates { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
                   padding: 8px 12px; margin-bottom: 8px; }
   details.rates summary { cursor: pointer; color: var(--gold); font-size: .95rem; }
   .rwrap { overflow: auto; max-height: 50vh; margin-top: 8px; border: 1px solid var(--line); border-radius: 6px; }
   .rwrap th { cursor: default; }
-  tr.total td { font-weight: 700; background: #1e1e1e; }
+  tr.total td { font-weight: 700; background: var(--head); }
   .note { color: var(--dim); font-size: .78rem; margin-top: 6px; }
   .gbar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-top: 8px; }
   .gbar .lbl { color: var(--dim); font-size: .8rem; }
-  .gbar label { background:#101010; border:1px solid var(--line); padding:3px 8px; border-radius:12px; }
+  .gbar label { background:var(--field); border:1px solid var(--line); padding:3px 8px; border-radius:12px; }
   .gnone { padding: 10px 2px; color: var(--dim); font-size: .85rem; }
-  .gbar .chip { background:#101010; border:1px solid var(--line); padding:3px 8px; border-radius:12px; font-size:.85rem; }
+  .gbar .chip { background:var(--field); border:1px solid var(--line); padding:3px 8px; border-radius:12px; font-size:.85rem; }
   .gbar .chip button { border: 0; background: none; padding: 0 0 0 6px; font-size: .95rem; }
-  .gbar a.hlink { background:#101010; border:1px solid var(--line); padding:3px 8px; border-radius:12px;
+  .gbar a.hlink { background:var(--field); border:1px solid var(--line); padding:3px 8px; border-radius:12px;
                   font-size:.85rem; color: var(--fg); text-decoration: none; }
   .gbar a.hlink:hover { border-color: var(--gold); color: var(--gold); }
   .gbar a.hlink span { color: var(--dim); }
-  .rbar { height: 5px; min-width: 110px; max-width: 260px; background: #2a2a2a; border-radius: 3px; margin-top: 3px; }
+  .rbar { height: 5px; min-width: 110px; max-width: 260px; background: var(--track); border-radius: 3px; margin-top: 3px; }
   .rbar i { display: block; height: 100%; background: var(--gold); border-radius: 3px; }
   .rbar.par i { background: var(--best); }
-  #rpt td.rcat { background: #1e1e1e; color: var(--gold); font-weight: 700; }
+  #rpt td.rcat { background: var(--head); color: var(--gold); font-weight: 700; }
   #rpt td.rsub { color: var(--dim); font-weight: 700; }
   #rpt td.rhead { font-weight: 700; }
   #rpt td.rcell { min-width: 130px; vertical-align: top; }
@@ -61,95 +70,35 @@
   .foot { color: var(--dim); font-size: .8rem; margin: 12px 2px 0; }
   .foot a { color: var(--dim); }
   .foot a:hover { color: var(--gold); }
+  .tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .tile { flex: 1 1 170px; min-width: 150px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; }
+  .tile .tname { color: var(--dim); font-size: .82rem; }
+  .tile .tval { color: var(--gold); font-size: 1.5rem; font-weight: 700; margin: 2px 0; font-variant-numeric: tabular-nums; }
+  .tile .tscope { font-size: .85rem; }
+  [data-slot] { display: contents; }   /* a numbered place (src/pages/blocks/layout.py) adds no box of its own */
 </style>
 </head>
 <body>
 <h1 id="title"></h1>
 <div class="sub" id="gen"></div>
 
-<div class="bar">
-  <input type="search" id="q">
-  <select id="cat"></select>
-  <label><input type="checkbox" id="diff"> <span id="lblDiff"></span></label>
-  <label><input type="checkbox" id="hideEmpty" checked> <span id="lblEmpty"></span></label>
-</div>
-<details class="rates" id="rates">
-  <summary id="ratesTitle"></summary>
-  <div class="rwrap"><table id="rt"><thead></thead><tbody></tbody></table></div>
-  <div class="note" id="ratesNote"></div>
-</details>
-<details class="rates groups" id="groups">
-  <summary id="groupsTitle"></summary>
-  <div id="presetBox" hidden>
-    <div class="gbar">
-      <span class="lbl" id="lblPreset"></span>
-      <select id="presetSel"></select>
-      <input type="search" id="presetName" maxlength="40">
-      <button type="button" id="presetSave"></button>
-      <button type="button" id="presetDel"></button>
-      <span class="lbl" id="presetMsg"></span>
-    </div>
-    <div class="note" id="presetNote"></div>
-  </div>
-  <div class="gbar"><span class="lbl" id="lblGroupBy"></span><select id="groupBy"></select></div>
-  <div class="gbar" id="groupPick"></div>
-  <div class="gbar" id="figures"></div>
-  <div class="gbar">
-    <span class="lbl" id="lblExtra"></span>
-    <input type="search" id="xq">
-    <select id="xstat"></select>
-    <select id="xagg"></select>
-    <button type="button" id="xadd"></button>
-  </div>
-  <div class="gbar" id="extraChips" hidden></div>
-  <div class="note" id="extraNote"></div>
-  <div class="gnone" id="groupsNone" hidden></div>
-  <div class="rwrap" id="groupsWrap"><table id="gt"><thead></thead><tbody></tbody></table></div>
-  <div class="note" id="groupsNote"></div>
-</details>
-<details class="rates" id="history" hidden>
-  <summary id="historyTitle"></summary>
-  <div class="gbar" id="historyLinks"></div>
-  <div class="note" id="historyNote"></div>
-</details>
-<div class="bar chars" id="chars"></div>
-<details class="rates" id="rep" hidden>
-  <summary id="repTitle"></summary>
-  <div class="gbar"><input type="search" id="repQ"></div>
-  <div class="gnone" id="repNone" hidden></div>
-  <div class="rwrap" id="repWrap"><table id="rpt"><thead></thead><tbody></tbody></table></div>
-  <div class="note" id="repMissing"></div>
-  <div class="note" id="repNote"></div>
-</details>
-<div class="count" id="count"></div>
-<div class="wrap"><table id="t"><thead></thead><tbody></tbody></table></div>
-<div class="foot" id="foot"></div>
+<div data-slot="10"></div>
+<div data-slot="1"></div>
+<div data-slot="2"></div>
+<div data-slot="3"></div>
+<div data-slot="4"></div>
+<div data-slot="5"></div>
+<div data-slot="8"></div>
+<div data-slot="9"></div>
 
 <script>
 const DATA = /*__DATA__*/null;
 
 const $ = id => document.getElementById(id);
-const EMPTY = "--";
-let sortChar = null;   // char key, or null = category/name
-let sortDir = -1;      // -1 = descending
 
-// UI texts come from the generator (src/i18n.py, html_* keys); {name} marks a value to fill in.
+// UI texts come from the generator (src/core/i18n.py, html_* keys); {name} marks a value to fill in.
 const UI = (DATA && DATA.ui) || {};
 const fmt = (s, vals) => (s || "").replace(/\{(\w+)\}/g, (_, k) => (k in vals ? vals[k] : ""));
-
-function isEmpty(cell) { return !cell || cell[0] === EMPTY || cell[0] === ""; }
-function selected() { return DATA.chars.filter(c => $("chk_" + c.key).checked); }
-
-// One button: "Select all" while at least one character is unchecked, "Deselect all" when all are checked.
-function syncToggle() {
-  const all = DATA.chars.every(c => $("chk_" + c.key).checked);
-  $("toggleAll").textContent = all ? (UI.deselect_all || "") : (UI.select_all || "");
-}
-function toggleAll() {
-  const all = DATA.chars.every(c => $("chk_" + c.key).checked);
-  DATA.chars.forEach(c => { $("chk_" + c.key).checked = !all; });
-  render();
-}
 
 function init() {
   document.documentElement.lang = (DATA && DATA.lang) || "en";
@@ -161,700 +110,132 @@ function init() {
     return;
   }
   $("gen").textContent = fmt(UI.generated, {generated: DATA.generated, chars: DATA.chars.length, stats: DATA.stats.length});
-  $("q").placeholder = UI.search || "";
-  $("lblDiff").textContent = UI.only_diff || "";
-  $("lblEmpty").textContent = UI.hide_empty || "";
+  if (DATA.snapshot && UI.snapshot) $("gen").textContent += " · " + fmt(UI.snapshot, DATA.snapshot);          // written by "Open in browser" (outputs.write_snapshot)
+  STT.start();
+}
 
-  const cats = [...new Set(DATA.stats.map(s => s.cat))].sort();
-  const sel = $("cat");
-  sel.add(new Option(UI.all_cats || "", ""));
-  cats.forEach(c => sel.add(new Option(c, c)));
-
-  const box = $("chars");
-  const tg = document.createElement("button");
-  tg.type = "button"; tg.id = "toggleAll";
-  tg.addEventListener("click", toggleAll);
-  box.append(tg);
-  DATA.chars.forEach(c => {
-    const l = document.createElement("label");
-    const cb = document.createElement("input");
-    cb.type = "checkbox"; cb.checked = true; cb.id = "chk_" + c.key;
-    cb.addEventListener("change", render);
-    l.append(cb, " " + c.key);
-    box.append(l);
+// The blocks that Python writes (src/pages/blocks/*.py, the numbered places above): a control with data-action is an action; the program
+// window sends it to Python through its bridge (QWebChannel), the answer is the list of parts of the block that changed
+// ({id, html?, hidden?, disabled?, checked?}). Without the bridge (the file opened in a browser) those controls are disabled and the blocks
+// stay as they were written.
+const STT = (() => {
+  let bridge = null, lastKeys = null;
+  const live = () => typeof QWebChannel !== "undefined" && typeof qt !== "undefined" && !!qt.webChannelTransport;
+  const parse = text => { try { return JSON.parse(text); } catch (e) { return null; } };
+  const apply = list => (list || []).forEach(u => {
+    const el = document.getElementById(u.id);
+    if (!el) return;
+    if ("html" in u) el.innerHTML = u.html;
+    if ("hidden" in u) el.hidden = u.hidden;
+    if ("disabled" in u) el.disabled = u.disabled;
+    if ("checked" in u) el.checked = u.checked;
   });
-
-  ["q", "cat", "diff", "hideEmpty"].forEach(id => $(id).addEventListener("input", render));
-  setupGroups();
-  setupPresets();
-  setupHistory();
-  setupRep();
-  renderRates();
-  renderFoot();
-  render();
-}
-
-// Links to the history pages (one per character with at least two scans, written next to this page by the
-// program, src/stat_history.py). The block stays hidden when the generator gave none. A link is only as good
-// as the folder beside this page, which the note says.
-function setupHistory() {
-  const H = DATA.history;
-  const linked = H && H.links ? DATA.chars.filter(c => Object.prototype.hasOwnProperty.call(H.links, c.key)) : [];
-  if (!linked.length) return;
-  $("history").hidden = false;
-  $("historyTitle").textContent = UI.hist_links_title || "";
-  const box = $("historyLinks");
-  linked.forEach(c => {
-    const a = document.createElement("a");
-    const n = document.createElement("span");
-    a.className = "hlink"; a.href = H.links[c.key].href;
-    n.textContent = " (" + H.links[c.key].scans + ")";
-    a.append(c.key, n);
-    box.append(a);
-  });
-  const missing = DATA.chars.length - linked.length;
-  $("historyNote").textContent = fmt(UI.hist_links_note, {dir: H.dir}) + (missing ? " " + fmt(UI.hist_links_missing, {n: missing}) : "");
-}
-
-// Version, link to the project page and copyright (values from src/app_info.py via the generator).
-function renderFoot() {
-  const A = DATA.app;
-  if (!A) return;
-  const link = document.createElement("a");
-  link.href = A.site; link.target = "_blank"; link.rel = "noopener noreferrer";
-  link.textContent = A.site.replace(/^https:\/\//, "").replace(/\/$/, "");
-  $("foot").append(fmt(UI.footer_version, {version: A.version}), " · ", link, " · " + A.copyright + " · " + A.license);
-}
-
-// Rates per played hour (computed by the generator, src/stat_derive.py); static, whatever is checked above.
-function fmtRate(v) {
-  const d = v === 0 ? 0 : v >= 100 ? 0 : v >= 10 ? 1 : v >= 0.1 ? 2 : 3;
-  return v.toLocaleString(DATA.lang, {minimumFractionDigits: d, maximumFractionDigits: d});
-}
-
-function renderRates() {
-  const D = DATA.derived;
-  if (!D || !D.roles || !D.roles.length) { $("rates").hidden = true; return; }
-  $("ratesTitle").textContent = UI.rates_title || "";
-  $("ratesNote").textContent = fmt(UI.rates_note, {hours: D.min_played_seconds / 3600});
-
-  const hr = $("rt").tHead.insertRow();
-  const th0 = document.createElement("th");
-  th0.textContent = UI.rates_col_char || "";
-  hr.append(th0);
-  D.roles.forEach(r => {
-    const th = document.createElement("th");
-    th.className = "num"; th.textContent = r.label;
-    hr.append(th);
-  });
-
-  // A rate, or "–" with the reason; the total also says how many characters it is made of.
-  const cell = (res, isTotal) => {
-    const td = document.createElement("td");
-    td.className = "num";
-    const small = document.createElement("span");
-    small.className = "small";
-    if (res && "rate" in res) {
-      td.textContent = fmtRate(res.rate);
-      if (isTotal) small.textContent = fmt(UI.rates_total_of, {used: res.used, of: res.of});
-    } else {
-      td.textContent = "–";
-      small.textContent = (res && res.why) || "";
-    }
-    if (small.textContent) td.append(small);
-    return td;
+  // the ticked characters: the boxes of the character selection (place 4), in the order of the page
+  const ticked = () => [...document.querySelectorAll("input[data-pick]")].filter(e => e.checked).map(e => e.dataset.name);
+  const controls = place => {
+    const c = {};
+    // a box with a list of suggestions (data-suggest) hands over the text that was applied last (data-committed), not what is being typed
+    place.querySelectorAll("[data-name]").forEach(e => {
+      c[e.dataset.name] = e.type === "checkbox" ? e.checked : (e.dataset.committed !== undefined ? e.dataset.committed : e.value);
+    });
+    return c;
   };
-
-  const body = $("rt").tBodies[0];
-  const total = body.insertRow();
-  total.className = "total";
-  total.insertCell().textContent = UI.rates_total || "";
-  D.roles.forEach(r => total.append(cell(r.total, true)));
-  DATA.chars.forEach(c => {
-    const tr = body.insertRow();
-    const first = tr.insertCell();
-    first.textContent = c.key;
-    const s = document.createElement("span");
-    s.className = "small";
-    s.textContent = [c.race, c.class, c.level].filter(Boolean).join(" · ");
-    first.append(s);
-    D.roles.forEach(r => tr.append(cell(r.chars[c.key], false)));
-  });
-}
-
-// Groups: the characters ticked above, grouped by class, race, faction or realm. Computed here from the
-// page data (the rules are in the note under the table). Class and race are grouped by the language
-// independent file name from the game; a character without one (scanned before the addon recorded it)
-// is "unknown". Nothing is guessed from the stored, gender dependent text.
-const GROUP_BY = ["class", "race", "faction", "realm"];
-const BY_LABEL = {class: UI.groups_by_class, race: UI.groups_by_race, faction: UI.groups_by_faction, realm: UI.groups_by_realm};
-const FACTION = {Alliance: UI.faction_Alliance, Horde: UI.faction_Horde, Neutral: UI.faction_Neutral};
-const groupOff = {};          // per grouping: keys of the groups that are unticked
-const figureOff = new Set();  // ids of the figures that are unticked
-const extras = [];            // statistics added by hand: {id, agg}
-const AGG_LABEL = {sum: UI.groups_agg_sum, avg: UI.groups_agg_avg, max: UI.groups_agg_max};
-const AGG = {sum: v => v.reduce((a, b) => a + b, 0), avg: v => v.reduce((a, b) => a + b, 0) / v.length, max: v => Math.max(...v)};
-const GOLD_RE = /^(?:\d[\d.,]*\s*[gsc]\s*)+$/;   // "12g 5s 3c" (the pattern of stat_parser.to_number): the stored number is copper
-const STATS = new Map(((DATA && DATA.stats) || []).map(s => [s.id, s]));
-
-const own = (obj, key) => (Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined);
-const isNum = v => typeof v === "number" && isFinite(v);
-const sum = list => list.reduce((a, b) => a + b, 0);
-const num = (v, digits) => v.toLocaleString(DATA.lang, {minimumFractionDigits: digits, maximumFractionDigits: digits});
-
-function groupKey(c, by) {
-  if (by === "class") return c.class_file || null;
-  if (by === "race") return c.race_file || null;
-  if (by === "faction") return c.faction || null;
-  const i = c.key.indexOf("-");   // "Name-Realm": cut at the first hyphen, a realm name can contain one
-  return i > 0 && i < c.key.length - 1 ? c.key.slice(i + 1) : null;
-}
-
-function groupLabel(by, key, members) {
-  if (key === null) return UI.groups_unknown || "";
-  if (by === "faction") return own(FACTION, key) || key;
-  if (by === "realm") return key;
-  const known = own((DATA.names || {})[by] || {}, key);
-  if (known) return known;
-  // a file name this program does not know yet: the text stored with the newest scan of the group
-  const newest = members.slice().sort((a, b) => (a.scanned_at < b.scanned_at ? 1 : -1))[0];
-  return (by === "class" ? newest.class : newest.race) || key;
-}
-
-function buildGroups(chars, by) {
-  const map = new Map();
-  chars.forEach(c => {
-    const key = groupKey(c, by);
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(c);
-  });
-  const list = [...map].map(([key, members]) => ({key, members, label: groupLabel(by, key, members)}));
-  list.sort((a, b) => (a.key === null) - (b.key === null) || a.label.localeCompare(b.label, DATA.lang));
-  return list;
-}
-
-// One column of the group table: calc(members) gives {text, of: [used, total]} or {} for "no value".
-function figureList() {
-  const list = [
-    {id: "chars", label: UI.groups_fig_chars, calc: m => ({text: num(m.length, 0)})},
-    {id: "level", label: UI.groups_fig_level, calc: m => {
-      const v = m.map(c => c.level).filter(isNum);
-      return v.length ? {text: num(sum(v) / v.length, 1), of: [v.length, m.length]} : {};
-    }},
-    {id: "played", label: UI.groups_fig_played, calc: m => {
-      const p = DATA.stats.find(s => s.id === -1);   // played time, seconds (src/stat_parser.PLAYED_STATS)
-      const v = p ? m.map(c => p.v[c.key]).filter(x => x && isNum(x[1])).map(x => x[1]) : [];
-      return v.length ? {text: fmt(UI.groups_hours, {n: num(sum(v) / 3600, 1)}), of: [v.length, m.length]} : {};
-    }},
-  ];
-  // rates: sum of counters / sum of hours of the group (not the mean of the rates), like "Total" above
-  ((DATA.derived && DATA.derived.roles) || []).forEach(r => list.push({id: "role_" + r.role, label: r.label, calc: m => {
-    const used = m.map(c => r.chars[c.key]).filter(x => x && "rate" in x);
-    const hours = sum(used.map(x => x.hours));
-    return used.length && hours > 0 ? {text: fmtRate(sum(used.map(x => x.amount)) / hours), of: [used.length, m.length]} : {};
-  }}));
-  return list;
-}
-
-// A statistic added by hand, combined over the group with the chosen function. Only characters with a
-// number for it count ("n of m"); a gold statistic is shown in gold.
-function extraFigure(e) {
-  const s = STATS.get(e.id);
-  const gold = !!s && Object.values(s.v).some(x => x && GOLD_RE.test(String(x[0]).trim()));
-  return {id: "x" + e.id + "_" + e.agg, label: (s ? s.name : String(e.id)) + " (" + AGG_LABEL[e.agg] + ")", cat: s ? s.cat : "",
-    calc: m => {
-      const v = s ? m.map(c => s.v[c.key]).filter(x => x && isNum(x[1])).map(x => x[1]) : [];
-      if (!v.length) return {};
-      const r = AGG[e.agg](v);
-      return {text: gold ? fmt(UI.groups_gold, {n: num(r / 10000, 2)}) : num(r, Number.isInteger(r) ? 0 : 2), of: [v.length, m.length]};
-    }};
-}
-
-function renderExtraPicker(chars) {
-  const q = $("xq").value.trim().toLowerCase();
-  const sel = $("xstat");
-  const keep = sel.value;
-  sel.textContent = "";
-  DATA.stats.forEach(s => {
-    if (s.id < 0) return;   // played time is a figure of its own
-    if (q && !(s.name.toLowerCase().includes(q) || s.cat.toLowerCase().includes(q))) return;
-    if (!chars.some(c => s.v[c.key] && isNum(s.v[c.key][1]))) return;   // nothing to combine
-    sel.add(new Option(s.name + " (" + s.cat + ")", String(s.id)));
-  });
-  if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
-}
-
-function renderExtraChips() {
-  const box = $("extraChips");
-  box.textContent = "";
-  box.hidden = !extras.length;
-  extras.forEach((e, i) => {
-    const chip = document.createElement("span");
-    chip.className = "chip";
-    const rm = document.createElement("button");
-    rm.type = "button"; rm.textContent = "×"; rm.title = UI.groups_remove || "";
-    rm.addEventListener("click", () => { extras.splice(i, 1); renderGroups(); });
-    chip.append(extraFigure(e).label, rm);
-    box.append(chip);
-  });
-}
-
-function figureCell(res) {
-  const td = document.createElement("td");
-  td.className = "num";
-  const small = document.createElement("span");
-  small.className = "small";
-  if (res.text === undefined) {
-    td.textContent = "–";
-    small.textContent = UI.groups_no_value || "";
-  } else {
-    td.textContent = res.text;
-    if (res.of && res.of[0] < res.of[1]) small.textContent = fmt(UI.rates_total_of, {used: res.of[0], of: res.of[1]});
+  const typing = {};          // per search box: the number of the last message and the timer that waits for the next key
+  function send(el, last, action) {
+    const place = el.closest("[data-slot]");
+    if (!bridge || !place) return;
+    const args = Object.assign({}, el.dataset, {value: el.value, checked: !!el.checked, controls: controls(place)});
+    delete args.action; delete args.name; delete args.then;
+    bridge.act(Number(place.dataset.slot), action || el.dataset.action, JSON.stringify(args), res => {
+      if (last && !last()) return;
+      apply(parse(res));
+      if (el.dataset.then === "selection") selection();          // the answer changed the boxes of the selection: the other blocks follow
+    });
   }
-  if (small.textContent) td.append(small);
-  return td;
-}
-
-function setupGroups() {
-  $("groupsTitle").textContent = UI.groups_title || "";
-  $("lblGroupBy").textContent = UI.groups_by || "";
-  const sel = $("groupBy");
-  GROUP_BY.forEach(k => sel.add(new Option(BY_LABEL[k] || k, k)));
-  sel.addEventListener("change", renderGroups);
-  const bar = $("figures");
-  const lbl = document.createElement("span");
-  lbl.className = "lbl"; lbl.textContent = UI.groups_figures || "";
-  bar.append(lbl);
-  figureList().forEach(f => {
-    const l = document.createElement("label");
-    const cb = document.createElement("input");
-    cb.type = "checkbox"; cb.checked = true; cb.id = "fig_" + f.id;
-    cb.addEventListener("change", () => { if (cb.checked) figureOff.delete(f.id); else figureOff.add(f.id); renderGroups(); });
-    l.append(cb, " " + f.label);
-    bar.append(l);
+  // a search box: wait a moment after the last key, and drop the answer of a message that a newer one has replaced (the answer replaces the same parts)
+  function sendTyped(el) {
+    const t = typing[el.id] || (typing[el.id] = {n: 0, timer: null, closed: false});
+    clearTimeout(t.timer);
+    t.closed = false;
+    t.timer = setTimeout(() => { const n = ++t.n; send(el, () => n === t.n && !t.closed); }, Number(el.dataset.delay) || 150);
+  }
+  // suggestions under a search box: the list is written by Python (the id is in data-suggest); keys and mouse only choose from it, and what is
+  // chosen (or Enter, or an emptied box) is applied: data-commit names the action that then rebuilds what the box filters
+  const listOf = el => document.getElementById(el.dataset.suggest);
+  const entries = list => [...list.querySelectorAll("li[data-value]")];
+  function closeList(el) {
+    const list = listOf(el);
+    if (list) { list.hidden = true; list.textContent = ""; }
+    const t = typing[el.id];
+    if (t) { clearTimeout(t.timer); t.closed = true; t.n++; }          // an answer that is still on its way must not open the list again
+  }
+  function commit(el) {
+    closeList(el);
+    el.dataset.committed = el.value;
+    send(el, null, el.dataset.commit);
+  }
+  document.addEventListener("click", e => { const b = e.target.closest("button[data-action], th[data-action]"); if (b) send(b); });
+  document.addEventListener("change", e => {
+    if (e.target.matches("select[data-action], input[type=checkbox][data-action]")) send(e.target);
+    else if (e.target.matches("input[data-pick]")) selection();
   });
-  const hours = (DATA.derived ? DATA.derived.min_played_seconds : 3600) / 3600;
-  $("groupsNote").textContent = fmt(UI.groups_note, {hours: hours});
-
-  $("lblExtra").textContent = UI.groups_extra || "";
-  $("xq").placeholder = UI.search || "";
-  $("xq").addEventListener("input", renderGroups);
-  Object.keys(AGG).forEach(k => $("xagg").add(new Option(AGG_LABEL[k] || k, k)));
-  $("xadd").textContent = UI.groups_add || "";
-  $("xadd").addEventListener("click", () => {
-    const id = Number($("xstat").value), agg = $("xagg").value;
-    if ($("xstat").value === "" || extras.some(e => e.id === id && e.agg === agg)) return;
-    extras.push({id, agg});
-    renderGroups();
+  document.addEventListener("input", e => {
+    const el = e.target;
+    if (!el.matches("input[type=search][data-action]")) return;
+    if (el.dataset.suggest && el.value.trim() === "") { commit(el); return; }          // emptied: the filter goes at once
+    sendTyped(el);
   });
-  $("extraNote").textContent = UI.groups_extra_note || "";
-}
-
-// Presets of the Groups block: the grouping, the figures and the added statistics (not the characters or
-// groups ticked, they change with every scan). They live in the localStorage of the browser, which all local
-// pages share; where the storage is blocked the row is hidden and the block works as before.
-const PRESET_KEY = "stattracker.groupPresets";
-const PRESET_NAME_MAX = 40;
-let presets = [];
-
-function storageUsable() {
-  try { localStorage.getItem(PRESET_KEY); return true; } catch (e) { return false; }
-}
-
-// Read from the storage every time (another page may have changed it); whatever is not shaped like a preset is dropped.
-function readPresets() {
-  let raw;
-  try { raw = JSON.parse(localStorage.getItem(PRESET_KEY) || "[]"); } catch (e) { return []; }
-  if (!Array.isArray(raw)) return [];
-  const seen = new Set();
-  return raw.filter(p => {
-    const ok = p && typeof p.name === "string" && p.name !== "" && p.name.length <= PRESET_NAME_MAX && !seen.has(p.name)
-      && typeof p.by === "string" && Array.isArray(p.off) && Array.isArray(p.extras);
-    if (ok) seen.add(p.name);
-    return ok;
-  });
-}
-
-function writePresets() {
-  try { localStorage.setItem(PRESET_KEY, JSON.stringify(presets)); return true; } catch (e) { return false; }
-}
-
-function renderPresetSel(keep) {
-  const sel = $("presetSel");
-  sel.textContent = "";
-  sel.add(new Option(UI.groups_preset_none || "", ""));
-  presets.forEach(p => sel.add(new Option(p.name, p.name)));
-  sel.value = presets.some(p => p.name === keep) ? keep : "";
-  $("presetDel").disabled = sel.value === "";
-}
-
-// Figures and statistics this page does not have are skipped; the groups ticked stay as they are.
-function applyPreset(p) {
-  if (GROUP_BY.includes(p.by)) $("groupBy").value = p.by;
-  const off = new Set(p.off);
-  figureOff.clear();
-  figureList().forEach(f => {
-    if (off.has(f.id)) figureOff.add(f.id);
-    $("fig_" + f.id).checked = !off.has(f.id);
-  });
-  extras.length = 0;
-  p.extras.forEach(e => {
-    if (!e || !isNum(e.id) || e.id < 0 || !STATS.has(e.id) || typeof e.agg !== "string" || !own(AGG, e.agg)) return;
-    if (!extras.some(x => x.id === e.id && x.agg === e.agg)) extras.push({id: e.id, agg: e.agg});
-  });
-  renderGroups();
-}
-
-function setupPresets() {
-  if (!storageUsable()) return;
-  $("presetBox").hidden = false;
-  $("lblPreset").textContent = UI.groups_preset || "";
-  $("presetName").placeholder = UI.groups_preset_name || "";
-  $("presetSave").textContent = UI.groups_preset_save || "";
-  $("presetDel").textContent = UI.groups_preset_delete || "";
-  $("presetNote").textContent = UI.groups_preset_note || "";
-  presets = readPresets();
-  renderPresetSel("");
-
-  $("presetSel").addEventListener("change", () => {
-    const name = $("presetSel").value;
-    $("presetMsg").textContent = "";
-    presets = readPresets();
-    const p = presets.find(x => x.name === name);
-    if (p) applyPreset(p);
-    renderPresetSel(p ? name : "");
-  });
-  $("presetSave").addEventListener("click", () => {
-    const name = $("presetName").value.trim().slice(0, PRESET_NAME_MAX);
-    if (!name) return;
-    const entry = {name, by: $("groupBy").value, off: [...figureOff], extras: extras.map(e => ({id: e.id, agg: e.agg}))};
-    presets = readPresets();
-    const i = presets.findIndex(p => p.name === name);
-    if (i >= 0) presets[i] = entry; else presets.push(entry);
-    if (writePresets()) { $("presetMsg").textContent = ""; } else { $("presetMsg").textContent = UI.groups_preset_failed || ""; presets = readPresets(); }
-    renderPresetSel(name);
-  });
-  $("presetDel").addEventListener("click", () => {
-    const name = $("presetSel").value;
-    if (name === "") return;
-    presets = readPresets().filter(p => p.name !== name);
-    $("presetMsg").textContent = writePresets() ? "" : (UI.groups_preset_failed || "");
-    presets = readPresets();
-    renderPresetSel("");
-  });
-}
-
-function renderGroups() {
-  const chars = selected();
-  const by = $("groupBy").value;
-  renderExtraPicker(chars);
-  renderExtraChips();
-  const groups = buildGroups(chars, by);
-  const off = groupOff[by] || (groupOff[by] = new Set());
-
-  const pick = $("groupPick");
-  pick.textContent = "";
-  const lbl = document.createElement("span");
-  lbl.className = "lbl"; lbl.textContent = UI.groups_pick || "";
-  pick.append(lbl);
-  groups.forEach(g => {
-    const l = document.createElement("label");
-    const cb = document.createElement("input");
-    cb.type = "checkbox"; cb.checked = !off.has(g.key);
-    cb.addEventListener("change", () => { if (cb.checked) off.delete(g.key); else off.add(g.key); renderGroups(); });
-    l.append(cb, " " + g.label + " (" + g.members.length + ")");
-    pick.append(l);
-  });
-
-  const none = $("groupsNone");
-  none.hidden = chars.length > 0;
-  none.textContent = chars.length ? "" : (UI.groups_none_selected || "");
-  $("groupsWrap").hidden = !chars.length;
-  const head = $("gt").tHead, body = $("gt").tBodies[0];
-  head.textContent = ""; body.textContent = "";
-  if (!chars.length) return;
-
-  const figs = figureList().filter(f => !figureOff.has(f.id)).concat(extras.map(extraFigure));
-  const hr = head.insertRow();
-  const th0 = document.createElement("th");
-  th0.textContent = UI.groups_col_group || "";
-  hr.append(th0);
-  figs.forEach(f => {
-    const th = document.createElement("th");
-    th.className = "num"; th.textContent = f.label;
-    if (f.cat) {
-      const s = document.createElement("span");
-      s.className = "small"; s.textContent = f.cat;
-      th.append(s);
+  document.addEventListener("keydown", e => {
+    const el = e.target;
+    if (!el.matches || !el.matches("input[data-suggest]")) return;
+    const list = listOf(el), items = list ? entries(list) : [];
+    let at = items.findIndex(li => li.classList.contains("active"));
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !list.hidden && items.length) {
+      e.preventDefault();
+      at = e.key === "ArrowDown" ? (at + 1) % items.length : (at <= 0 ? items.length - 1 : at - 1);
+      items.forEach((li, i) => li.classList.toggle("active", i === at));
+      items[at].scrollIntoView({block: "nearest"});
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (!list.hidden && at >= 0) el.value = items[at].dataset.value;
+      commit(el);
+    } else if (e.key === "Escape") {
+      closeList(el);
     }
-    hr.append(th);
   });
-
-  const shown = groups.filter(g => !off.has(g.key));
-  shown.forEach(g => {
-    const tr = body.insertRow();
-    tr.insertCell().textContent = g.label;
-    figs.forEach(f => tr.append(figureCell(f.calc(g.members))));
-  });
-  if (shown.length) {
-    const members = shown.flatMap(g => g.members);
-    const tr = body.insertRow();
-    tr.className = "total";
-    tr.insertCell().textContent = UI.rates_total || "";
-    figs.forEach(f => tr.append(figureCell(f.calc(members))));
-  }
-}
-
-// Reputation: the last scan of every ticked character (DATA.rep, built by src/stat_parser.py), the factions in the order
-// of the game. The characters have different lists, so they are merged: a faction the order does not know yet is put
-// right after the faction before it in the list it comes from. An account-wide faction is one cell across all characters,
-// taken from the newest scan that has it. Nothing here is guessed: a level name the page does not know shows its number.
-function setupRep() {
-  if (!DATA.rep || !DATA.rep.chars) return;
-  $("rep").hidden = false;
-  $("repTitle").textContent = UI.rep_title || "";
-  $("repQ").placeholder = UI.rep_search || "";
-  $("repQ").addEventListener("input", renderRep);
-  $("repNote").textContent = UI.rep_note || "";
-}
-
-function repOrder(lists) {
-  const order = [];
-  lists.forEach(list => {
-    let at = -1;
-    list.forEach(e => {
-      const i = order.indexOf(e.id);
-      if (i >= 0) at = i; else { order.splice(at + 1, 0, e.id); at += 1; }
-    });
-  });
-  return order;
-}
-
-function repBar(share, extra) {
-  const bar = document.createElement("div");
-  bar.className = "rbar" + (extra ? " " + extra : "");
-  const fill = document.createElement("i");
-  fill.style.width = Math.round(Math.max(0, Math.min(1, share)) * 100) + "%";
-  bar.append(fill);
-  return bar;
-}
-
-// One cell: the level, how far to the next one (a bar and "x / y"), and the paragon progress when there is one.
-function repCell(e) {
-  const num = v => v.toLocaleString(DATA.lang);
-  const box = document.createElement("div");
-  let label = "", detail = "", share = null;
-  const span = (lo, hi, at) => { share = (at - lo) / (hi - lo); detail = num(at - lo) + " / " + num(hi - lo); };
-  if (e.kind === "major") {
-    label = fmt(UI.rep_renown, {n: e.renown == null ? "?" : e.renown, max: e.max_renown == null ? "?" : e.max_renown});
-    if (e.max_renown != null && e.renown != null && e.renown >= e.max_renown) detail = UI.rep_max || "";
-    else if (e.earned != null && e.need > 0) span(0, e.need, e.earned);
-  } else if (e.kind === "friend") {
-    label = e.level == null ? EMPTY : fmt(UI.rep_level, {n: e.level, max: e.max_level == null ? "?" : e.max_level});
-    if (e.max_level != null && e.level != null && e.level >= e.max_level) detail = UI.rep_max || "";
-    else if (e.standing != null && e.lo != null && e.hi > e.lo) span(e.lo, e.hi, e.standing);
-  } else if (e.kind === "std") {
-    const names = (DATA.names && DATA.names.standing) || {};
-    label = names[e.reaction] || (e.reaction == null ? EMPTY : fmt(UI.rep_standing_n, {n: e.reaction}));
-    if (e.lo != null && e.hi != null && e.hi <= e.lo) detail = UI.rep_max || "";
-    else if (e.standing != null && e.lo != null && e.hi > e.lo) span(e.lo, e.hi, e.standing);
-  }
-  const top = document.createElement("div");
-  top.textContent = label;
-  box.append(top);
-  if (detail) {
-    const s = document.createElement("span");
-    s.className = "small"; s.textContent = detail;
-    box.append(s);
-  }
-  if (share !== null) box.append(repBar(share));
-  const p = e.par;
-  if (p && p.threshold > 0 && p.value != null) {
-    const done = p.value % p.threshold;
-    const s = document.createElement("span");
-    s.className = "small";
-    s.textContent = fmt(UI.rep_paragon, {value: num(done), threshold: num(p.threshold)})
-      + (p.pending ? " · " + (UI.rep_paragon_ready || "") : "");
-    box.append(s, repBar(done / p.threshold, "par"));
-  }
-  return box;
-}
-
-function renderRep() {
-  if (!DATA.rep || !DATA.rep.chars) return;
-  const chars = selected();
-  const have = chars.filter(c => DATA.rep.chars[c.key]);
-  const lists = new Map(have.map(c => [c.key, new Map(DATA.rep.chars[c.key].map(e => [e.id, e]))]));
-  const q = $("repQ").value.trim().toLowerCase();
-  const nameOf = id => DATA.rep.defs[id] || ("#" + id);
-
-  // rows in the merged order of the game; headings stay only above a row that is shown
-  const rows = [];
-  repOrder(have.map(c => DATA.rep.chars[c.key])).forEach(id => {
-    let first = null, wide = null;
-    have.forEach(c => {
-      const e = lists.get(c.key).get(id);
-      if (!e) return;
-      if (!first) first = e;
-      if (e.aw && (!wide || c.scanned_at > wide.at)) wide = {e: e, at: c.scanned_at};
-    });
-    const heading = first.hdr && !first.kind;
-    rows.push({id: id, name: nameOf(id), first: first, wide: wide && wide.e,
-               type: heading ? (first.child ? "sub" : "cat") : "row"});
-  });
-  const shown = [];
-  let cat = null, sub = null;
-  rows.forEach(r => {
-    if (r.type === "cat") { cat = r; sub = null; return; }
-    if (r.type === "sub") { sub = r; return; }
-    if (q && !r.name.toLowerCase().includes(q)) return;
-    if (cat) { shown.push(cat); cat = null; }
-    if (sub) { shown.push(sub); sub = null; }
-    shown.push(r);
-  });
-
-  const none = $("repNone");
-  const noneText = !chars.length ? UI.rep_none_selected : (have.length && !shown.length ? UI.rep_no_match : "");
-  none.hidden = !noneText;
-  none.textContent = noneText || "";
-  $("repWrap").hidden = !shown.length;
-  const missing = chars.filter(c => !DATA.rep.chars[c.key]).map(c => c.key);
-  $("repMissing").textContent = missing.length ? fmt(UI.rep_missing, {names: missing.join(", ")}) : "";
-
-  const head = $("rpt").tHead, body = $("rpt").tBodies[0];
-  head.textContent = ""; body.textContent = "";
-  if (!shown.length) return;
-  const hr = head.insertRow();
-  const th0 = document.createElement("th");
-  th0.textContent = UI.rep_col_faction || "";
-  hr.append(th0);
-  chars.forEach(c => {
-    const th = document.createElement("th");
-    th.textContent = c.key;
-    [[c.race, c.class, c.level], [c.scanned_at]].forEach(parts => {
-      const s = document.createElement("span");
-      s.className = "small"; s.textContent = parts.filter(Boolean).join(" · ");
-      if (s.textContent) th.append(s);
-    });
-    hr.append(th);
-  });
-
-  const frag = document.createDocumentFragment();
-  shown.forEach(r => {
-    const tr = document.createElement("tr");
-    const name = document.createElement("td");
-    name.textContent = r.name;
-    if (r.type !== "row") {
-      name.colSpan = chars.length + 1;
-      name.className = r.type === "cat" ? "rcat" : "rsub";
-      tr.append(name);
-    } else {
-      name.className = "rname" + (r.first.hdr ? " rhead" : "");
-      if (r.wide) {
-        const s = document.createElement("span");
-        s.className = "small"; s.textContent = UI.rep_account || "";
-        name.append(s);
-      }
-      tr.append(name);
-      if (r.wide) {
-        const td = document.createElement("td");
-        td.className = "rcell"; td.colSpan = chars.length;
-        td.append(repCell(r.wide));
-        tr.append(td);
-      } else {
-        chars.forEach(c => {
-          const td = document.createElement("td");
-          td.className = "rcell";
-          const e = lists.has(c.key) ? lists.get(c.key).get(r.id) : null;
-          if (e) td.append(repCell(e)); else td.textContent = EMPTY;
-          tr.append(td);
-        });
-      }
+  document.addEventListener("mousedown", e => {
+    const li = e.target.closest && e.target.closest(".sugg-list li[data-value]");
+    if (li) {                                                                           // before the box loses the focus
+      e.preventDefault();
+      const el = li.closest(".sugg").querySelector("input[data-suggest]");
+      el.value = li.dataset.value;
+      commit(el);
+      return;
     }
-    frag.append(tr);
+    document.querySelectorAll("input[data-suggest]").forEach(el => { if (!el.closest(".sugg").contains(e.target)) closeList(el); });
   });
-  body.append(frag);
-}
-
-function render() {
-  syncToggle();
-  const chars = selected();
-  const q = $("q").value.trim().toLowerCase();
-  const cat = $("cat").value;
-  const onlyDiff = $("diff").checked;
-  const hideEmpty = $("hideEmpty").checked;
-
-  // header
-  const head = $("t").tHead;
-  head.textContent = "";
-  const hr = head.insertRow();
-  const mk = (txt, cls, key) => {
-    const th = document.createElement("th");
-    th.textContent = txt; if (cls) th.className = cls;
-    th.addEventListener("click", () => {
-      if (sortChar === key) sortDir = -sortDir; else { sortChar = key; sortDir = -1; }
-      render();
-    });
-    return th;
+  // the ticked characters changed: the blocks that depend on them are told (only when the set really changed)
+  function selection() {
+    const keys = JSON.stringify(ticked());
+    if (!bridge || keys === lastKeys) return;
+    lastKeys = keys;
+    const all = {};
+    document.querySelectorAll("[data-slot]").forEach(s => { all[s.dataset.slot] = controls(s); });
+    bridge.select(keys, JSON.stringify(all), res => Object.values(parse(res) || {}).forEach(apply));
+  }
+  return {
+    get ready() { return bridge !== null; },
+    start() {
+      if (!live()) { document.querySelectorAll("[data-slot] [data-action], [data-slot] [data-pick]").forEach(e => { e.disabled = true; }); return; }
+      new QWebChannel(qt.webChannelTransport, ch => {
+        bridge = ch.objects.bridge;
+        lastKeys = JSON.stringify(DATA.chars.map(c => c.key));          // Python starts with every character ticked
+        bridge.attach(JSON.stringify(DATA), res => { apply(parse(res)); selection(); });
+      });
+    },
+    selection,
   };
-  hr.append(mk(UI.col_cat || "", "", null), mk(UI.col_stat || "", "", null));
-  chars.forEach(c => {
-    const th = mk(c.key, "num", c.key);
-    [[c.race, c.class, c.level], [c.scanned_at]].forEach(parts => {   // two lines: who, and when scanned
-      const s = document.createElement("span");
-      s.className = "small";
-      s.textContent = parts.filter(Boolean).join(" · ");
-      if (s.textContent) th.append(s);
-    });
-    hr.append(th);
-  });
-
-  // filter rows
-  let rows = DATA.stats.filter(s => {
-    if (cat && s.cat !== cat) return false;
-    if (q && !(s.name.toLowerCase().includes(q) || s.cat.toLowerCase().includes(q))) return false;
-    const cells = chars.map(c => s.v[c.key]);
-    if (hideEmpty && cells.every(isEmpty)) return false;
-    if (onlyDiff && chars.length > 1) {
-      const set = new Set(cells.map(x => x ? x[0] : EMPTY));
-      if (set.size < 2) return false;
-    }
-    return true;
-  });
-
-  if (sortChar) {
-    const val = s => { const c = s.v[sortChar]; return c && c[1] !== null ? c[1] : -Infinity; };
-    rows = rows.slice().sort((a, b) => (val(a) - val(b)) * sortDir || a.name.localeCompare(b.name));
-  }
-
-  const body = $("t").tBodies[0];
-  body.textContent = "";
-  const frag = document.createDocumentFragment();
-  rows.forEach(s => {
-    const tr = document.createElement("tr");
-    const tc = document.createElement("td"); tc.className = "cat"; tc.textContent = s.cat;
-    const tn = document.createElement("td"); tn.textContent = s.name;
-    tr.append(tc, tn);
-
-    const cells = chars.map(c => s.v[c.key]);
-    let best = null;
-    const nums = cells.map(x => x ? x[1] : null);
-    if (chars.length > 1 && nums.every(n => n !== null) && new Set(nums).size > 1) best = Math.max(...nums);
-
-    cells.forEach(x => {
-      const td = document.createElement("td");
-      td.className = "num";
-      td.textContent = x ? x[0] : "–";
-      if (best !== null && x && x[1] === best) td.classList.add("best");
-      tr.append(td);
-    });
-    frag.append(tr);
-  });
-  body.append(frag);
-  $("count").textContent = fmt(UI.count, {shown: rows.length, total: DATA.stats.length});
-  renderGroups();
-  renderRep();
-}
+})();
 
 init();
 </script>

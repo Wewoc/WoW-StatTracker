@@ -2,11 +2,12 @@
 
 [Deutsch](README.de.md)
 
-StatTracker reads the **game statistics** of your World of Warcraft characters through a small addon, keeps every scan in a local database (with history) and lets you **compare your characters** on a page in your browser or in an Excel file. Everything stays on your computer.
+StatTracker reads the **game statistics** of your World of Warcraft characters through a small addon, keeps every scan in a local database (with history) and lets you **compare your characters** on a page inside the program window (or opened in your browser) or in an Excel file. Everything stays on your computer.
 
-![The StatTracker stats page: a table comparing five characters, the best value of each row highlighted in green.](docs/images/stats-en.png)
+![The StatTracker stats page: five Top 5 tiles at the top, below them a table comparing five characters, the best value of each row highlighted in green.](docs/images/stats-en.png)
 
-- Windows program with a small window, English and German interface
+- Windows program with its own window: the stats page is shown inside it, there is no browser to set up; English and German interface, six colour schemes
+- **Top 5**: five tiles at the top of the page, each one value you chose (a statistic, summed up for all characters, a class, a race, a faction, a realm or one character)
 - Rates per hour played (kills, deaths, gold) for each character and as a total; if a number cannot be worked out, the page says why
 - Groups your characters by class, race, faction or realm
 - A history page for every character with at least two scans: pick statistics and see them as lines over your scans
@@ -14,12 +15,12 @@ StatTracker reads the **game statistics** of your World of Warcraft characters t
 
 ## Quick start (release download)
 
-1. Download `StatTracker.zip` from the latest release and unpack it into **your own folder**, for example `Documents\StatTracker`. Do not use `C:\Program Files`: the program keeps its data next to itself and needs write access.
+1. Download `StatTracker.zip` from the latest release and unpack it into **your own folder**, for example `Documents\StatTracker`. Do not use `C:\Program Files`: the program keeps its data next to itself and needs write access. The download is about 160 MB because the program carries its own browser engine to show the page.
 2. Start `StatTracker.exe`. Windows SmartScreen may warn because the file is not code-signed: *More info -> Run anyway*.
 3. Choose your **WoW folder** (the folder that contains `_retail_`), the game version and the account.
 4. **1. Install / update addon**.
 5. In game, once per character: `/statscan`. The scan takes about 10 seconds (spread out so the game does not freeze): chat shows "Stat sync started", then "Stat sync done" and "Played time ... recorded". Wait for that, then `/reload` (or log out). The addon also scans automatically 10 seconds after login.
-6. **2. Read data**, then **3. Open stats page** - or **Export to Excel**.
+6. **2. Read data**, then **3. Open stats page** (it appears in the *Page* tab of the window) - or **Export to Excel**.
 
 Repeat step 5/6 whenever you want fresh numbers. Scans that were read stay in the database. The addon itself keeps the last five scans per character, so a scan is only lost when more than five were made between two reads (the log says when scans may be missing): read the data after every play session if the history matters to you. Every WoW account has its own file; choose the account in the program (the log names the other accounts that have data).
 
@@ -27,7 +28,7 @@ The addon also records each character's class (as a language-independent name) a
 
 Each scan also records the specialization, the average item level, the equipped items (with enchantment, upgrade level and sockets) and the reputation list; they are stored in the database. The equipment is shown on the history page of the character (below); the reputation in the collapsible *Reputation* block of the stats page, which lists every faction of the ticked characters in the order of the game, with its level and a bar to the next one (friendships, renown and paragon included; account-wide reputation appears once). Scans taken with an older addon have none of this and it is never filled in afterwards: those characters are named under the block as without reputation data - scan them again with the updated addon.
 
-The stats page shows race, class and level under each name. Its collapsible *Groups* block sums up the ticked characters by class, race, faction or realm: number of characters, average level, played time and the rates per hour. Any other statistic with a number can be added as a column (sum, average or maximum). A preset saves the grouping, the figures and the added statistics under a name; it is kept in your browser, not in the page. The Excel export has no groups.
+The stats page shows race, class and level under each name. Its collapsible *Groups* block sums up the ticked characters by class, race, faction or realm: number of characters, average level, played time and the rates per hour. Any other statistic with a number can be added as a column (sum, average or maximum). A preset saves the grouping, the figures and the added statistics under a name; it is kept in the settings of the program (`data/config.json`), not in the page. The Excel export has no groups.
 
 ![The Groups block: characters grouped by faction with number of characters, average level, played time, rates per hour and two added statistics.](docs/images/groups-en.png)
 
@@ -37,13 +38,29 @@ Two more lines are on offer there: the equipped and the overall item level of ev
 
 ![The history page of one character: four statistics shown as an index over twelve scans, with the list of all statistics on the left.](docs/images/history-en.png)
 
-![The Character block of the history page: sixteen equipment slots with item, item level, upgrade track, enchantment and stats; slots changed since the previous scan have a gold edge.](docs/images/character-en.png)
+![The Character block of the history page: sixteen equipment slots with item picture, name, item level, upgrade track, enchantment and stats; slots changed since the previous scan have a gold edge.](docs/images/character-en.png)
 
-The slots show the item pictures of the game when StatTracker has them. While reading the data it looks up the pictures of the items your characters wore in the game files of your WoW installation (read-only, the game may be running), keeps each as a small PNG file in `data/icons` and embeds them in the history pages; where a picture is missing the page keeps the symbol of the slot. Only the pictures that are still missing are read, so the first read takes a few seconds longer and later ones hardly any; the program makes no network request for them. The option *Read item icons from the game files when importing* in *Settings ...* is on by default; with it off, the pictures read earlier stay visible. The pictures belong to Blizzard Entertainment: they are made on your computer from your own installation, they are not part of StatTracker or of the pictures in this README, and a history page that you pass on contains the pictures it shows.
+The slots show the item pictures of the game when StatTracker has them. While reading the data it looks up the pictures of the items your characters wore in the game files of your WoW installation (read-only, the game may be running), keeps each as a small PNG file in `data/icons` and embeds them in the history pages; where a picture is missing the page keeps the symbol of the slot. Only the pictures that are still missing are read, so the first read takes a few seconds longer and later ones hardly any; the program makes no network request for them. The option *Read item icons from the game files when importing* in the *Settings* tab is on by default; with it off, the pictures read earlier stay visible. The pictures belong to Blizzard Entertainment: they are made on your computer from your own installation, they are not part of StatTracker, the picture above shows a few of them (© Blizzard Entertainment), and a history page that you pass on contains the pictures it shows.
+
+## The window
+
+The window has three tabs. **Settings** holds the game folder, game version and account, the options (game versions, update check, item pictures, the *Design*), the buttons and the log. **Page** shows the stats page inside the window; *Reload* reads the file again, and *Open in browser* opens a **snapshot** of what the window shows now - the ticked characters, filters, sorting, grouping and added statistics - as the file `stats_snapshot.html` next to the stats page (it is written again at every click). In the browser the controls of the snapshot are locked, because a page there has no connection to the program: it is a state, not a live copy. **Top 5** sets the tiles (below).
+
+![The program window, Settings tab: game folder, version and account, the options, the buttons and the log.](docs/images/app-en.png)
+
+The *Design* dropdown offers six colour schemes; the window and the stats page follow it, and the change applies after a restart. A page opened in a browser shows the original colours.
+
+## Top 5
+
+Up to five tiles stand at the very top of the stats page. Each shows one value from the newest scan of your characters: a statistic of your choice, combined as a **sum**, an **average** or a **maximum** over all characters, over one class, race, faction or realm, or for one character. A tile names the statistic, the function and whom it is about, and says how many characters it is made of when some had no number ("10 of 23 characters"); where no number exists it says so, nothing is made up. Gold is shown in gold and played time in hours. The tiles do not follow the ticked characters.
+
+Set them in the **Top 5** tab: type a part of the name of a statistic and pick it from the list that opens under the box, choose the function and whom it is for (a click into the last box opens its list), then *Save and write the page again*. The setting is for all game versions; the page of the chosen game version is written again at once, the others at the next read. A row without a statistic stays empty.
+
+![The Top 5 tab: five rows with statistic, function, scope and choice, and the button to save and write the page again.](docs/images/top5-en.png)
 
 ## Game versions
 
-Only game versions you enabled show up in the dropdown. The default is **Retail** only. Open *Settings ...* to enable others. Every game version gets its own database and page (`wow_stats.db` / `stats.html` for Retail, `wow_stats_<version>.db` / `stats_<version>.html` for the others).
+Only game versions you enabled show up in the dropdown. The default is **Retail** only. Open the *Settings* tab to enable others. Every game version gets its own database and page (`wow_stats.db` / `stats.html` for Retail, `wow_stats_<version>.db` / `stats_<version>.html` for the others).
 
 | Game version | Status |
 |---|---|
@@ -60,17 +77,17 @@ If WoW reports the addon as outdated: in game run `/dump (select(4, GetBuildInfo
 
 ## Language
 
-The window language is the dropdown at the top right (German / English), remembered between starts; the first start follows your Windows language. The generated stats page and Excel file use the same language.
+The window language is the dropdown at the top right of the *Settings* tab (German / English), remembered between starts; the first start follows your Windows language. The generated stats page and Excel file use the same language.
 
 The **names of the statistics** come from the WoW client and are shown in the client's language - they are not translated by StatTracker.
 
 ## Updates
 
-At start (switch off in *Settings ...*) StatTracker asks GitHub whether a newer release exists. If so, *Update now* downloads `StatTracker.zip`, verifies it against `StatTracker.zip.sha256` (no checksum, no update), replaces **only the program files** and restarts. Your `data` folder is never touched. The previous version is kept in `_update_backup` and restored automatically if the new one does not start. The only network request is this check; it sends no personal data.
+At start (switch off in the *Settings* tab) StatTracker asks GitHub whether a newer release exists. If so, *Update now* downloads `StatTracker.zip`, verifies it against `StatTracker.zip.sha256` (no checksum, no update), replaces **only the program files** and restarts. Your `data` folder is never touched. The previous version is kept in `_update_backup` and restored automatically if the new one does not start. The only network request is this check; it sends no personal data.
 
 ## Where is my data?
 
-Next to the program, in the `data` folder: `config.json`, `wow_stats*.db`, `stats*.html`, the `history` folder (`history_<version>` for the other game versions; it can be made again from the database), the `icons` folder (the item pictures read from the game, `icons_<version>` for the other game versions; missing ones are read again), `stattracker.xlsx` and the `backups` folder. Back that folder up if you care about the history.
+Next to the program, in the `data` folder: `config.json`, `wow_stats*.db`, `stats*.html`, the `history` folder (`history_<version>` for the other game versions; it can be made again from the database), the `icons` folder (the item pictures read from the game, `icons_<version>` for the other game versions; missing ones are read again), the `webview` folder (what the browser engine of the window keeps; nothing you need), `stattracker.xlsx` and the `backups` folder. Back that folder up if you care about the history.
 
 Before an import writes to an existing database, StatTracker copies it into `data/backups/`:
 
@@ -81,7 +98,7 @@ To restore a copy: close StatTracker, copy a `.bak` file out of the folder, rena
 
 ## Run from source
 
-Python 3.10+ with tkinter (included in the standard Windows installer):
+Python 3.10+ (the window is made with PyQt6, which the line below installs):
 
 ```bash
 pip install -r requirements.txt
@@ -103,3 +120,5 @@ Copyright (C) 2026 Wewoc. GNU General Public License v3.0 or later - see [LICENS
 Third-party software: the history pages embed [plotly.js](https://github.com/plotly/plotly.js) 2.27.0, Copyright 2012-2023 Plotly, Inc., MIT license. It is not part of this repository: the build downloads it once and checks it against a fixed SHA-256, and its license notice stays in the header of the embedded file. The pages make no network requests.
 
 CascLib by Ladislav Zezula (MIT license, <https://github.com/ladislav-zezula/CascLib>) reads the game files for the item pictures: the build fetches its source from GitHub at a fixed commit and builds `CascLib.dll`, which is part of the program. The license text is in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) (in the `info` folder of the release).
+
+The window is made with [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) (GPL v3) and shows the pages with the Qt WebEngine browser engine (Qt 6 under the LGPL v3, based on Chromium); both come with the release, which is why the program is larger than before. Notices, license texts (`LICENSE-LGPL-3.0.txt`) and where the source code of Qt can be found are in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md), which also names Python, PyInstaller and openpyxl.

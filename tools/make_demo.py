@@ -8,11 +8,14 @@ same pictures can be made again after the stats page changes.
 
 Per language (the statistic names come from the client, so each language gets its own
 database) it writes a SavedVariables-style StatTracker.lua, runs the normal stat_parser
-on it and also writes four variants of the page for the screenshots:
+on it (with five invented Top 5 tiles, DEMO_TOP5) and also writes four variants of the page for the screenshots. They are made like the program
+shows a page after you used it: a View (pages/blocks/view.py) gets the actions of the blocks and the page is written from it, and the script that
+locks the controls of a page without the program is left out of these copies (the real page is not touched):
   shot-stats.html    the page as it is
   shot-rates.html    the same, with the rates block opened
   shot-compare.html  one character deselected, sorted by the first character
   shot-groups.html   the Groups block opened: by faction, two more statistics added
+The pictures of the program window (Settings and Top 5 tab) are made from this output by tools/make_window_shots.py.
 
 With --snapshots N (N > 1) every character gets N scans, three days apart, the last one being
 exactly the single scan of the default run. They are imported one after the other like the program
@@ -24,7 +27,9 @@ The counters grow along curves of their own, so the lines on a history page diff
 (--snapshots 1) makes no history and the same pages as before. Four of the five characters also carry invented
 equipment and a specialization (GEAR_BY_CHAR), which changes over the snapshots for the Character block of the
 history pages; the last character has none. Those pages show invented placeholder icons (a colored tile per
-slot, made here into <folder>/<lang>/icons/), never a picture of the game.
+slot, made here into <folder>/<lang>/icons/), unless --icons-from-game WOW_FOLDER is given: then the pages show the pictures
+of the game for sixteen fixed ids (GAME_ICON_IDS), read from that WoW installation into the same folder, which therefore has to lie
+outside the repository; only the finished screenshot goes into docs/images/.
 
 Usage (from the repository root):
   python tools/make_demo.py --out <folder>             # both languages
@@ -37,18 +42,22 @@ import argparse
 import colorsys
 import contextlib
 import io
+import json
 import random
+import re
 import shutil
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-import blp_decode  # noqa: E402
-import i18n  # noqa: E402
-import stat_history  # noqa: E402
-import stat_parser  # noqa: E402
-import wow_icons  # noqa: E402
+from app import stat_parser  # noqa: E402
+from core import i18n  # noqa: E402
+from game import blp_decode  # noqa: E402
+from game import wow_icons  # noqa: E402
+from pages import outputs, stat_history  # noqa: E402
+from pages.blocks import layout  # noqa: E402
+from pages.blocks.view import View  # noqa: E402
 
 LANGS = ("en", "de")
 MAX_SNAPSHOTS = 60
@@ -144,6 +153,12 @@ GEAR_BY_CHAR = {
 }
 GEAR_SLOTS = (1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
 ICON_ID_BASE = 130000              # the demo items' icon id is this plus the slot
+# For the Character picture of the landing page (--icons-from-game): the file data ids of the pictures of one real set
+# of sixteen items, one per slot. Only numbers: the pictures are read from a WoW installation when the demo is made,
+# stay in the output folder and never go into the repository; only the finished screenshot does.
+GAME_ICON_IDS = {1: 133111, 2: 632840, 3: 135102, 5: 132639, 6: 7082300, 7: 457953, 8: 7082301, 9: 132607,
+                 10: 7082304, 11: 133661, 12: 629698, 13: 643912, 14: 643421, 15: 622728, 16: 801001, 17: 464338}
+ICON_IDS = {slot: ICON_ID_BASE + slot for slot in GEAR_SLOTS}      # what the demo items carry; make() swaps it for a run
 GEAR_NAMES = {      # slot: (en, de); nothing here is a real item
     1: ("Helm of Ashen Oaths", "Helm der Aschenschwüre"),
     2: ("Lantern Pendant", "Laternenanhänger"),
@@ -175,12 +190,19 @@ GEAR_GEM = 90301                    # an invented gem id
 MOUNT = ("Favourite mount", "Lieblingsreittier", "Character", "Charakter")
 GENERIC_FIRST_ID = 9001            # far away from the real IDs used above
 
-COMPARE_JS = ('$("chk_Selwyn-Moonvale").checked = false; '
-              'sortChar = "Korvak-Ironmaw"; sortDir = -1; render();')
-# the demo statistics 9003 (Jumps, a counter) and 328 (Total gold acquired, shown in gold)
-GROUPS_JS = ('$("groups").open = true; $("groupBy").value = "faction"; '
-             '[["9003", "sum"], ["328", "avg"]].forEach(p => { $("xstat").value = p[0]; $("xagg").value = p[1]; '
-             '$("xadd").click(); }); renderGroups();')
+COMPARE_OFF = "Selwyn-Moonvale"          # the character deselected in the comparison picture
+COMPARE_SORT = "Korvak-Ironmaw"          # the table is sorted by this character, the biggest number first
+# the demo statistics 9003 (Jumps, a counter) and 328 (Total gold acquired, shown in gold), added to the Groups picture
+GROUP_EXTRAS = (("9003", "sum"), ("328", "avg"))
+# the five tiles of the demo (the settings of the program, config.top5): gold of everybody, the kills of one faction, the most deaths of one
+# class, the played time of all and the jumps of one character
+DEMO_TOP5 = (
+    {"stat": 328, "agg": "sum", "by": "all", "value": ""},
+    {"stat": 107, "agg": "sum", "by": "faction", "value": "Alliance"},
+    {"stat": 60, "agg": "max", "by": "class", "value": "PALADIN"},
+    {"stat": -1, "agg": "sum", "by": "all", "value": ""},
+    {"stat": 9003, "agg": "max", "by": "char", "value": "Mirella-Dawnspire"},
+)
 # on the history page: Creatures killed (107), Total deaths (60), Total gold acquired (328) and Jumps (9003), as an index
 HISTORY_JS = ('chosen.clear(); [107, 60, 328, 9003].forEach(id => chosen.add(id)); '
               '$("mode").value = "index"; renderList(); renderChart();')
@@ -309,7 +331,7 @@ def _gear_items(g, i, back):
         if slot == 16:
             stats["ITEM_MOD_DAMAGE_PER_SECOND_SHORT"] = round(ilvl * 0.11)
         item = {"itemID": 91000 + slot * 10 + old_trinket, "name": (OLD_TRINKET if old_trinket else GEAR_NAMES[slot])[i],
-                "quality": 4 if slot % 3 else 3, "ilvl": ilvl, "iconID": ICON_ID_BASE + slot, "stats": stats}
+                "quality": 4 if slot % 3 else 3, "ilvl": ilvl, "iconID": ICON_IDS[slot], "stats": stats}
         if slot in GEAR_ENCHANT and not (slot in (11, 12) and back >= 6):
             item["enchantID"], item["enchantText"] = 7000 + slot, GEAR_ENCHANT[slot][i]
         if slot % 3:
@@ -344,6 +366,17 @@ def make_placeholder_icons(folder):
     Path(folder).mkdir(parents=True, exist_ok=True)
     for slot in GEAR_SLOTS:
         wow_icons.icon_path(folder, ICON_ID_BASE + slot).write_bytes(placeholder_icon(slot))
+
+
+def read_game_icons(folder, game_dir, product="wow"):
+    """The pictures of GAME_ICON_IDS, read from the WoW installation into `folder` (wow_icons: local files, read only).
+    Stops with a message if one is missing: a picture with a few symbols among real icons would look like a bug."""
+    wanted = set(GAME_ICON_IDS.values())
+    run = wow_icons.extract(wanted, folder, game_dir, product)
+    missing = sorted(wanted - wow_icons.present(folder))
+    if run.error or missing:
+        raise SystemExit("The pictures of the game could not be read: "
+                         + (run.error or "missing " + ", ".join(str(i) for i in missing)))
 
 
 def _lua_value(v):
@@ -398,15 +431,43 @@ def build_lua(lang, k=None, snapshots=1):
     return "\n".join(out)
 
 
-def shot_variants(html):
-    """The screenshot pages made from the generated one: {file name: html}. Only these copies
-    get the extra lines; the real template is not touched."""
-    rates = html.replace('<details class="rates"', '<details class="rates" open', 1)
-    compare = html.replace("init();\n</script>", f"init();\n{COMPARE_JS}\n</script>", 1)
-    groups = html.replace("init();\n</script>", f"init();\n{GROUPS_JS}\n</script>", 1)
-    assert rates != html and compare != html and groups != html, "template changed: adjust shot_variants"
-    return {"shot-stats.html": html, "shot-rates.html": rates, "shot-compare.html": compare,
-            "shot-groups.html": groups}
+def payload_of(html):
+    """The data a written stats page carries (what the page hands to the program when it is shown in the window)."""
+    return json.loads(re.search(r"const DATA = (.*?);\s*const \$ =", html, re.S).group(1).replace("<\\/", "</"))
+
+
+def _shot_page(payload, view, scratch):
+    """The page written from `view` (outputs.write_html), as a copy for a screenshot: without the call that locks the controls of a page that has no
+    connection to the program (a picture should look like the page in the window)."""
+    outputs.write_html(payload, scratch, view)
+    text = Path(scratch).read_text(encoding="utf-8")
+    Path(scratch).unlink()
+    assert "  STT.start();\n" in text, "template changed: adjust _shot_page"
+    return text.replace("  STT.start();\n", "", 1)
+
+
+def _opened(html, marker):
+    """The block that starts with `marker` (a <details ...> tag) opened."""
+    assert html.count(marker) == 1, f"template changed: adjust shot_variants ({marker})"
+    return html.replace(marker, marker[:-1] + " open>", 1)
+
+
+def shot_variants(html, scratch):
+    """The screenshot pages made from the generated one: {file name: html}. Only these copies are changed; the real page and the template are not.
+    `scratch` is a path for a file that is written and removed again."""
+    payload = payload_of(html)
+    stats = _shot_page(payload, View(payload), scratch)
+    rates = _opened(stats, '<details class="rates" id="rates">')
+    view = View(payload)
+    view.select([c["key"] for c in payload["chars"] if c["key"] != COMPARE_OFF])
+    layout.dispatch(view, 8, "sort", {"key": COMPARE_SORT, "controls": {}})
+    compare = _shot_page(payload, view, scratch)
+    view = View(payload)
+    layout.dispatch(view, 2, "by", {"value": "faction", "controls": {}})
+    for stat, agg in GROUP_EXTRAS:
+        layout.dispatch(view, 2, "add", {"controls": {"xstat": stat, "xagg": agg}})
+    groups = _opened(_shot_page(payload, view, scratch), '<details class="rates groups" id="groups">')
+    return {"shot-stats.html": stats, "shot-rates.html": rates, "shot-compare.html": compare, "shot-groups.html": groups}
 
 
 def history_shot(html, js=HISTORY_JS):
@@ -427,9 +488,11 @@ def _import(args, show_all):
             print(line)
 
 
-def make(out_dir, lang, snapshots=1):
+def make(out_dir, lang, snapshots=1, game=None):
     """Writes the demo for one language into <out_dir>/<lang>/ and returns that folder. With snapshots > 1
-    the characters get that many scans, imported one after the other, and the history pages."""
+    the characters get that many scans, imported one after the other, and the history pages, which show
+    invented placeholder tiles for the items; with `game` = (WoW folder, product) they show the pictures of the
+    game for GAME_ICON_IDS instead, read from that installation into <out_dir>/<lang>/icons/."""
     folder = Path(out_dir) / lang
     folder.mkdir(parents=True, exist_ok=True)
     lua = folder / "StatTracker.lua"
@@ -440,21 +503,28 @@ def make(out_dir, lang, snapshots=1):
         db.unlink()                     # always from scratch: same input, same pages
     for leftover in (history, icons, folder / "backups"):
         shutil.rmtree(leftover, ignore_errors=True)
-    if snapshots > 1:
-        make_placeholder_icons(icons)
     page = folder / "stats.html"
     previous = i18n.get_language()
+    base_ids = dict(ICON_IDS)
     i18n.set_language(lang)
     try:
+        if snapshots > 1:
+            if game:
+                ICON_IDS.update(GAME_ICON_IDS)
+                read_game_icons(icons, *game)
+            else:
+                make_placeholder_icons(icons)
         for k in range(snapshots):
             lua.write_text(build_lua(lang, k, snapshots), encoding="utf-8")
-            args = ["--input", str(lua), "--db", str(db), "--output", str(page)]
+            args = ["--input", str(lua), "--db", str(db), "--output", str(page), "--top5", json.dumps(list(DEMO_TOP5))]
             if snapshots > 1:
                 args += ["--history-dir", str(history), "--icons-dir", str(icons)]
             _import(args, show_all=k == snapshots - 1)
     finally:
         i18n.set_language(previous)
-    for name, text in shot_variants(page.read_text(encoding="utf-8")).items():
+        ICON_IDS.clear()
+        ICON_IDS.update(base_ids)
+    for name, text in shot_variants(page.read_text(encoding="utf-8"), folder / "_shot.html").items():
         (folder / name).write_text(text, encoding="utf-8")
     shot_source = history / stat_history.page_name(HISTORY_CHAR)
     if snapshots > 1 and shot_source.is_file():
@@ -470,11 +540,18 @@ def main(argv=None):
     ap.add_argument("--lang", choices=LANGS + ("both",), default="both")
     ap.add_argument("--snapshots", type=int, default=1,
                     help=f"scans per character, 1 to {MAX_SNAPSHOTS} (default 1; more also makes the history pages)")
+    ap.add_argument("--icons-from-game", metavar="WOW_FOLDER",
+                    help="show the pictures of the game instead of placeholder tiles on the history pages: read from this "
+                         "WoW installation into <out>/<lang>/icons/ (needs --snapshots 2 or more; keep --out outside the repository)")
+    ap.add_argument("--product", default="wow", help="the product of the game version in .build.info (default wow)")
     a = ap.parse_args(argv)
     if not 1 <= a.snapshots <= MAX_SNAPSHOTS:
         ap.error(f"--snapshots must be between 1 and {MAX_SNAPSHOTS}")
+    if a.icons_from_game and a.snapshots < 2:
+        ap.error("--icons-from-game needs --snapshots 2 or more: the pictures are for the history pages")
+    game = (a.icons_from_game, a.product) if a.icons_from_game else None
     for lang in (LANGS if a.lang == "both" else (a.lang,)):
-        print(make(a.out, lang, a.snapshots))
+        print(make(a.out, lang, a.snapshots, game))
 
 
 if __name__ == "__main__":

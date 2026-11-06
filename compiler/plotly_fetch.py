@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Wewoc (github.com/wewoc)
 # compiler/plotly_fetch.py
-# Fetches the pinned plotly.js bundle (see src/plotly_asset.py) into src/plotly.min.js.
+# Fetches the pinned plotly.js bundle (see src/pages/plotly_asset.py) into src/plotly.min.js.
 #
 # Build and CI only - the program never downloads it. The download is checked against the
 # pinned SHA-256 before anything is written; on a mismatch the existing file stays as it is
@@ -18,8 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-import plotly_asset  # noqa: E402
-from plotly_asset import PlotlyAssetError  # noqa: E402
+from pages import plotly_asset  # noqa: E402
+from pages.plotly_asset import PlotlyAssetError  # noqa: E402
 
 
 def _download(url):
@@ -56,7 +56,7 @@ def ensure(dest=None, url=None, sha256=None, download=_download):
         raise PlotlyAssetError(
             f"Downloaded file does not match the pinned SHA-256 (expected {sha256}, got {actual}). "
             f"If the version is bumped on purpose, change VERSION, CDN_URL and SHA256 in "
-            f"src/plotly_asset.py together.")
+            f"src/pages/plotly_asset.py together.")
 
     part = dest.with_name(dest.name + ".part")
     try:

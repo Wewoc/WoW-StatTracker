@@ -27,9 +27,9 @@ import zipfile
 from pathlib import Path
 
 import build_manifest as manifest
-import casclib_asset  # noqa: E402  (build_manifest puts src/ on the path)
+from game import casclib_asset  # noqa: E402  (build_manifest puts src/ on the path)
 import casclib_build
-import plotly_asset  # noqa: E402
+from pages import plotly_asset  # noqa: E402
 import plotly_fetch
 
 
@@ -40,10 +40,19 @@ LAZY_STDLIB = ("ctypes",)
 
 
 def expected_modules(root: Path) -> set:
-    """Modules the bundle has to hold: every module of src/ except the entry script, the hidden imports of
-    the manifest and the standard library modules that are only imported inside a function."""
-    own = {p.stem for p in (root / "src").glob("*.py")} - {Path(manifest.ENTRY_POINT).stem}
-    return own | set(manifest.HIDDEN_IMPORTS) | set(LAZY_STDLIB)
+    """Modules the bundle has to hold, by their dotted names as PyInstaller lists them (core, core.paths, ...): every
+    module and package of src/ except the entry script, the hidden imports of the manifest and the standard library
+    modules that are only imported inside a function."""
+    src = root / "src"
+    own = set()
+    for p in src.rglob("*.py"):
+        parts = list(p.relative_to(src).with_suffix("").parts)
+        if "__pycache__" in parts:
+            continue
+        if parts[-1] == "__init__":
+            parts.pop()                                  # the package itself
+        own.add(".".join(parts))
+    return (own - {Path(manifest.ENTRY_POINT).stem}) | set(manifest.HIDDEN_IMPORTS) | set(LAZY_STDLIB)
 
 
 def built_files(root: Path, require: bool = False) -> list:
@@ -62,6 +71,9 @@ def bundle_problems(root: Path, dist_dir: Path, toc_path: Path, require_built: b
         target = dist_dir / CONTENTS_DIR / dest / Path(src).name
         if not target.is_file():
             problems.append(f"data file {Path(src).name} is not in the bundle (expected {target})")
+    fallback = dist_dir / CONTENTS_DIR / manifest.LOCALES_DIR / "en-US.pak"
+    if not fallback.is_file():
+        problems.append(f"the fallback language pack of the browser engine is not in the bundle (expected {fallback})")
     try:
         table = ast.literal_eval(toc_path.read_text(encoding="utf-8"))
         in_bundle = {name for name, _path, kind in table[1] if kind == "PYMODULE"}
@@ -69,6 +81,22 @@ def bundle_problems(root: Path, dist_dir: Path, toc_path: Path, require_built: b
         return problems + [f"module table {toc_path} cannot be read ({exc}); PyInstaller may have changed its format"]
     problems += [f"module {name} is not in the bundle" for name in sorted(expected_modules(root) - in_bundle)]
     return problems
+
+
+def trim_bundle(dist_dir: Path):
+    """Removes what the program never uses (build_manifest.TRIM_GLOBS, the language packs of the browser engine that are not
+    in KEEP_LOCALES). Returns (number of files, bytes). Nothing to remove is not an error."""
+    inside = dist_dir / CONTENTS_DIR
+    doomed = []
+    for pattern in manifest.TRIM_GLOBS:
+        doomed += sorted(inside.glob(pattern))
+    locales = inside / manifest.LOCALES_DIR
+    if locales.is_dir():
+        doomed += [p for p in sorted(locales.glob("*.pak")) if p.stem not in manifest.KEEP_LOCALES]
+    size = sum(p.stat().st_size for p in doomed)
+    for path in doomed:
+        path.unlink()
+    return len(doomed), size
 
 
 def check_bundle(root: Path, dist_dir: Path, require_built: bool = False):
@@ -221,6 +249,8 @@ def main():
 
     dist_dir = root / "dist" / manifest.APP_NAME
     build_exe(root, python, dist_dir)
+    count, size = trim_bundle(dist_dir)
+    print(f"  trimmed {count} unused files of the browser engine and Qt ({size / 1e6:.0f} MB).")
     copy_extras(root, dist_dir, args.require_casclib)
     if not args.no_zip:
         build_zip(dist_dir)

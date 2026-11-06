@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-import paths
-import plotly_asset
+from core import paths
+from pages import plotly_asset
 import plotly_fetch
-from plotly_asset import PlotlyAssetError
+from pages.plotly_asset import PlotlyAssetError
 
 ROOT = Path(__file__).resolve().parent.parent
 FAKE = b"/*! fake plotly */\r\nwindow.Plotly = {};\r\n"

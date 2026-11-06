@@ -5,8 +5,8 @@
 import re
 from pathlib import Path
 
-import casclib_asset
-import paths
+from core import paths
+from game import casclib_asset
 
 ROOT = Path(__file__).resolve().parent.parent
 

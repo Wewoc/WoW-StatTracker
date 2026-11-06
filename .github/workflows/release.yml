@@ -25,7 +25,7 @@ jobs:
         run: |
           import os, sys
           sys.path.insert(0, "src")
-          import app_info
+          from core import app_info
           tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
           if tag != app_info.APP_VERSION:
               sys.exit(f"tag {tag} != APP_VERSION {app_info.APP_VERSION}")

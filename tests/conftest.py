@@ -2,8 +2,11 @@
 # Copyright (C) 2026 Wewoc (github.com/wewoc)
 # Shared fixtures: flat src/ imports, an isolated instance folder, a fixed language.
 
+import os
 import sys
 from pathlib import Path
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")      # the window tests need no screen
 
 import pytest
 
@@ -11,8 +14,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "compiler"))
 
-import i18n  # noqa: E402
-import paths  # noqa: E402
+from core import i18n  # noqa: E402
+from core import paths  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

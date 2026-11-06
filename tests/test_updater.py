@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-import app_info
-import paths
-import updater
+from core import app_info
+from core import paths
+from core import updater
 
 
 @pytest.fixture

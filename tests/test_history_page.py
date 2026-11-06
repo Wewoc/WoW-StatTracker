@@ -12,14 +12,16 @@ from pathlib import Path
 
 import pytest
 
-import i18n
-import paths
-import plotly_asset
-import stat_history
-import stat_parser
-import wow_icons
-from plotly_asset import PlotlyAssetError
-from stat_history import HistoryPageError
+from core import i18n
+from core import paths
+from game import wow_icons
+from pages import outputs
+from pages import plotly_asset
+from pages import stat_history
+from pages.plotly_asset import PlotlyAssetError
+from pages.stat_history import HistoryPageError
+from store import db_schema
+from store import importer
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
@@ -43,11 +45,11 @@ def site(tmp_path, monkeypatch):
 
 @pytest.fixture
 def payload(tmp_path):
-    conn = stat_parser.init_db(tmp_path / "x.db")
+    conn = db_schema.init_db(tmp_path / "x.db")
     for at, deaths in (("2026-10-01 10:00:00", "10"), ("2026-10-02 10:00:00", "20")):
         c = {"scannedAt": at, "scannedEpoch": 1, "class": "Mage", "level": 80, "faction": "Alliance",
              "stats": {1: deaths, 2: "5"}, "playedTotal": 3600, "playedLevel": 600}
-        stat_parser.import_data(conn, {"meta": META, "chars": {KEY: c}})
+        importer.import_data(conn, {"meta": META, "chars": {KEY: c}})
     conn.close()
     ro = stat_history.open_readonly(tmp_path / "x.db")
     try:
@@ -88,11 +90,11 @@ def test_an_unknown_character_has_no_payload(tmp_path, payload):
 
 
 def test_the_item_levels_reach_the_page_data_with_their_decimals(tmp_path):
-    conn = stat_parser.init_db(tmp_path / "ilvl.db")
+    conn = db_schema.init_db(tmp_path / "ilvl.db")
     for at, equipped in (("2026-10-01 10:00:00", 598.25), ("2026-10-02 10:00:00", 601.5)):
         c = {"scannedAt": at, "scannedEpoch": 1, "class": "Mage", "level": 80, "faction": "Alliance", "stats": {1: "1"},
              "ilvlTotal": 603.75, "ilvlEquipped": equipped}
-        stat_parser.import_data(conn, {"meta": META, "chars": {KEY: c}})
+        importer.import_data(conn, {"meta": META, "chars": {KEY: c}})
     conn.close()
     ro = stat_history.open_readonly(tmp_path / "ilvl.db")
     try:
@@ -204,11 +206,11 @@ def test_the_real_bundle_goes_into_a_real_page(payload, tmp_path, monkeypatch):
 # ------------------------------------------------------------------ the item icons on the page
 def gear_db(tmp_path):
     """A database whose character wore one item with the icon id 1001 in both scans."""
-    conn = stat_parser.init_db(tmp_path / "gear.db")
+    conn = db_schema.init_db(tmp_path / "gear.db")
     for at in ("2026-10-01 10:00:00", "2026-10-02 10:00:00"):
         c = {"scannedAt": at, "scannedEpoch": 1, "class": "Mage", "level": 80, "faction": "Alliance", "stats": {1: "1"},
              "gear": {1: {"itemID": 1, "name": "Helm", "quality": 4, "ilvl": 600, "iconID": 1001}}}
-        stat_parser.import_data(conn, {"meta": META, "chars": {KEY: c}})
+        importer.import_data(conn, {"meta": META, "chars": {KEY: c}})
     return conn
 
 
@@ -234,7 +236,7 @@ def test_the_page_carries_the_icons_of_its_character_and_nothing_else(site, tmp_
 def test_the_icons_folder_reaches_the_pages_through_the_import_hook(site, tmp_path):
     conn = gear_db(tmp_path)
     folder = tmp_path / "hist"
-    links, lines = stat_parser.update_history_pages(conn, folder, tmp_path / "stats.html", {KEY}, icons_folder(tmp_path))
+    links, lines = outputs.update_history_pages(conn, folder, tmp_path / "stats.html", {KEY}, icons_folder(tmp_path))
     assert list(links["links"]) == [KEY] and not [l for l in lines if "WARN" in l.upper()]
     _line, data = embedded((folder / stat_history.page_name(KEY)).read_bytes())
     assert list(data["icons"]) == ["1001"]
@@ -243,7 +245,7 @@ def test_the_icons_folder_reaches_the_pages_through_the_import_hook(site, tmp_pa
 def test_without_an_icons_folder_the_page_has_no_icons_field(site, tmp_path):
     conn = gear_db(tmp_path)
     folder = tmp_path / "hist"
-    stat_parser.update_history_pages(conn, folder, tmp_path / "stats.html", {KEY})
+    outputs.update_history_pages(conn, folder, tmp_path / "stats.html", {KEY})
     _line, data = embedded((folder / stat_history.page_name(KEY)).read_bytes())
     assert "icons" not in data and data["gear"]
 

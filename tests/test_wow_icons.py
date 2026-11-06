@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-import blp_decode
-import casclib_asset
-import wow_icons
-import wow_install
-from wow_icons import IconError
+from game import blp_decode
+from game import casclib_asset
+from game import wow_icons
+from game import wow_install
+from game.wow_icons import IconError
 
 ROOT = Path(__file__).resolve().parent.parent
 REAL_DLL = ROOT / "src" / casclib_asset.FILENAME
@@ -235,13 +235,13 @@ def test_the_icons_folder_per_game_version(instance):
 def test_only_the_local_storage_functions_of_the_library_are_named():
     """The library also has an online storage and a CDN download. The program never calls them: every
     CascLib function this module names is one of casclib_asset.EXPORTS."""
-    source = (ROOT / "src" / "wow_icons.py").read_text(encoding="utf-8")
+    source = (ROOT / "src" / "game" / "wow_icons.py").read_text(encoding="utf-8")
     named = set(re.findall(r"\b(?:Casc(?:Open|Close|Get|Read|Set|Find|Add|Import|Cdn)\w*|GetCascError|SetCascError)\b", source))
     assert named and named <= set(casclib_asset.EXPORTS), sorted(named - set(casclib_asset.EXPORTS))
 
 
 def test_the_module_opens_no_network_connection():
-    source = (ROOT / "src" / "wow_icons.py").read_text(encoding="utf-8")
+    source = (ROOT / "src" / "game" / "wow_icons.py").read_text(encoding="utf-8")
     for word in ("socket", "urllib", "http", "requests", "ssl"):
         assert not re.search(rf"^\s*(?:import|from)\s+{word}\b", source, re.MULTILINE), word
 

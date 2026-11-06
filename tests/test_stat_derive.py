@@ -8,10 +8,11 @@ from pathlib import Path
 
 import pytest
 
-import i18n
-import stat_derive
-import stat_parser
-from stat_derive import MIN_PLAYED_SECONDS, PLAYED_TOTAL_ID, ROLES, Role
+from app import stat_parser
+from core import i18n
+from rules import stat_derive
+from rules.stat_derive import MIN_PLAYED_SECONDS, PLAYED_TOTAL_ID, ROLES, Role
+from store import stat_values
 
 HOUR = 3600
 SRC = Path(__file__).resolve().parent.parent / "src"
@@ -183,7 +184,7 @@ def test_role_table_is_well_formed():
 
 
 def test_played_total_id_matches_the_parser():
-    sid, field, _key = stat_parser.PLAYED_STATS[0]
+    sid, field, _key = stat_values.PLAYED_STATS[0]
     assert (sid, field) == (PLAYED_TOTAL_ID, "playedTotal")
 
 
@@ -253,18 +254,19 @@ def test_page_texts_follow_the_language(tmp_path):
     assert roles["deaths"]["chars"]["Bob-Realm"]["why"] == "no played time"
 
 
-def test_template_renders_the_derived_block():
+def test_the_page_has_a_place_for_the_derived_block_and_a_block_writes_it():
+    from pages.blocks import layout
     tpl = (SRC / "template.html").read_text(encoding="utf-8")
-    assert "DATA.derived" in tpl and 'id="rates"' in tpl
+    assert 'data-slot="1"' in tpl and layout.INDEX[1][0] == "rates"
 
 
 def test_module_is_a_stdlib_leaf():
-    tree = ast.parse((SRC / "stat_derive.py").read_text(encoding="utf-8"))
+    tree = ast.parse((SRC / "rules" / "stat_derive.py").read_text(encoding="utf-8"))
     imported = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             imported |= {a.name.split(".")[0] for a in node.names}
         elif isinstance(node, ast.ImportFrom):
             imported.add(node.module.split(".")[0])
-    project = {p.stem for p in SRC.glob("*.py")}
+    project = {p.stem for p in SRC.rglob("*.py")} | {p.name for p in SRC.iterdir() if p.is_dir()}      # modules and the folders (core, ...)
     assert not imported & project, imported & project

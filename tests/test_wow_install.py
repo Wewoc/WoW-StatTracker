@@ -3,8 +3,8 @@
 
 import pytest
 
-import app_info
-import wow_install
+from core import app_info
+from game import wow_install
 
 
 def test_list_variants_filters_by_enabled(fake_wow):

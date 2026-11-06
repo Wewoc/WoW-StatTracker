@@ -3,9 +3,9 @@
 
 import pytest
 
-import export_xlsx
-import i18n
-import stat_parser
+from app import stat_parser
+from core import i18n
+from export import export_xlsx
 
 openpyxl = pytest.importorskip("openpyxl")
 

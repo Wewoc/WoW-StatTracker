@@ -8,17 +8,20 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 from pathlib import Path
 
 import pytest
 
-import app_info
-import paths
-import plotly_asset
-import stat_history
-import stat_parser
-import wow_install
-from stat_history import HistoryPageError
+from app import actions
+from app import stat_parser
+from core import app_info
+from core import paths
+from game import wow_install
+from pages import outputs
+from pages import plotly_asset
+from pages import stat_history
+from pages.stat_history import HistoryPageError
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
@@ -242,11 +245,66 @@ def test_the_history_folder_per_game_version(instance):
 
 
 def test_the_window_passes_the_folder_on(run):
-    gui_app = pytest.importorskip("gui_app")
     run((A, "2026-10-01 10:00:00", "1"))
     (run.dir / "StatTracker.lua").write_text(lua((A, "2026-10-02 10:00:00", "2")), encoding="utf-8")
-    ok, out = gui_app.run_parser(run.dir / "StatTracker.lua", run.dir / "x.db", run.html, run.history)
+    ok, out = actions.run_parser(run.dir / "StatTracker.lua", run.dir / "x.db", run.html, run.history)
     assert ok, out
     assert run.pages() == [stat_history.page_name(A)]
-    ok, out = gui_app.run_parser(run.dir / "StatTracker.lua", run.dir / "x.db", run.html)      # no folder: no pages made
+    ok, out = actions.run_parser(run.dir / "StatTracker.lua", run.dir / "x.db", run.html)      # no folder: no pages made
     assert ok and "History:" not in out
+
+
+# ------------------------------------------------------- the outputs made again from the database alone
+def _sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def test_the_outputs_can_be_made_again_from_the_database_alone(run):
+    run((A, "2026-10-01 10:00:00", "10"))
+    run((A, "2026-10-02 10:00:00", "20"))
+    before = run.payload()
+    db = run.dir / "x.db"
+    digest, files = _sha(db), sorted(p.name for p in run.dir.rglob("*") if "history" not in p.parts)
+    (run.dir / "StatTracker.lua").unlink()                          # the SavedVariables file is not needed
+    run.html.unlink()
+    shutil.rmtree(run.history)
+    payload, lines = outputs.rebuild_outputs(db, run.html, run.history)
+    assert run.pages() == [stat_history.page_name(A)]               # the missing page is written again
+    after = run.payload()
+    assert after["chars"] == before["chars"] and after["history"] == before["history"] and payload["chars"] == after["chars"]
+    assert any("History:" in line for line in lines)
+    assert _sha(db) == digest                                       # nothing was written to the database
+    assert sorted(p.name for p in run.dir.rglob("*") if "history" not in p.parts) == [f for f in files if f != "StatTracker.lua"]
+    # no new copy, no journal file, nothing else appeared next to the database
+
+
+def test_making_the_outputs_again_leaves_pages_that_are_there_alone(run):
+    run((A, "2026-10-01 10:00:00", "10"))
+    run((A, "2026-10-02 10:00:00", "20"))
+    run.age_pages()
+    outputs.rebuild_outputs(run.dir / "x.db", run.html, run.history)
+    assert run.untouched(A)
+    assert run.payload()["history"]["links"][A]["scans"] == 2       # and the link is on the page
+
+
+def test_making_the_outputs_again_without_pages_folder_gives_the_plain_page(run):
+    run((A, "2026-10-01 10:00:00", "10"), history=False)
+    payload, lines = outputs.rebuild_outputs(run.dir / "x.db", run.html)
+    assert "history" not in payload and lines == [] and not run.history.exists()
+
+
+def test_a_database_from_a_newer_program_is_not_used_for_the_outputs(run):
+    run((A, "2026-10-01 10:00:00", "10"), history=False)
+    db = run.dir / "x.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute("PRAGMA user_version = 99")
+    run.html.unlink()
+    with pytest.raises(SystemExit):
+        outputs.rebuild_outputs(db, run.html)
+    assert not run.html.exists()
+
+
+def test_a_missing_database_is_not_created_by_making_the_outputs(run):
+    with pytest.raises(sqlite3.OperationalError):
+        outputs.rebuild_outputs(run.dir / "none.db", run.html)
+    assert not (run.dir / "none.db").exists() and not run.html.exists()

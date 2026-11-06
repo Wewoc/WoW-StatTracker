@@ -6,8 +6,8 @@ import zlib
 
 import pytest
 
-import blp_decode
-from blp_decode import BlpError
+from game import blp_decode
+from game.blp_decode import BlpError
 
 RED, GREEN, BLUE, WHITE = 0xF800, 0x07E0, 0x001F, 0xFFFF      # RGB565
 TABLES_END = 0x94

@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>StatTracker</title>
 <style>
-  :root { --bg:#121212; --panel:#1b1b1b; --line:#2e2e2e; --fg:#e0e0e0; --dim:#8a8a8a; --gold:#f4c430; }
+  :root { --bg:#121212; --panel:#1b1b1b; --line:#2e2e2e; --fg:#e0e0e0; --dim:#8a8a8a; --gold:#f4c430;
+          --field:#101010; --card:#161616; --warn:#e0a050; }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   body { font-family: system-ui, Arial, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 16px; }
@@ -15,10 +16,10 @@
   a.back:hover { color: var(--gold); }
   .bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; background: var(--panel);
          border: 1px solid var(--line); padding: 10px 12px; border-radius: 6px; margin: 12px 0 8px; }
-  input[type=search], select { background: #101010; color: var(--fg); border: 1px solid var(--line);
+  input[type=search], select { background: var(--field); color: var(--fg); border: 1px solid var(--line);
          padding: 6px 8px; border-radius: 4px; font-size: .9rem; }
   input[type=search] { min-width: 220px; }
-  button { background: #101010; color: var(--fg); border: 1px solid var(--line); padding: 4px 10px;
+  button { background: var(--field); color: var(--fg); border: 1px solid var(--line); padding: 4px 10px;
            border-radius: 4px; font-size: .85rem; cursor: pointer; }
   button:hover { border-color: var(--gold); color: var(--gold); }
   label { font-size: .85rem; cursor: pointer; }
@@ -34,7 +35,7 @@
   .chartbox { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; min-height: 120px; }
   #chart { width: 100%; height: 480px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
-  .chip { background: #101010; border: 1px solid var(--line); padding: 3px 8px; border-radius: 12px; font-size: .85rem; }
+  .chip { background: var(--field); border: 1px solid var(--line); padding: 3px 8px; border-radius: 12px; font-size: .85rem; }
   .chip button { border: 0; background: none; padding: 0 0 0 6px; font-size: .95rem; }
   .chip i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
   .hint { padding: 24px 8px; color: var(--dim); font-size: .9rem; }
@@ -53,7 +54,7 @@
   .gcol { display: grid; gap: 6px; align-content: start; }
   .gbottom { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   @media (max-width: 800px) { .ggrid, .gbottom { grid-template-columns: 1fr; } }
-  .slot { display: flex; gap: 8px; align-items: flex-start; background: #161616; border: 1px solid var(--line);
+  .slot { display: flex; gap: 8px; align-items: flex-start; background: var(--card); border: 1px solid var(--line);
           border-left: 3px solid transparent; border-radius: 4px; padding: 5px 8px; min-width: 0; }
   .slot.chg { border-left-color: var(--gold); }
   .slot.none { opacity: .55; }
@@ -66,7 +67,7 @@
   .sil b { color: var(--gold); font-weight: normal; }
   .sname { overflow-wrap: anywhere; }
   .sinfo { color: var(--dim); font-size: .72rem; overflow-wrap: anywhere; }
-  .sinfo .warn { color: #e0a050; }
+  .sinfo .warn { color: var(--warn); }
   .gsum { padding: 6px 12px 10px; border-top: 1px solid var(--line); font-size: .85rem; }
   .gsum .row { display: flex; flex-wrap: wrap; gap: 4px 18px; }
   .gnote { margin: 0; padding: 6px 12px 10px; }
@@ -122,11 +123,13 @@ const DATA = /*__DATA__*/null;
 
 const $ = id => document.getElementById(id);
 
-// UI texts come from the generator (src/i18n.py, html_* keys); {name} marks a value to fill in.
+// UI texts come from the generator (src/core/i18n.py, html_* keys); {name} marks a value to fill in.
 const UI = (DATA && DATA.ui) || {};
 const fmt = (s, vals) => (s || "").replace(/\{(\w+)\}/g, (_, k) => (k in vals ? vals[k] : ""));
 
 const MAX_LINES = 10;
+// The colours of the page are CSS variables (:root above); the program window may set them to its colour scheme before the page runs.
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const COLORS = ["#f4c430", "#5dd16b", "#4fa3ff", "#ff7a59", "#c792ea", "#2ec4b6", "#ff5d8f", "#b5cf6b", "#e0b080", "#8ab4f8"];
 const DATE_TICKS = [   // tick labels of the time axis by tick distance (ms): with the time of day below a day, as stored
   {dtickrange: [null, 86400000], value: "%Y-%m-%d %H:%M"},
@@ -313,13 +316,13 @@ function renderChart() {
   $("hint").hidden = true;
   chart.hidden = false;
   Plotly.react(chart, traces, {
-    paper_bgcolor: "#1b1b1b", plot_bgcolor: "#101010", font: {color: "#e0e0e0"},
+    paper_bgcolor: css("--panel"), plot_bgcolor: css("--field"), font: {color: css("--fg")},
     margin: {l: 64, r: 24, t: 16, b: 48}, height: 480, hovermode: "x unified",
     legend: {orientation: "h", y: -0.2},
-    xaxis: {type: "date", gridcolor: "#2e2e2e", hoverformat: "%Y-%m-%d %H:%M",
+    xaxis: {type: "date", gridcolor: css("--line"), hoverformat: "%Y-%m-%d %H:%M",
             tickformatstops: DATE_TICKS,   // numbers only: Plotly would name the months in English on every page
             range: DATA.scans.length === 1 ? singleScanRange() : undefined},
-    yaxis: {gridcolor: "#2e2e2e", zeroline: false, hoverformat: ",.2f"}
+    yaxis: {gridcolor: css("--line"), zeroline: false, hoverformat: ",.2f"}
   }, {responsive: true, displaylogo: false});
 }
 
@@ -432,7 +435,7 @@ function slotCard(slot, it, old, compare) {
   if (it) {
     if (isNum(it.ilvl)) il.textContent = String(it.ilvl);
     name.textContent = it.name || "#" + it.item_id;
-    name.style.color = QUALITY_COLOR[it.quality] || "#e0e0e0";
+    name.style.color = QUALITY_COLOR[it.quality] || css("--fg");
     const bits = [upgradeText(it), it.enchant_text || ""].filter(Boolean);
     info.textContent = bits.join(" · ");
     const n = emptySockets(it);
@@ -544,7 +547,7 @@ function setupGear() {
   renderGear();
 }
 
-// Version, link to the project page and copyright (values from src/app_info.py via the generator), and the
+// Version, link to the project page and copyright (values from src/core/app_info.py via the generator), and the
 // chart library the page carries.
 function renderFoot() {
   const A = DATA.app;
