@@ -4,7 +4,7 @@
 # qt_style.py
 # StatTracker - the one style sheet of the window, made from a colour scheme of core/theme.py (so the whole look follows
 # the scheme, and a new scheme needs no change here). Pure text in, text out: no Qt import, no project import.
-# Widgets that need a special look carry an object name (log, hint, link, primary) and are styled by it here.
+# Widgets that need a special look carry an object name (log, hint, notice, link, primary) and are styled by it here.
 # page_script is the other half: the script that gives the pages shown in the window the same colours.
 
 import json
@@ -18,6 +18,7 @@ def stylesheet(c: dict, text_accent: str = "") -> str:
 QWidget {{ background: {c['bg']}; color: {c['text']}; font-family: 'Segoe UI'; font-size: 9pt; font-weight: normal; }}
 QLabel {{ background: transparent; }}
 QLabel#hint {{ color: {c['text2']}; }}
+QLabel#notice {{ color: {text_accent}; }}
 QLabel#title {{ font-size: 14pt; font-weight: bold; }}
 QLabel#status {{ color: {c['text2']}; background: transparent; padding: 0 6px; }}
 QLabel#placeholder {{ color: {c['text2']}; font-size: 10pt; }}

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- Changed: the note about game versions in the *Settings* tab now stands above the check boxes, in the accent colour instead of the dimmed hint colour, and names what is tested: Retail and WoW Forever. It says that on Forever not all statistics are unlocked yet (that depends on the character level), that all other game versions are untested, and that BC Anniversary provides no statistics. The old wording "Default: Retail only" is gone; the default is unchanged
+- Docs: both READMEs and the landing page now list WoW Forever as tested and working, next to Retail
+- Note: the addon itself is unchanged, but its version follows the program version, so after updating the window asks once to run *1. Install / update addon*. Tried with Retail and with WoW Forever (a character of low level; some statistics did not appear yet). The look of the note in the window was not checked by hand
+
 ## 0.2.0
 
 - New: a new program window. It is made with PyQt6 instead of Tk and has three tabs: *Settings* (game folder, game version, account, options, the buttons and the log), *Page* (the stats page, shown inside the window: no browser has to be set up) and *Top 5*. The window and the stats page follow one of six colour schemes (*Design* in the *Settings* tab; the change applies after a restart)
