@@ -5,13 +5,16 @@
 # StatTracker - the data of the stats page: build_payload (the newest scan of every character, the statistics,
 # the rates of stat_derive, the reputation list, the texts of the page; a statistic with a coin text has "gold": true),
 # derived_payload and rep_payload.
-# Reads the statistics database through the connection it is given and writes nothing. Needs stat_values,
-# stat_derive, i18n and app_info. Moved out of stat_parser.py; the rules are unchanged.
+# Reads the statistics database through the connection it is given and writes nothing. The characters that the rules of the game version
+# (config.char_rules, see rules/char_rules.py) keep off the page are taken out first, so everything built from the characters (the statistics, the rates,
+# the reputation, and with them every block) never sees them; the database is not changed. Needs stat_values,
+# stat_derive, char_rules, i18n and app_info. Moved out of stat_parser.py; the rules are unchanged.
 
 from datetime import datetime
 
 from core import app_info
 from core import i18n
+from rules import char_rules
 from rules import stat_derive
 from store import stat_values
 
@@ -62,10 +65,9 @@ def rep_payload(conn, scan_to_char):
     return {"defs": defs, "chars": chars}
 
 
-def build_payload(conn, lang=None, history=None, top5=None):
-    """The data of the stats page. history: the links to the history pages (update_history_pages),
-    left out of the payload when there are none. top5: the tiles of the Top 5 block (config.top5), left out when there are none."""
-    lang = lang or i18n.get_language()
+def _newest_scans(conn):
+    """(the rows of the newest scan of every character, the characters made from them as the page has them), ordered by character key. The one
+    place that reads "the newest scan of a character": the page and the rules that keep characters off it both start from it."""
     scans = conn.execute("""
         SELECT s.scan_id, s.char_key, s.scanned_at, s.class, s.level, s.faction,
                s.class_file, s.race, s.race_file
@@ -76,7 +78,25 @@ def build_payload(conn, lang=None, history=None, top5=None):
     chars = [{"key": r[1], "scanned_at": r[2], "class": r[3], "level": r[4], "faction": r[5],
               "class_file": r[6], "race": r[7], "race_file": r[8]}
              for r in scans]
-    scan_to_char = {r[0]: r[1] for r in scans}
+    return scans, chars
+
+
+def hidden_keys(conn, rules, target="page") -> set:
+    """The keys of the characters in the database that the rules keep out of this output (char_rules.hidden_keys on the newest scans), none without
+    rules. The database is only read. outputs asks it before it writes the history pages, which come before the page."""
+    return char_rules.hidden_keys(_newest_scans(conn)[1], rules, target) if rules else set()
+
+
+def build_payload(conn, lang=None, history=None, top5=None, rules=None):
+    """The data of the stats page. history: the links to the history pages (update_history_pages),
+    left out of the payload when there are none. top5: the tiles of the Top 5 block (config.top5), left out when there are none.
+    rules: the rules of this game version (config.char_rules[variant]); a character they keep off the page is not in the payload at all
+    (none given = nobody is kept off, which is what the settings of the window read to offer every character)."""
+    lang = lang or i18n.get_language()
+    scans, chars = _newest_scans(conn)
+    hidden = char_rules.hidden_keys(chars, rules, "page")
+    chars = [c for c in chars if c["key"] not in hidden]
+    scan_to_char = {r[0]: r[1] for r in scans if r[1] not in hidden}
 
     defs = {r[0]: {"id": r[0], "name": r[1], "cat": r[2], "v": {}}
             for r in conn.execute("SELECT stat_id,name,category FROM stat_defs")}
@@ -105,6 +125,9 @@ def build_payload(conn, lang=None, history=None, top5=None):
     rep = rep_payload(conn, scan_to_char)
     if rep:
         payload["rep"] = rep
+    if history and hidden:                                   # the links of a character kept off the page do not stay in the data of the page either
+        links = {key: item for key, item in (history.get("links") or {}).items() if key not in hidden}
+        history = dict(history, links=links) if links else None
     if history:
         payload["history"] = history
     if top5:

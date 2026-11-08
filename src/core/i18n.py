@@ -198,6 +198,88 @@ _STRINGS = {
     "tab_settings": {"de": "Einstellungen", "en": "Settings"},
     "tab_page": {"de": "Seite", "en": "Page"},
     "tab_top5": {"de": "Top 5", "en": "Top 5"},
+    "tab_chars": {"de": "Charaktere", "en": "Characters"},
+    "chars_intro": {
+        "de": "Hier legst du fest, welche Charaktere die Seite und die Excel-Datei weglassen. Im Formular wählst du eine Art (Klasse, Rasse, Fraktion, Realm, Charakter oder Level), den Wert und die Ziele und nimmst die Regel in die Liste auf. Erst „Anwenden“ speichert die Liste und schreibt die Seite neu. Die Regeln bleiben in der Liste, bis du sie entfernst. Mehrere Regeln gelten zusammen: ein Charakter fehlt, sobald eine davon ihn trifft. Die Datenbank behält immer alles. Jede Spielversion hat ihre eigene Liste.",
+        "en": "Here you set which characters the page and the Excel file leave out. In the form you pick a type (class, race, faction, realm, character or level), the value and the targets and add the rule to the list. Only “Apply” saves the list and writes the page again. The rules stay in the list until you take them out. Several rules work together: a character is left out as soon as one of them applies to it. The database always keeps everything. Every game version has its own list.",
+    },
+    "chars_variant": {"de": "Spielversion:", "en": "Game version:"},
+    "chars_group": {"de": "Ignorieren – {variant}", "en": "Ignore – {variant}"},
+    "chars_kind": {"de": "Art", "en": "Type"},
+    "chars_kind_level": {"de": "Level unter", "en": "Level under"},
+    "chars_value": {"de": "Wert", "en": "Value"},
+    "chars_for": {"de": "Gilt für", "en": "Applies to"},
+    "chars_add": {"de": "Zur Liste hinzufügen", "en": "Add to the list"},
+    "chars_list_title": {"de": "Regeln in der Liste", "en": "Rules in the list"},
+    "chars_list_kind": {"de": "Art", "en": "Type"},
+    "chars_list_value": {"de": "Wert", "en": "Value"},
+    "chars_list_for": {"de": "Gilt für", "en": "Applies to"},
+    "chars_col_count": {"de": "Trifft", "en": "Hits"},
+    "chars_col_page": {"de": "Seite", "en": "Page"},
+    "chars_col_excel": {"de": "Excel", "en": "Excel"},
+    "chars_remove": {"de": "Markierte entfernen", "en": "Remove ticked"},
+    "chars_counter": {
+        "de": "Seite: {page} von {total} ausgeblendet · Excel: {excel} von {total}",
+        "en": "Page: {page} of {total} hidden · Excel: {excel} of {total}",
+    },
+    "chars_pending": {"de": "Geändert, noch nicht angewendet.", "en": "Changed, not applied yet."},
+    "chars_value_invalid": {
+        "de": "Der Wert passt auf keinen Eintrag der Liste. Bitte einen Eintrag wählen.",
+        "en": "The value does not fit an entry of the list. Please pick an entry.",
+    },
+    "chars_apply": {"de": "Anwenden", "en": "Apply"},
+    "chars_apply_note": {
+        "de": "Anwenden speichert die Liste und schreibt die Seite dieser Spielversion und ihre Verlaufsseiten sofort neu; die Verlaufsseiten ausgeblendeter Charaktere werden gelöscht und entstehen wieder, wenn die Regel entfernt wird. Die Seiten der anderen Spielversionen folgen beim nächsten Einlesen, die Excel-Datei beim nächsten Export.",
+        "en": "Apply saves the list and writes the page of this game version and its history pages again at once; the history pages of characters that are left out are deleted and come back when the rule is taken out. The pages of the other game versions follow at the next import, the Excel file at the next export.",
+    },
+    "log_chars_saved": {"de": "Ignorieren gespeichert ({variant}): {count} Regeln.", "en": "Ignore saved ({variant}): {count} rules."},
+    "status_busy_chars_read": {"de": "Charaktere werden gelesen ...", "en": "Reading the characters ..."},
+    "chars_del_group": {"de": "Löschen – {variant}", "en": "Delete – {variant}"},
+    "chars_del_note": {
+        "de": "Löscht Charaktere endgültig aus der Datenbank dieser Spielversion. Vorher wird eine Sicherung angelegt (Ordner backups/delete). Gelöschte Charaktere kommen auf die Blacklist, damit das Einlesen sie nicht zurückholt. Alles andere (Klasse, Rasse, Level …) geht über „Ignorieren“.",
+        "en": "Deletes characters for good from the database of this game version. A copy is made first (folder backups/delete). Deleted characters go on the blacklist, so that the import does not bring them back. Everything else (class, race, level ...) is done with “Ignore”.",
+    },
+    "chars_del_char": {"de": "Charakter", "en": "Character"},
+    "chars_del_add": {"de": "Zur Löschliste hinzufügen", "en": "Add to the delete list"},
+    "chars_del_list_title": {"de": "Zum Löschen vorgemerkt", "en": "Marked for deleting"},
+    "chars_del_col_class": {"de": "Klasse", "en": "Class"},
+    "chars_del_col_level": {"de": "Level", "en": "Level"},
+    "chars_del_preview": {"de": "Diese Liste löscht {count} Charaktere.", "en": "This list deletes {count} characters."},
+    "chars_bl_title": {
+        "de": "Blacklist: gelöschte Charaktere, die das Einlesen überspringt",
+        "en": "Blacklist: deleted characters that the import skips",
+    },
+    "chars_bl_remove": {"de": "Markierte von der Blacklist entfernen", "en": "Remove ticked from the blacklist"},
+    "chars_bl_removed": {
+        "de": "{count} Einträge von der Blacklist entfernt. Beim nächsten Einlesen werden diese Charaktere wieder gelesen, soweit die Datei sie noch enthält.",
+        "en": "{count} entries removed from the blacklist. At the next import these characters are read again, as far as the file still holds them.",
+    },
+    "chars_bl_empty": {"de": "Die Blacklist ist leer.", "en": "The blacklist is empty."},
+    "chars_del_empty": {"de": "Die Löschliste ist leer.", "en": "The delete list is empty."},
+    "chars_del_cancelled": {"de": "Abgebrochen, es wurde nichts gelöscht.", "en": "Cancelled, nothing was deleted."},
+    "chars_del_ask": {
+        "de": "{count} Charaktere endgültig aus der Datenbank von {variant} löschen?\n\n{names}\n\nVorher wird eine Sicherung in {folder} angelegt; nur aus ihr lässt sich das rückgängig machen. Die Charaktere kommen auf die Blacklist, damit das Einlesen sie nicht zurückholt.",
+        "en": "Delete {count} characters for good from the database of {variant}?\n\n{names}\n\nA copy is made first in {folder}; only from it can this be undone. The characters go on the blacklist, so that the import does not bring them back.",
+    },
+    "chars_del_more": {"de": "… und {count} weitere", "en": "... and {count} more"},
+    "chars_del_blacklist_failed": {
+        "de": "Die Blacklist konnte nicht gespeichert werden, es wurde nichts gelöscht.",
+        "en": "The blacklist could not be saved, nothing was deleted.",
+    },
+    "chars_del_failed": {
+        "de": "Es wurde nichts gelöscht, die Blacklist ist wie vorher (siehe Protokoll).",
+        "en": "Nothing was deleted, the blacklist is as it was (see the log).",
+    },
+    "chars_del_stuck": {
+        "de": "Die Blacklist konnte nicht zurückgesetzt werden: die Charaktere stehen noch auf ihr, obwohl nichts gelöscht wurde. Sie lassen sich in der Liste entfernen.",
+        "en": "The blacklist could not be set back: the characters are still on it although nothing was deleted. They can be taken off in the list.",
+    },
+    "log_chars_deleted": {"de": "Gelöscht ({variant}): {count} Charaktere.", "en": "Deleted ({variant}): {count} characters."},
+    "status_busy_delete": {"de": "Charaktere werden gelöscht ...", "en": "Deleting characters ..."},
+    "chars_read_failed": {
+        "de": "Die Daten dieser Spielversion konnten nicht gelesen werden (siehe Protokoll).",
+        "en": "The data of this game version could not be read (see the log).",
+    },
     "top5_group": {"de": "Die fünf Kacheln oben auf der Seite", "en": "The five tiles at the top of the page"},
     "top5_intro": {
         "de": "Jede Kachel zeigt einen Wert aus dem neuesten Scan der Charaktere: eine Statistik, zusammengefasst als Summe, Durchschnitt oder Maximum über alle Charaktere, eine Klasse, Rasse, Fraktion, einen Realm oder einen einzelnen Charakter. Eine Zeile ohne Statistik bleibt leer. Die Einstellung gilt für alle Spielversionen; die Seite der gewählten Spielversion wird sofort neu geschrieben, die anderen beim nächsten Einlesen.",
@@ -412,9 +494,46 @@ _STRINGS = {
         "de": "WARNUNG: Die Kacheln der Top 5 sind kein gültiges JSON und werden nicht angezeigt: {error}",
         "en": "WARNING: the tiles of the Top 5 are not valid JSON and are not shown: {error}",
     },
+    "del_err_no_db": {"de": "Für diese Spielversion gibt es keine Datenbank.", "en": "There is no database for this game version."},
+    "del_note_none": {
+        "de": "Keiner der Charaktere steht in der Datenbank, es wurde nichts gelöscht.",
+        "en": "None of the characters is in the database, nothing was deleted.",
+    },
+    "del_out_deleted": {
+        "de": "{count} Charaktere gelöscht ({scans} Scans): {keys}",
+        "en": "{count} characters deleted ({scans} scans): {keys}",
+    },
+    "del_warn_page_remove": {
+        "de": "WARNUNG: Verlaufsseite von {key} nicht gelöscht: {error}",
+        "en": "WARNING: history page of {key} not deleted: {error}",
+    },
+    "del_warn_page": {
+        "de": "WARNUNG: Die Seite konnte nach dem Löschen nicht neu geschrieben werden: {error}",
+        "en": "WARNING: the page could not be written again after deleting: {error}",
+    },
+    "parse_warn_skip": {
+        "de": "WARNUNG: Die Liste der gelöschten Charaktere ist kein gültiges JSON und wird nicht angewendet: {error}",
+        "en": "WARNING: the list of deleted characters is not valid JSON and is not applied: {error}",
+    },
+    "parse_note_blacklisted": {
+        "de": "Hinweis: {count} Charaktere stehen auf der Liste der gelöschten und wurden nicht eingelesen: {keys}",
+        "en": "Note: {count} characters are on the list of deleted ones and were not imported: {keys}",
+    },
+    "parse_warn_char_rules": {
+        "de": "WARNUNG: Die Regeln zum Ausblenden von Charakteren sind kein gültiges JSON und werden nicht angewendet: {error}",
+        "en": "WARNING: the rules that hide characters are not valid JSON and are not applied: {error}",
+    },
     "parse_warn_history": {
         "de": "WARNUNG: Verlaufsseiten nicht geschrieben: {error}",
         "en": "WARNING: history pages not written: {error}",
+    },
+    "parse_out_history_removed": {
+        "de": "Verläufe: {count} entfernt, Charakter ausgeblendet ({path})",
+        "en": "History:  {count} removed, character hidden ({path})",
+    },
+    "parse_warn_history_remove": {
+        "de": "WARNUNG: Verlaufsseite von {key} nicht entfernt: {error}",
+        "en": "WARNING: history page of {key} not removed: {error}",
     },
     "parse_warn_history_char": {
         "de": "WARNUNG: Verlaufsseite von {key} nicht geschrieben: {error}",
@@ -445,6 +564,12 @@ _STRINGS = {
         "en": "ERROR: no wow_stats*.db in {folder}. Read the data first.",
     },
     "xl_skip_no_scans": {"de": "{name}: keine Scans, übersprungen", "en": "{name}: no scans, skipped"},
+    "xl_skip_hidden": {"de": "{name}: alle Charaktere ausgeblendet, übersprungen", "en": "{name}: all characters hidden, skipped"},
+    "xl_hidden_info": {"de": "Blatt '{sheet}': {count} Charaktere ausgeblendet", "en": "Sheet '{sheet}': {count} characters hidden"},
+    "xl_err_all_hidden": {
+        "de": "FEHLER: alle Charaktere sind ausgeblendet, es gibt nichts zu exportieren.",
+        "en": "ERROR: all characters are hidden, there is nothing to export.",
+    },
     "xl_err_no_scans": {"de": "FEHLER: in keiner Datenbank sind Scans vorhanden.", "en": "ERROR: no database contains scans."},
     "xl_err_permission": {
         "de": "FEHLER: {path} kann nicht geschrieben werden. Ist die Datei in Excel geöffnet?",

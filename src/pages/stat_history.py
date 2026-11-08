@@ -11,7 +11,8 @@
 # over the specialization, item level and equipped items of every scan (scan_gear), as stored.
 # write_page() puts the data and the pinned plotly.js (plotly_asset) into history.html and
 # writes that one file; write_pages() decides which characters need a new page (a new scan, no
-# page yet, or pages from another program version). Both are the only writers of the history pages.
+# page yet, or pages from another program version) and deletes the page of a character kept off the output by the rules (char_rules;
+# it is made again when the rule goes). Both are the only writers of the history pages.
 # The item icons the page may show are read from the icons folder (wow_icons makes it) and embedded as
 # data URIs, only those of the items this character wore; without a folder or a file the page keeps its
 # slot symbols. Needs db_schema (schema check) and stat_values (names of the played-time statistics), plotly_asset,
@@ -254,6 +255,16 @@ def page_name(char_key):
     return f"{PAGE_PREFIX}{part}-{hashlib.sha256(char_key.encode('utf-8')).hexdigest()[:8]}.html"
 
 
+def remove_page(folder, char_key):
+    """Deletes the history page of a character: exactly page_name(char_key), only if the file is there. Returns True if a file was deleted. An
+    OSError is for the caller to report. (For a character that was deleted from the database; write_pages deletes the pages of those it still has.)"""
+    target = Path(folder) / page_name(char_key)
+    if not target.is_file():
+        return False
+    target.unlink()
+    return True
+
+
 def _generator_version(folder):
     try:
         return (Path(folder) / GENERATOR_FILE).read_text(encoding="utf-8").strip()
@@ -261,23 +272,30 @@ def _generator_version(folder):
         return None
 
 
-def write_pages(conn, folder, changed, back_href=None, icons_dir=None):
+def write_pages(conn, folder, changed, back_href=None, icons_dir=None, hidden=None):
     """Brings the history pages in `folder` up to date. A character with at least MIN_SCANS scans
     gets a page if it is in `changed` (a scan was imported just now), if its page is missing, or if
     the pages were written by another program version (then all are written again). Nothing is
     written for the rest, so an import that brings nothing new leaves every file alone. `icons_dir`:
     where the item icons for the pages are (see build_page_payload; None = no icons).
+    `hidden`: the keys of the characters kept off the output (page_payload.hidden_keys): they get no page, and a page they already have
+    (exactly `page_name(key)`, only for a character of the database, only if the file exists) is deleted; it is made again when they are
+    not kept off any more, as it is made from the database like every page.
 
     Returns {"links": {char_key: {"file", "scans"}}   the pages that exist now (an old page stays linked
                                                        if writing the new one failed)
              "written": [char_key, ...],
-             "failed": [(char_key or None, message), ...]}   None: all pages (plotly.js is missing or wrong)
-    One character failing does not stop the others; a missing plotly.js stops all writing. Only the
+             "failed": [(char_key or None, message), ...]   None: all pages (plotly.js is missing or wrong)
+             "removed": [char_key, ...],                    the pages of hidden characters that were deleted
+             "remove_failed": [(char_key, message), ...]}
+    One character failing does not stop the others; a missing plotly.js stops all writing (not the deleting). Only the
     expected errors of one page are caught here (HistoryPageError, OSError, sqlite3.Error); the caller
     decides what a failure means for the import."""
     folder = Path(folder)
     changed = set(changed)
-    eligible = {key: n for key, n in history_counts(conn).items() if n >= MIN_SCANS}
+    hidden = set(hidden or ())
+    counts = history_counts(conn)
+    eligible = {key: n for key, n in counts.items() if n >= MIN_SCANS and key not in hidden}
     everything = bool(eligible) and _generator_version(folder) != app_info.APP_VERSION
     links, written, failed = {}, [], []
     blocked = False
@@ -299,4 +317,13 @@ def write_pages(conn, folder, changed, back_href=None, icons_dir=None):
             (folder / GENERATOR_FILE).write_text(app_info.APP_VERSION, encoding="utf-8")
         except OSError as exc:
             failed.append((None, str(exc)))
-    return {"links": links, "written": written, "failed": failed}
+    removed, remove_failed = [], []
+    for key in sorted(hidden & set(counts)):
+        target = folder / page_name(key)
+        if target.is_file():
+            try:
+                target.unlink()
+                removed.append(key)
+            except OSError as exc:
+                remove_failed.append((key, str(exc)))
+    return {"links": links, "written": written, "failed": failed, "removed": removed, "remove_failed": remove_failed}

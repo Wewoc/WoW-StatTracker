@@ -35,6 +35,11 @@ QPushButton#link:hover {{ color: {c['text']}; background: transparent; }}
 QLineEdit, QComboBox {{ background: {c['bg3']}; color: {c['text']}; border: none; padding: 4px; }}
 QComboBox::drop-down {{ border: none; width: 18px; }}
 QComboBox QAbstractItemView {{ background: {c['bg3']}; color: {c['text']}; selection-background-color: {c['accent2']}; border: none; }}
+QSpinBox {{ background: {c['bg3']}; color: {c['text']}; border: none; padding: 4px; }}
+QTableWidget {{ background: {c['bg']}; color: {c['text']}; gridline-color: {c['bg3']}; border: none; }}
+QTableWidget::item:selected {{ background: {c['accent2']}; color: {c['text']}; }}
+QHeaderView::section {{ background: {c['bg3']}; color: {c['text2']}; border: none; padding: 4px 6px; }}
+QScrollArea {{ background: transparent; border: none; }}
 QTabWidget::pane {{ border: none; background: {c['bg']}; }}
 QTabBar::tab {{ background: {c['bg3']}; color: {c['text2']}; padding: 6px 18px; border: none; }}
 QTabBar::tab:selected {{ background: {c['bg']}; color: {c['text']}; border-bottom: 2px solid {c['accent']}; }}

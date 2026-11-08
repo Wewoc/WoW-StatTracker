@@ -10,6 +10,7 @@ StatTracker liest die **Spielstatistiken** deiner World-of-Warcraft-Charaktere �
 - **Top 5**: fünf Kacheln oben auf der Seite, jede mit einem Wert, den du wählst (eine Statistik, zusammengefasst für alle Charaktere, eine Klasse, Rasse, Fraktion, einen Realm oder einen einzelnen Charakter)
 - Raten pro Spielstunde (Kills, Tode, Gold) je Charakter und insgesamt; lässt sich eine Zahl nicht berechnen, nennt die Seite den Grund
 - Gruppiert deine Charaktere nach Klasse, Rasse, Fraktion oder Realm
+- Reiter **Charaktere**: Charaktere aus Seite, Verlaufsseiten und Excel-Datei weglassen (nach Klasse, Rasse, Fraktion, Realm, Level oder einzeln), ohne etwas zu verlieren, oder einen Charakter endgültig aus der Datenbank löschen (mit vorheriger Kopie)
 - Eine Verlaufsseite für jeden Charakter mit mindestens zwei Scans: Statistiken auswählen und als Linien über deine Scans ansehen
 - Arbeitet pro Spielversion; standardmäßig ist nur **Retail** aktiviert
 
@@ -44,7 +45,7 @@ Die Slots zeigen die Item-Bilder des Spiels, wenn StatTracker sie hat. Beim Einl
 
 ## Das Fenster
 
-Das Fenster hat drei Reiter. **Einstellungen** enthält Spielordner, Spielversion und Account, die Optionen (Spielversionen, Update-Prüfung, Item-Bilder, das *Design*), die Knöpfe und das Protokoll. **Seite** zeigt die Statistik-Seite im Fenster; *Neu laden* liest die Datei erneut, und *Im Browser öffnen* öffnet eine **Momentaufnahme** dessen, was das Fenster jetzt zeigt - die angehakten Charaktere, Filter, Sortierung, Gruppierung und hinzugefügte Statistiken - als Datei `stats_snapshot.html` neben der Statistik-Seite (sie wird bei jedem Klick neu geschrieben). Im Browser sind die Bedienelemente der Momentaufnahme gesperrt, weil eine Seite dort keine Verbindung zum Programm hat: Sie ist ein Stand, keine mitlaufende Kopie. **Top 5** stellt die Kacheln ein (unten).
+Das Fenster hat vier Reiter. **Einstellungen** enthält Spielordner, Spielversion und Account, die Optionen (Spielversionen, Update-Prüfung, Item-Bilder, das *Design*), die Knöpfe und das Protokoll. **Seite** zeigt die Statistik-Seite im Fenster; *Neu laden* liest die Datei erneut, und *Im Browser öffnen* öffnet eine **Momentaufnahme** dessen, was das Fenster jetzt zeigt - die angehakten Charaktere, Filter, Sortierung, Gruppierung und hinzugefügte Statistiken - als Datei `stats_snapshot.html` neben der Statistik-Seite (sie wird bei jedem Klick neu geschrieben). Im Browser sind die Bedienelemente der Momentaufnahme gesperrt, weil eine Seite dort keine Verbindung zum Programm hat: Sie ist ein Stand, keine mitlaufende Kopie. **Top 5** stellt die Kacheln ein (unten). **Charaktere** lässt Charaktere weg oder löscht sie (unten).
 
 ![Das Programmfenster, Reiter Einstellungen: Spielordner, Version und Account, die Optionen, die Knöpfe und das Protokoll.](docs/images/app-de.png)
 
@@ -57,6 +58,14 @@ Bis zu fünf Kacheln stehen ganz oben auf der Statistik-Seite. Jede zeigt einen 
 Eingestellt werden sie im Reiter **Top 5**: Einen Teil des Namens einer Statistik tippen und aus der Liste wählen, die sich unter dem Feld öffnet, Funktion und Bereich wählen (ein Klick ins letzte Feld öffnet dessen Liste), dann *Speichern und Seite neu schreiben*. Die Einstellung gilt für alle Spielversionen; die Seite der gewählten Spielversion wird sofort neu geschrieben, die anderen beim nächsten Einlesen. Eine Zeile ohne Statistik bleibt leer.
 
 ![Der Reiter Top 5: fünf Zeilen mit Statistik, Funktion, Bereich und Auswahl und der Knopf zum Speichern und Neuschreiben der Seite.](docs/images/top5-de.png)
+
+## Charaktere
+
+Der Reiter **Charaktere** hat für jede aktivierte Spielversion einen Block (die Version wählst du oben); eine Version ohne Daten zeigt stattdessen einen Hinweis.
+
+**Ignorieren** hält Charaktere aus den Ausgaben heraus und verliert nichts: Datenbank und Addon behalten jeden Scan, und die Regeln gelten bei jedem Erzeugen der Seite, der Verlaufsseiten oder der Excel-Datei neu. Im Formular wählst du eine *Art* (Klasse, Rasse, Fraktion, Realm, einen Charakter oder *Level unter* einer Zahl), den *Wert* aus der Liste und für welche Ausgaben es gilt (*Seite*, das schließt die Verlaufsseiten ein, und/oder *Excel*), dann *Zur Liste hinzufügen*. Die Liste zeigt jede Regel mit ihren Zielen und wie viele Charaktere sie trifft; "unbekannt" ist auch ein Wert (Charaktere, die vor der Aufnahme von Klasse und Rasse gescannt wurden). Mehrere Regeln gelten zusammen: Ein Charakter fehlt, sobald eine davon ihn trifft. Beim Level zählt der neueste Scan, ein Charakter, der die Grenze erreicht, erscheint also mit seiner ganzen Geschichte. Änderungen sind ein Entwurf ("Geändert, noch nicht angewendet"), bis du *Anwenden* drückst: Das speichert die Liste in den Einstellungen und schreibt die Seite und die Verlaufsseiten dieser Spielversion neu (die Verlaufsseite eines ausgeblendeten Charakters wird gelöscht und entsteht wieder, wenn die Regel entfällt). Die Seiten der anderen Spielversionen folgen beim nächsten Einlesen, die Excel-Datei beim nächsten Export. Jede Spielversion hat ihre eigene Liste.
+
+**Löschen** entfernt einen Charakter endgültig aus der Datenbank einer Spielversion, zum Beispiel einen, den du im Spiel gelöscht hast. Den Charakter wählen, in die Löschliste aufnehmen und *Anwenden* drücken: Eine Rückfrage nennt die Charaktere, bei *Nein* passiert nichts. Bei *Ja* kopiert StatTracker zuerst die Datenbank nach `data/backups/delete/`, löscht dann alle Scans, die Ausrüstung und den Ruf dieser Charaktere in einem Schritt (ganz oder gar nicht) und schreibt die Seiten neu. Die gelöschten Charaktere kommen auf eine **Blacklist**, die unter der Liste steht: Das Addon behält einen Charakter in seiner Datei, auch wenn du ihn im Spiel löschst, ohne Blacklist würde ihn das nächste Einlesen zurückholen. Nimmst du einen Eintrag von der Blacklist (ankreuzen, *Markierte von der Blacklist entfernen*), liest das nächste Einlesen diesen Charakter wieder ein, soweit die Datei ihn noch enthält; der Eintrag eines Charakters, den du im Spiel gelöscht hast, darf einfach stehen bleiben. Um ein Löschen nachträglich rückgängig zu machen, spiele die Kopie zurück, wie unter "Wo liegen meine Daten?" beschrieben.
 
 ## Spielversionen
 
@@ -88,12 +97,13 @@ Beim Start (abschaltbar im Reiter *Einstellungen*) fragt StatTracker bei GitHub 
 
 ## Wo liegen meine Daten?
 
-Neben dem Programm im Ordner `data`: `config.json`, `wow_stats*.db`, `stats*.html`, der Ordner `history` (`history_<Version>` bei den anderen Spielversionen; er lässt sich aus der Datenbank neu erzeugen), der Ordner `icons` (die aus dem Spiel gelesenen Item-Bilder, `icons_<Version>` bei den anderen Spielversionen; fehlende werden neu gelesen), der Ordner `webview` (was die Browser-Engine des Fensters ablegt; nichts, was du brauchst), `stattracker.xlsx` und der Ordner `backups`. Sichere diesen Ordner, wenn dir die Historie wichtig ist.
+Neben dem Programm im Ordner `data`: `config.json` (die Einstellungen, auch die Listen des Reiters *Charaktere*), `wow_stats*.db`, `stats*.html`, der Ordner `history` (`history_<Version>` bei den anderen Spielversionen; er lässt sich aus der Datenbank neu erzeugen), der Ordner `icons` (die aus dem Spiel gelesenen Item-Bilder, `icons_<Version>` bei den anderen Spielversionen; fehlende werden neu gelesen), der Ordner `webview` (was die Browser-Engine des Fensters ablegt; nichts, was du brauchst), `stattracker.xlsx` und der Ordner `backups`. Sichere diesen Ordner, wenn dir die Historie wichtig ist.
 
 Bevor ein Einlesen in eine vorhandene Datenbank schreibt, kopiert StatTracker sie nach `data/backups/`:
 
 - `daily/` enthält eine Kopie pro Tag für die letzten 7 Tage; ältere werden automatisch gelöscht.
 - `migration/` enthält eine Kopie vor jedem Datenbank-Upgrade (der Dateiname nennt die Version, zu der es führt). Diese werden nie automatisch gelöscht; lösche sie von Hand, wenn du sie nicht mehr brauchst.
+- `delete/` enthält eine Kopie, bevor Charaktere im Reiter *Charaktere* aus der Datenbank gelöscht werden. Auch diese werden nie automatisch gelöscht.
 
 So stellst du eine Kopie wieder her: StatTracker schließen, eine `.bak`-Datei aus dem Ordner kopieren, in `wow_stats.db` umbenennen (`wow_stats_<Version>.db` bei den anderen Spielversionen) und in `data` legen. Die Kopien liegen auf derselben Platte wie die Datenbank: sie schützen vor einem fehlerhaften Einlesen oder Upgrade, nicht vor einer defekten Platte - sichere `data` zusätzlich an anderer Stelle. Lässt sich eine Kopie nicht schreiben, bricht das Einlesen ab und ändert nichts. Vor jeder Kopie bekommt die Datenbank eine schnelle Integritätsprüfung; fällt sie durch, bricht das Einlesen ebenfalls ab, damit eine beschädigte Datenbank nicht über deine guten Kopien kopiert wird - spiele dann eine Kopie zurück, wie oben beschrieben.
 

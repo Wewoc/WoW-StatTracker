@@ -18,6 +18,11 @@
 #   top5              the tiles of the Top 5 block at the top of the stats page: [{stat: statistic id, agg: "sum"|"avg"|"max",
 #                     by: "all"|"class"|"race"|"faction"|"realm"|"char", value: the scope as text, "" for all}], at most TOP5_MAX;
 #                     only the shape is checked here (tile_rules and the block know what a tile may name); empty = no block
+#   char_rules        the rules that keep characters out of the outputs, per game version: {variant: [{type: text, value: text, for: [texts]}]},
+#                     at most CHAR_RULES_MAX per version; "for" (the outputs a rule applies to) is left out when it is missing or no list; only the
+#                     shape is checked here (rules/char_rules.py knows the types and targets); a version without rules has no entry
+#   char_blacklist    the characters that were deleted from the database of a game version and that the import does not read again:
+#                     {variant: ["Name-Realm", ...]}, at most CHAR_BLACKLIST_MAX per version, no key twice; a version with none has no entry
 
 import json
 import os
@@ -32,6 +37,8 @@ VARIANT_RE = re.compile(r"_.+_")
 PRESET_NAME_MAX = 40       # longest name of a preset of the Groups block
 PRESETS_MAX = 100          # a longer list is not one a person made
 TOP5_MAX = 5               # tiles of the Top 5 block
+CHAR_RULES_MAX = 500       # rules per game version; a longer list is not one a person made
+CHAR_BLACKLIST_MAX = 5000  # deleted characters per game version
 
 
 def config_path():
@@ -63,6 +70,8 @@ def defaults() -> dict:
         "active_theme": theme.DEFAULT_THEME,
         "group_presets": [],
         "top5": [],
+        "char_rules": {},
+        "char_blacklist": {},
     }
 
 
@@ -106,6 +115,59 @@ def clean_top5(raw) -> list:
     return clean[:TOP5_MAX]
 
 
+def clean_rule_list(raw) -> list:
+    """The rules of one game version that are shaped like one: a type and a value (texts, the value must be there: an empty one is a value, a missing
+    one is not), and, when it is a list, "for" with the texts in it. Whatever is not shaped like that is dropped; at most CHAR_RULES_MAX are kept,
+    in their order."""
+    if not isinstance(raw, list):
+        return []
+    clean = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        kind, value, targets = item.get("type"), item.get("value"), item.get("for")
+        if not (isinstance(kind, str) and isinstance(value, str)):
+            continue
+        rule = {"type": kind, "value": value}
+        if isinstance(targets, list):
+            rule["for"] = [x for x in targets if isinstance(x, str)]
+        clean.append(rule)
+    return clean[:CHAR_RULES_MAX]
+
+
+def clean_char_rules(raw) -> dict:
+    """The rules per game version (clean_rule_list for each): only entries whose key is a game version folder name and that keep at least one rule."""
+    if not isinstance(raw, dict):
+        return {}
+    clean = {}
+    for variant, rules in raw.items():
+        if isinstance(variant, str) and VARIANT_RE.fullmatch(variant):
+            rules = clean_rule_list(rules)
+            if rules:
+                clean[variant] = rules
+    return clean
+
+
+def clean_key_list(raw) -> list:
+    """A list of character keys: the texts that are not empty, each once, in their order; at most CHAR_BLACKLIST_MAX. Anything else gives none."""
+    if not isinstance(raw, list):
+        return []
+    return list(dict.fromkeys(key for key in raw if isinstance(key, str) and key))[:CHAR_BLACKLIST_MAX]
+
+
+def clean_char_blacklist(raw) -> dict:
+    """The deleted characters per game version (clean_key_list for each): only entries whose key is a game version folder name and that keep a character."""
+    if not isinstance(raw, dict):
+        return {}
+    clean = {}
+    for variant, keys in raw.items():
+        if isinstance(variant, str) and VARIANT_RE.fullmatch(variant):
+            keys = clean_key_list(keys)
+            if keys:
+                clean[variant] = keys
+    return clean
+
+
 def _sanitize(raw: dict) -> dict:
     cfg = defaults()
     if raw.get("language") in LANGUAGES:
@@ -130,6 +192,8 @@ def _sanitize(raw: dict) -> dict:
         cfg["active_theme"] = raw["active_theme"]
     cfg["group_presets"] = clean_presets(raw.get("group_presets"))
     cfg["top5"] = clean_top5(raw.get("top5"))
+    cfg["char_rules"] = clean_char_rules(raw.get("char_rules"))
+    cfg["char_blacklist"] = clean_char_blacklist(raw.get("char_blacklist"))
     return cfg
 
 

@@ -12,6 +12,7 @@ import json
 import sqlite3
 import urllib.error
 from datetime import datetime
+from pathlib import Path
 
 from app import stat_parser
 from core import app_info
@@ -22,13 +23,17 @@ from export import export_xlsx
 from game import wow_install
 from pages import outputs, page_payload, stat_history
 from pages.blocks import top5
+from rules import char_rules
+from store import db_backup, db_schema, importer
 
 
-def run_parser(sv_file, db_path, html_path, history_dir=None, icons_dir=None, game_dir=None, product=None, top5=None):
+def run_parser(sv_file, db_path, html_path, history_dir=None, icons_dir=None, game_dir=None, product=None, top5=None, rules=None, skip=None):
     """Runs stat_parser.main() and returns (ok, output_text). history_dir: where the history pages go
     (none are made if it is not given). icons_dir: the folder whose item icons the pages show; with game_dir
     (the WoW folder) and product as well, the import also reads the icons it lacks from the game files. top5: the tiles of the
-    Top 5 block (config.top5, a list; the page has none if it is empty or not given)."""
+    Top 5 block (config.top5, a list; the page has none if it is empty or not given). rules: the rules of this game version that keep characters off
+    the stats page (config.char_rules[variant], a list; nobody is kept off if it is empty or not given). skip: the keys of the characters that were deleted
+    on purpose (config.char_blacklist[variant], a list): the import does not store them (none are left out if it is empty or not given)."""
     buf = io.StringIO()
     ok = True
     args = ["--input", str(sv_file), "--db", str(db_path), "--output", str(html_path)]
@@ -40,6 +45,10 @@ def run_parser(sv_file, db_path, html_path, history_dir=None, icons_dir=None, ga
                 args += ["--game-dir", str(game_dir), "--product", str(product)]
     if top5:
         args += ["--top5", json.dumps(top5, ensure_ascii=False)]
+    if rules:
+        args += ["--hide", json.dumps(rules, ensure_ascii=False)]
+    if skip:
+        args += ["--skip", json.dumps(skip, ensure_ascii=False)]
     try:
         with contextlib.redirect_stdout(buf):
             stat_parser.main(args)
@@ -53,26 +62,43 @@ def run_parser(sv_file, db_path, html_path, history_dir=None, icons_dir=None, ga
     return ok, buf.getvalue()
 
 
-def tile_choices(variant):
+def tile_choices(variant, rules=None):
     """What the settings of the Top 5 offer for the data of this game version (top5.choices on a payload made from its database, in the language of the
-    program), or None when there is no database yet. A database newer than this program raises SystemExit with the usual message."""
+    program), or None when there is no database yet. `rules`: the rules that keep characters off the page (a character they name is not offered);
+    without them every character is. A database newer than this program raises SystemExit with the usual message."""
     db_path = wow_install.out_files(variant)[0]
     if not db_path.is_file():
         return None
     conn = stat_history.open_readonly(db_path)
     try:
-        return top5.choices(page_payload.build_payload(conn))
+        return top5.choices(page_payload.build_payload(conn, rules=rules))
     finally:
         conn.close()
 
 
-def rebuild_page(variant, top5_tiles):
-    """Writes the stats page of this game version again from its database with these tiles (outputs.rebuild_outputs: no import, nothing written to the
-    database): returns (ok, output text)."""
+def ignore_choices(variant):
+    """What the settings for the characters kept off the outputs offer for the data of this game version, read from its database **without** any rule (a
+    character or group that a rule keeps off could not be taken back otherwise): {"values": {"char" / "class" / "race" / "faction" / "realm": [(value,
+    label)]}, "chars": the characters as the page has them (key, level, faction, class and race file name ...)}, or None when there is no database yet.
+    A database newer than this program raises SystemExit with the usual message."""
+    db_path = wow_install.out_files(variant)[0]
+    if not db_path.is_file():
+        return None
+    conn = stat_history.open_readonly(db_path)
+    try:
+        payload = page_payload.build_payload(conn)
+        return {"values": top5.choices(payload)["values"], "chars": payload["chars"]}
+    finally:
+        conn.close()
+
+
+def rebuild_page(variant, top5_tiles, rules=None):
+    """Writes the stats page of this game version again from its database with these tiles and these rules for the characters kept off the page
+    (outputs.rebuild_outputs: no import, nothing written to the database): returns (ok, output text)."""
     buf = io.StringIO()
     db_path, html_path = wow_install.out_files(variant)
     try:
-        _payload, lines = outputs.rebuild_outputs(db_path, html_path, wow_install.history_dir(variant), wow_install.icons_dir(variant), top5=top5_tiles)
+        _payload, lines = outputs.rebuild_outputs(db_path, html_path, wow_install.history_dir(variant), wow_install.icons_dir(variant), top5=top5_tiles, rules=rules)
         buf.write("".join(line + "\n" for line in lines))
         return True, buf.getvalue()
     except SystemExit as e:                  # a database newer than this program
@@ -83,6 +109,58 @@ def rebuild_page(variant, top5_tiles):
         return False, t("log_parse_unexpected", error=f"{type(e).__name__}: {e}") + "\n"
 
 
+def delete_chars(variant, keys, top5_tiles=None, rules=None):
+    """Deletes characters from the database of this game version, for good, and returns (ok, output text, the keys that were deleted). In this order: the
+    database is opened (db_schema.init_db: the copy of the day, a migration if it is old, a newer one stops here), the keys it does not have are left out,
+    a copy is made (db_backup.delete_backup), the scans are deleted in one transaction (importer.delete_chars), the history pages of the characters are
+    removed and the page is written again with `top5_tiles` and `rules`. `ok` is False only when nothing was deleted (no database, a damaged or too
+    new one, no copy possible, an error while deleting: all of them have changed nothing); a problem after the deleting is a warning in the text, the
+    characters are gone and the keys come back. The caller puts the keys on the blacklist (config.char_blacklist) BEFORE it calls this and takes them off
+    again when `ok` is False: a deleted character would come back with the next import otherwise. Runs in a thread; no widget is touched."""
+    buf = io.StringIO()
+    db_path, html_path = wow_install.out_files(variant)
+    if not db_path.is_file():
+        return False, t("del_err_no_db") + "\n", []
+    wanted = list(dict.fromkeys(key for key in keys or () if isinstance(key, str) and key))
+    try:
+        with contextlib.redirect_stdout(buf):
+            conn = db_schema.init_db(db_path)
+        try:
+            known = {row[0] for row in conn.execute("SELECT DISTINCT char_key FROM scans")}
+            present = [key for key in wanted if key in known]
+            if not present:
+                buf.write(t("del_note_none") + "\n")
+                return True, buf.getvalue(), []
+            try:
+                copy = db_backup.delete_backup(conn, db_path)
+            except db_backup.DamagedDatabase as exc:
+                found = "; ".join(exc.problems)
+                return False, buf.getvalue() + t("parse_err_db_damaged", folder=db_backup.daily_dir(db_path).parent, found=found) + "\n", []
+            except db_backup.BackupError as exc:
+                return False, buf.getvalue() + t("parse_err_backup_failed", error=exc) + "\n", []
+            buf.write(t("parse_out_backup", path=copy) + "\n")
+            scans = importer.delete_chars(conn, present)
+        finally:
+            conn.close()
+    except SystemExit as exc:                    # a database newer than this program
+        return False, buf.getvalue() + f"{exc.code}\n", []
+    except Exception as exc:  # unexpected: show loudly, never swallow (the deleting was one transaction: nothing changed)
+        return False, buf.getvalue() + t("log_parse_unexpected", error=f"{type(exc).__name__}: {exc}") + "\n", []
+    buf.write(t("del_out_deleted", count=len(present), scans=scans, keys=", ".join(present)) + "\n")
+    history_dir = wow_install.history_dir(variant)
+    for key in present:
+        try:
+            stat_history.remove_page(history_dir, key)
+        except OSError as exc:
+            buf.write(t("del_warn_page_remove", key=key, error=exc) + "\n")
+    try:
+        _payload, lines = outputs.rebuild_outputs(db_path, html_path, history_dir, wow_install.icons_dir(variant), top5=top5_tiles, rules=rules)
+        buf.write("".join(line + "\n" for line in lines))
+    except (SystemExit, Exception) as exc:
+        buf.write(t("del_warn_page", error=exc.code if isinstance(exc, SystemExit) else f"{type(exc).__name__}: {exc}") + "\n")
+    return True, buf.getvalue(), present
+
+
 def write_snapshot(view, variant):
     """Writes the snapshot of the stats page of `view` (what the window shows now) for this game version and returns its path."""
     path = wow_install.snapshot_file(variant)
@@ -90,13 +168,19 @@ def write_snapshot(view, variant):
     return path
 
 
-def run_export():
-    """Runs export_xlsx.export() and returns (ok, output_text, xlsx_path)."""
+def run_export(rules_by_variant=None):
+    """Runs export_xlsx.export() and returns (ok, output_text, xlsx_path). rules_by_variant: {game version: rules} (config.char_rules): the characters
+    the rules of a version keep out of the Excel file (target "excel") are left out of the sheet of that version, found by the name of its database
+    file (wow_install.out_files); a database without rules keeps every character."""
     buf = io.StringIO()
     out = export_xlsx.default_out()
     ok = True
+    rules_by_db = {wow_install.out_files(variant)[0].name: rules for variant, rules in (rules_by_variant or {}).items() if rules}
+
+    def hidden(db_path, chars):
+        return char_rules.hidden_keys(chars, rules_by_db.get(Path(db_path).name), "excel")
     try:
-        buf.write("\n".join(export_xlsx.export(out)) + "\n")
+        buf.write("\n".join(export_xlsx.export(out, hidden=hidden if rules_by_db else None)) + "\n")
     except SystemExit as e:
         ok = False
         buf.write(str(e.code) + "\n")
@@ -106,14 +190,15 @@ def run_export():
     return ok, buf.getvalue(), out
 
 
-def import_saved_variables(sv_file, root, variant, read_icons, top5=None):
+def import_saved_variables(sv_file, root, variant, read_icons, top5=None, rules=None, skip=None):
     """Reads the SavedVariables file of one game version into its database and pages: returns (ok, output).
     The icons already in data/ are always shown; the game files are read only with the option on (and a known product). top5: the tiles of the
-    Top 5 block (the settings of the window)."""
+    Top 5 block (the settings of the window). rules: the rules of this game version that keep characters off the stats page (the settings of the window).
+    skip: the keys of the characters of this game version that were deleted on purpose and are not read again (the settings of the window)."""
     db_path, html_path = wow_install.out_files(variant)
     product = wow_install.VARIANT_PRODUCT.get(variant) if read_icons else None
     return run_parser(sv_file, db_path, html_path, wow_install.history_dir(variant),
-                      wow_install.icons_dir(variant), root if product else None, product, top5=top5)
+                      wow_install.icons_dir(variant), root if product else None, product, top5=top5, rules=rules, skip=skip)
 
 
 def other_accounts(root, variant, account):

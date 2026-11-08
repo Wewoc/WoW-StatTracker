@@ -3,7 +3,8 @@
 # Copyright (C) 2026 Wewoc (github.com/wewoc)
 # importer.py
 # StatTracker - reads the scans out of the parsed SavedVariables table (read_scan, scans_by_char), stores them
-# (import_data, refresh_numbers) and says what the import found (import_notes). DATA_VERSION and check_data_version
+# (import_data, refresh_numbers; import_data leaves out the characters of the blacklist), deletes the scans of characters
+# on request (delete_chars) and says what the import found (import_notes). DATA_VERSION and check_data_version
 # are the contract with the addon. Needs db_schema, stat_values and i18n.
 # Moved out of stat_parser.py; the rules are unchanged.
 
@@ -215,15 +216,18 @@ def store_details(conn, scan_id, scan):
         [(scan_id, *(row[c] for c in db_schema.REP_COLUMNS)) for row in scan["rep"]])
 
 
-def import_data(conn, db):
+def import_data(conn, db, skip=()):
     """Stores the scans of the file: the newest of every character and the older ones in `history`. Returns
     (new, skipped, changed): the number of new scans, the number already in the database, and the keys of the
-    characters that got a new scan."""
+    characters that got a new scan. `skip`: the keys of characters that were deleted on purpose (the blacklist, config.char_blacklist):
+    their scans in the file are checked like all others, but nothing of them is stored."""
     meta = db.get("meta")
     chars = db.get("chars")
     if not isinstance(meta, dict) or not isinstance(chars, dict) or not chars:
         sys.exit(t("parse_err_no_chars"))
     by_char = scans_by_char(db)
+    skip = set(skip or ())
+    by_char = {key: scans for key, scans in by_char.items() if key not in skip}
 
     for sid, m in meta.items():
         conn.execute("INSERT INTO stat_defs(stat_id,name,category) VALUES(?,?,?) "
@@ -281,6 +285,33 @@ def import_data(conn, db):
     return new, skipped, changed
 
 
+def skipped_keys(db, skip):
+    """The keys of the characters in the file that the blacklist `skip` keeps from being stored (sorted), for the line the import prints."""
+    chars = db.get("chars") if isinstance(db, dict) else None
+    return sorted(key for key in chars if key in set(skip or ())) if isinstance(chars, dict) else []
+
+
+def delete_chars(conn, keys):
+    """Deletes every stored scan of these characters (their statistic values, equipment and reputation with them) in one transaction: all of it or, on
+    an error, none. Returns the number of scans deleted. The names of the statistics and factions (stat_defs, rep_defs) stay, they belong to no character.
+    Nothing is written for a key the database does not have. The caller makes a copy of the database first and keeps the keys from coming back
+    (db_backup.delete_backup, the blacklist in config.char_blacklist)."""
+    keys = list(dict.fromkeys(key for key in keys or () if isinstance(key, str)))
+    if not keys:
+        return 0
+    deleted = 0
+    try:
+        for key in keys:
+            for table in ("stat_values", "scan_gear", "scan_reputation"):
+                conn.execute(f"DELETE FROM {table} WHERE scan_id IN (SELECT scan_id FROM scans WHERE char_key = ?)", (key,))
+            deleted += conn.execute("DELETE FROM scans WHERE char_key = ?", (key,)).rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return deleted
+
+
 def refresh_numbers(conn):
     """Recomputes value_num of all stored statistic values by the current rules
     (corrects old data after a rule change in stat_values.to_number). Played time (stat_id < 0)
@@ -333,13 +364,14 @@ def _file_scan_times(db):
     return found
 
 
-def import_notes(db, before, new, now=None):
+def import_notes(db, before, new, now=None, skip=()):
     """Lines about the age of the data after an import: how old the newest scan is when nothing new
     came, or that scans may be missing when days lie between the previous scan of a character in the
     database (`before`, from last_scan_times) and the oldest scan of the file that is newer. A file that reaches
     back to the previous scan or beyond has nothing missing in between. Anything odd in the data is
-    left to import_data to report: no note then."""
-    times = _file_scan_times(db)
+    left to import_data to report: no note then. `skip`: the blacklist: its characters are not looked at."""
+    skip = set(skip or ())
+    times = {key: at for key, at in _file_scan_times(db).items() if key not in skip}
     if not times:
         return []
     if new == 0:

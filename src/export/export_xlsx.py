@@ -7,6 +7,8 @@
 # One sheet per game version (wow_stats.db -> "Retail", wow_stats_anniversary.db -> "Anniversary" ...).
 # Per sheet: one row per statistic, one column per character (newest scan each).
 # Statistics that are empty for all characters ('--') are left out.
+# Characters that the rules in the settings keep out of the Excel file (config.char_rules, target "excel") are left out too: export() gets them as
+# the function `hidden` (actions.run_export makes it); the command line below knows no settings and exports everything.
 #
 # Units (internal codes -> translated labels in the "Unit" column):
 #   num   = raw value
@@ -50,17 +52,21 @@ def find_dbs(folder=None):
 
 
 def load_db(db_path):
-    """Returns (chars, stats): chars = list of dicts, stats = list (id, name, cat, {key: (text, num)})."""
+    """Returns (chars, stats): chars = list of dicts, stats = list (id, name, cat, {key: (text, num)}). A character has the fields the rules that keep
+    characters out of an output read ("key", "level", "faction", "class_file", "race_file"; None where an old database has no column)."""
     conn = sqlite3.connect(db_path)
     try:
         db_schema.check_schema(conn, db_path)      # a database from a newer program is not read
-        scans = conn.execute("""
-            SELECT s.scan_id, s.char_key, s.scanned_at, s.class, s.level
+        have = {row[1] for row in conn.execute("PRAGMA table_info(scans)")}       # a database before schema 2 has no class_file and race_file
+        extra = ", ".join(f"s.{column}" if column in have else "NULL" for column in ("faction", "class_file", "race_file"))
+        scans = conn.execute(f"""
+            SELECT s.scan_id, s.char_key, s.scanned_at, s.class, s.level, {extra}
             FROM scans s
             WHERE s.scan_id = (SELECT scan_id FROM scans WHERE char_key = s.char_key
                                ORDER BY scanned_at DESC, scan_id DESC LIMIT 1)
             ORDER BY s.char_key""").fetchall()
-        chars = [{"scan_id": r[0], "key": r[1], "scanned_at": r[2], "class": r[3], "level": r[4]} for r in scans]
+        chars = [{"scan_id": r[0], "key": r[1], "scanned_at": r[2], "class": r[3], "level": r[4],
+                  "faction": r[5], "class_file": r[6], "race_file": r[7]} for r in scans]
         by_scan = {c["scan_id"]: c["key"] for c in chars}
         defs = {r[0]: [r[0], r[1], r[2], {}] for r in conn.execute("SELECT stat_id,name,category FROM stat_defs")}
         for sid, (name, cat) in stat_values.played_labels().items():
@@ -127,8 +133,11 @@ def keep_as_text(ws):
                 cell.data_type = "s"
 
 
-def export(out_path=None, folder=None):
-    """Writes the workbook. Returns a list of info lines. Raises SystemExit(str) on errors."""
+def export(out_path=None, folder=None, hidden=None):
+    """Writes the workbook. Returns a list of info lines. Raises SystemExit(str) on errors.
+    `hidden`: a function (path of the database, its characters as load_db gives them) -> the keys of the characters to leave out of the
+    workbook (actions.run_export makes it from config.char_rules; this module knows no rules). A sheet whose characters are all left out is
+    skipped; the lines say how many were left out."""
     out_path = Path(out_path) if out_path else default_out()
     try:
         from openpyxl import Workbook
@@ -150,11 +159,21 @@ def export(out_path=None, folder=None):
     wb = Workbook()
     wb.remove(wb.active)
     info = []
+    any_hidden = False
     for db in dbs:
         chars, stats = load_db(db)
         if not chars:
             info.append(t("xl_skip_no_scans", name=db.name))
             continue
+        left_out = 0
+        if hidden:
+            skip = set(hidden(db, chars))
+            shown = [c for c in chars if c["key"] not in skip]
+            left_out, chars = len(chars) - len(shown), shown
+            any_hidden = any_hidden or left_out > 0
+            if not chars:
+                info.append(t("xl_skip_hidden", name=db.name))
+                continue
         rows = build_rows(chars, stats)
         ws = wb.create_sheet(sheet_title(db)[:31])
 
@@ -189,9 +208,11 @@ def export(out_path=None, folder=None):
         ws.freeze_panes = "E2"
         ws.auto_filter.ref = f"A1:{get_column_letter(4 + len(chars))}{max(ws.max_row, 2)}"
         info.append(t("xl_sheet_info", sheet=ws.title, chars=len(chars), stats=len(rows), db=db.name))
+        if left_out:
+            info.append(t("xl_hidden_info", sheet=ws.title, count=left_out))
 
     if not wb.sheetnames:
-        sys.exit(t("xl_err_no_scans"))
+        sys.exit(t("xl_err_all_hidden") if any_hidden else t("xl_err_no_scans"))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         wb.save(out_path)

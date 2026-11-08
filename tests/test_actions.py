@@ -128,9 +128,51 @@ def test_the_import_hands_the_tiles_of_the_top_5_on_as_an_argument(instance, fak
     monkeypatch.setattr(wow_install, "WOW_CANDIDATES", ())
     tiles = [{"stat": 328, "agg": "sum", "by": "class", "value": "MAGE"}]
     actions.import_saved_variables("a.lua", fake_wow, "_retail_", True, tiles)
-    assert seen[-1][1] == {"top5": tiles}
+    assert seen[-1][1] == {"top5": tiles, "rules": None, "skip": None}
     actions.import_saved_variables("a.lua", fake_wow, "_retail_", True)
-    assert seen[-1][1] == {"top5": None}
+    assert seen[-1][1] == {"top5": None, "rules": None, "skip": None}
+
+
+def test_the_import_hands_the_rules_for_the_characters_kept_off_the_page_on(instance, fake_wow, monkeypatch):
+    seen = []
+    monkeypatch.setattr(actions, "run_parser", lambda *a, **k: seen.append(k) or (True, ""))
+    monkeypatch.setattr(wow_install, "WOW_CANDIDATES", ())
+    rules = [{"type": "char", "value": "Zoë-Realm"}]
+    actions.import_saved_variables("a.lua", fake_wow, "_retail_", True, None, rules)
+    assert seen[-1] == {"top5": None, "rules": rules, "skip": None}
+
+
+def test_the_import_hands_the_blacklist_of_the_game_version_on(instance, fake_wow, monkeypatch):
+    seen = []
+    monkeypatch.setattr(actions, "run_parser", lambda *a, **k: seen.append(k) or (True, ""))
+    monkeypatch.setattr(wow_install, "WOW_CANDIDATES", ())
+    actions.import_saved_variables("a.lua", fake_wow, "_retail_", True, None, None, ["Zoë-Realm"])
+    assert seen[-1] == {"top5": None, "rules": None, "skip": ["Zoë-Realm"]}
+
+
+def test_the_parser_gets_the_skip_argument_only_when_there_are_deleted_characters(monkeypatch, tmp_path):
+    import json
+    given = []
+    monkeypatch.setattr(actions.stat_parser, "main", lambda argv: given.append(argv))
+    actions.run_parser("a.lua", tmp_path / "x.db", tmp_path / "x.html")
+    actions.run_parser("a.lua", tmp_path / "x.db", tmp_path / "x.html", skip=[])
+    assert all("--skip" not in argv for argv in given)
+    actions.run_parser("a.lua", tmp_path / "x.db", tmp_path / "x.html", skip=["Zoë-Realm", "B-Two"])
+    argv = given[-1]
+    assert json.loads(argv[argv.index("--skip") + 1]) == ["Zoë-Realm", "B-Two"] and "--hide" not in argv
+
+
+def test_the_parser_gets_the_hide_argument_only_when_there_are_rules(monkeypatch, tmp_path):
+    import json
+    given = []
+    monkeypatch.setattr(actions.stat_parser, "main", lambda argv: given.append(argv))
+    actions.run_parser("a.lua", tmp_path / "x.db", tmp_path / "x.html")
+    actions.run_parser("a.lua", tmp_path / "x.db", tmp_path / "x.html", rules=[])
+    assert all("--hide" not in argv for argv in given)
+    rules = [{"type": "char", "value": "Zoë-Realm", "for": ["page"]}]
+    actions.run_parser("a.lua", tmp_path / "x.db", tmp_path / "x.html", rules=rules)
+    argv = given[-1]
+    assert json.loads(argv[argv.index("--hide") + 1]) == rules and "--top5" not in argv
 
 
 def test_the_parser_gets_the_argument_only_when_there_are_tiles(monkeypatch, tmp_path):
@@ -168,6 +210,51 @@ def test_the_choices_of_the_tiles_come_from_the_database(instance):
     labels = dict(found["stats"])
     assert labels[2] == "Gold earned (Wealth)" and -1 in labels and set(found["values"]) == {"char", "class", "race", "faction", "realm"}
     assert found["values"]["char"] == [("Alice-Realm", "Alice-Realm")] and found["values"]["faction"] == [("Alliance", "Alliance")]
+
+
+def test_the_choices_for_the_rules_need_a_database(instance):
+    assert actions.ignore_choices("_retail_") is None
+
+
+def test_the_choices_for_the_rules_come_from_the_database_and_know_no_rule(instance):
+    from core import config
+    _database(instance)
+    found = actions.ignore_choices("_retail_")
+    assert set(found["values"]) == {"char", "class", "race", "faction", "realm"}
+    assert found["values"]["char"] == [("Alice-Realm", "Alice-Realm")] and found["values"]["faction"] == [("Alliance", "Alliance")]
+    assert [(c["key"], c["level"], c["faction"]) for c in found["chars"]] == [("Alice-Realm", 80, "Alliance")]
+    cfg, _ = config.load()
+    cfg["char_rules"] = {"_retail_": [{"type": "char", "value": "Alice-Realm"}]}
+    config.save(cfg)
+    assert actions.ignore_choices("_retail_") == found                               # a rule never takes an entry out of its own list
+
+
+def test_a_database_newer_than_the_program_stops_the_choices_for_the_rules_too(instance):
+    import sqlite3
+    db, _page = _database(instance)
+    conn = sqlite3.connect(db)
+    conn.execute("PRAGMA user_version = 999")
+    conn.commit()
+    conn.close()
+    with pytest.raises(SystemExit):
+        actions.ignore_choices("_retail_")
+
+
+def test_the_choices_leave_out_a_character_the_rules_keep_off_the_page(instance):
+    _database(instance)
+    found = actions.tile_choices("_retail_", [{"type": "char", "value": "Alice-Realm"}])
+    assert found["values"]["char"] == [] and found["stats"] == []
+    assert actions.tile_choices("_retail_", [{"type": "char", "value": "Bob-Realm"}])["values"]["char"] == [("Alice-Realm", "Alice-Realm")]
+    assert actions.tile_choices("_retail_", [])["values"]["char"] == [("Alice-Realm", "Alice-Realm")]
+
+
+def test_the_page_is_written_again_without_the_characters_the_rules_keep_off_it(instance):
+    _db, page = _database(instance)
+    assert "Alice-Realm" in page.read_text(encoding="utf-8")
+    ok, _out = actions.rebuild_page("_retail_", [], [{"type": "char", "value": "Alice-Realm"}])
+    assert ok is True and "Alice-Realm" not in page.read_text(encoding="utf-8")
+    ok, _out = actions.rebuild_page("_retail_", [], [])                                # taking the rule away brings the character back
+    assert ok is True and "Alice-Realm" in page.read_text(encoding="utf-8")
 
 
 def test_a_database_newer_than_the_program_stops_the_choices_with_the_usual_message(instance):

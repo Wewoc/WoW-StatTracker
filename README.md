@@ -10,6 +10,7 @@ StatTracker reads the **game statistics** of your World of Warcraft characters t
 - **Top 5**: five tiles at the top of the page, each one value you chose (a statistic, summed up for all characters, a class, a race, a faction, a realm or one character)
 - Rates per hour played (kills, deaths, gold) for each character and as a total; if a number cannot be worked out, the page says why
 - Groups your characters by class, race, faction or realm
+- **Characters** tab: leave characters out of the page, the history pages and the Excel file (by class, race, faction, realm, level or one by one) without losing anything, or delete a character from the database for good (with a copy first)
 - A history page for every character with at least two scans: pick statistics and see them as lines over your scans
 - Works per game version; by default only **Retail** is enabled
 
@@ -44,7 +45,7 @@ The slots show the item pictures of the game when StatTracker has them. While re
 
 ## The window
 
-The window has three tabs. **Settings** holds the game folder, game version and account, the options (game versions, update check, item pictures, the *Design*), the buttons and the log. **Page** shows the stats page inside the window; *Reload* reads the file again, and *Open in browser* opens a **snapshot** of what the window shows now - the ticked characters, filters, sorting, grouping and added statistics - as the file `stats_snapshot.html` next to the stats page (it is written again at every click). In the browser the controls of the snapshot are locked, because a page there has no connection to the program: it is a state, not a live copy. **Top 5** sets the tiles (below).
+The window has four tabs. **Settings** holds the game folder, game version and account, the options (game versions, update check, item pictures, the *Design*), the buttons and the log. **Page** shows the stats page inside the window; *Reload* reads the file again, and *Open in browser* opens a **snapshot** of what the window shows now - the ticked characters, filters, sorting, grouping and added statistics - as the file `stats_snapshot.html` next to the stats page (it is written again at every click). In the browser the controls of the snapshot are locked, because a page there has no connection to the program: it is a state, not a live copy. **Top 5** sets the tiles (below). **Characters** leaves characters out or deletes them (below).
 
 ![The program window, Settings tab: game folder, version and account, the options, the buttons and the log.](docs/images/app-en.png)
 
@@ -57,6 +58,14 @@ Up to five tiles stand at the very top of the stats page. Each shows one value f
 Set them in the **Top 5** tab: type a part of the name of a statistic and pick it from the list that opens under the box, choose the function and whom it is for (a click into the last box opens its list), then *Save and write the page again*. The setting is for all game versions; the page of the chosen game version is written again at once, the others at the next read. A row without a statistic stays empty.
 
 ![The Top 5 tab: five rows with statistic, function, scope and choice, and the button to save and write the page again.](docs/images/top5-en.png)
+
+## Characters
+
+The **Characters** tab has a block for every enabled game version (choose the version at the top); a version without data shows a note instead.
+
+**Ignore** keeps characters off the outputs and loses nothing: the database and the addon keep every scan, and the rules are applied again each time the page, the history pages or the Excel file are made. In the form pick a *type* (class, race, faction, realm, one character, or *level under* a number), the *value* from the list and for which outputs it counts (*Page*, which includes the history pages, and/or *Excel*), then *Add to the list*. The list shows each rule with its targets and how many characters it hits; "unknown" is a value too (characters scanned before class and race were recorded). Several rules work together: a character is left out as soon as one of them hits it. For a level the newest scan counts, so a character that reaches the level appears with its whole history. Changes are a draft ("Changed, not applied yet") until you press *Apply*, which saves the list in the settings and writes the page and the history pages of that game version again (the history page of a character that is left out is deleted and made again when the rule goes). The pages of the other game versions follow at the next read and the Excel file at the next export. Every game version has its own list.
+
+**Delete** removes a character from the database of a game version for good, for example one you deleted in game. Pick the character, add it to the delete list and press *Apply*: a question names the characters, and with *No* nothing happens. With *Yes* StatTracker first copies the database into `data/backups/delete/`, then deletes all scans, equipment and reputation of those characters in one step (all or nothing) and writes the pages again. The deleted characters go on a **blacklist**, shown below the list: the addon keeps a character in its file even after you delete it in game, so without the blacklist the next read would bring it back. If you take an entry off the blacklist (tick it, *Remove ticked from the blacklist*), the next read takes that character in again as far as the file still holds it; an entry for a character you deleted in game can simply stay. To undo a deleting afterwards, restore the copy as described under "Where is my data?".
 
 ## Game versions
 
@@ -88,12 +97,13 @@ At start (switch off in the *Settings* tab) StatTracker asks GitHub whether a ne
 
 ## Where is my data?
 
-Next to the program, in the `data` folder: `config.json`, `wow_stats*.db`, `stats*.html`, the `history` folder (`history_<version>` for the other game versions; it can be made again from the database), the `icons` folder (the item pictures read from the game, `icons_<version>` for the other game versions; missing ones are read again), the `webview` folder (what the browser engine of the window keeps; nothing you need), `stattracker.xlsx` and the `backups` folder. Back that folder up if you care about the history.
+Next to the program, in the `data` folder: `config.json` (the settings, also the lists of the *Characters* tab), `wow_stats*.db`, `stats*.html`, the `history` folder (`history_<version>` for the other game versions; it can be made again from the database), the `icons` folder (the item pictures read from the game, `icons_<version>` for the other game versions; missing ones are read again), the `webview` folder (what the browser engine of the window keeps; nothing you need), `stattracker.xlsx` and the `backups` folder. Back that folder up if you care about the history.
 
 Before an import writes to an existing database, StatTracker copies it into `data/backups/`:
 
 - `daily/` holds one copy per day for the last 7 days; older ones are deleted automatically.
 - `migration/` holds one copy before every database upgrade (the file name says which version it leads to). These are never deleted automatically; delete them by hand once you no longer need them.
+- `delete/` holds one copy before characters are deleted from the database in the *Characters* tab. These are never deleted automatically either.
 
 To restore a copy: close StatTracker, copy a `.bak` file out of the folder, rename it to `wow_stats.db` (`wow_stats_<version>.db` for the other game versions) and put it into `data`. The copies lie on the same disk as the database: they protect against a faulty import or upgrade, not against a failing disk, so keep a backup of `data` somewhere else as well. If a copy cannot be written, the import stops and changes nothing. Before a copy is made, the database gets a quick integrity check; if it fails, the import stops as well, so a damaged database is not copied over your good copies - restore one as described above.
 

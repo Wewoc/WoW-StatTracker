@@ -7,6 +7,7 @@
 #
 #   <folder of the db>/backups/daily/      one copy per calendar day, the newest KEEP_DAILY are kept
 #   <folder of the db>/backups/migration/  one copy before a schema migration, never deleted here
+#   <folder of the db>/backups/delete/     one copy before characters are deleted from the database, never deleted here
 #
 # A copy is written through sqlite3's backup API into a .part file and renamed when complete,
 # so a file with the final name is always a whole database. Every failure to write a copy is a
@@ -25,6 +26,7 @@ KEEP_DAILY = 7
 BACKUP_DIRNAME = "backups"
 DAILY_DIRNAME = "daily"
 MIGRATION_DIRNAME = "migration"
+DELETE_DIRNAME = "delete"
 SUFFIX = ".bak"
 PART_SUFFIX = ".part"
 
@@ -58,6 +60,10 @@ def daily_dir(db_path):
 
 def migration_dir(db_path):
     return Path(db_path).parent / BACKUP_DIRNAME / MIGRATION_DIRNAME
+
+
+def delete_dir(db_path):
+    return Path(db_path).parent / BACKUP_DIRNAME / DELETE_DIRNAME
 
 
 def _remove_leftovers(folder, stem):
@@ -116,6 +122,21 @@ def migration_backup(conn, db_path, target_version, now=None):
     _remove_leftovers(folder, path.stem)
     stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
     target = folder / f"{path.stem}.{stamp}.pre-v{target_version}{SUFFIX}"
+    if target.exists():                 # same second: this is the copy of that very state
+        return target
+    _require_intact(conn, path)
+    _write_copy(conn, target)
+    return target
+
+
+def delete_backup(conn, db_path, now=None):
+    """The copy before characters are deleted: <stem>.YYYYMMDD-HHMMSS.pre-delete.bak in backups/delete/. Always written, never rotated. Returns its
+    path. A BackupError (also a damaged database: DamagedDatabase) means nothing may be deleted."""
+    path = Path(db_path)
+    folder = delete_dir(path)
+    _remove_leftovers(folder, path.stem)
+    stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    target = folder / f"{path.stem}.{stamp}.pre-delete{SUFFIX}"
     if target.exists():                 # same second: this is the copy of that very state
         return target
     _require_intact(conn, path)

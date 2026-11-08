@@ -8,7 +8,9 @@
 # page_payload.build_payload()["stats"]); the calculation is the one of a statistic added by hand to the Groups block (group_rules.extra_figure:
 # only characters with a number count, "n of m", no value instead of an invented number), so both blocks agree. The played times (negative ids,
 # seconds) are shown in hours. For the group "unknown" (a character without class or race file name, or without faction) the value is "".
-# The characters of a tile come from ONE place, `members`: a later filter ("hide", "ignore", see ROADMAP.md) is added there and no tile changes.
+# The characters of a tile come from ONE place, `members` (char_rules uses it too, to name the characters of a rule). The filter that keeps characters
+# out of the outputs ("hide", "ignore", rules/char_rules.py) does not sit here: it is applied before, when the data of the page is made
+# (page_payload.build_payload), so no block sees a hidden character and no tile changes.
 # Pure calculation, no I/O. Needs group_rules.
 
 from rules import group_rules

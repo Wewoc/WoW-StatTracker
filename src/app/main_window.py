@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Wewoc (github.com/wewoc)
 # main_window.py
-# StatTracker - the main window (Qt): two tabs, a status bar, nothing else. "Settings" holds the game folder, version and
+# StatTracker - the main window (Qt): four tabs, a status bar, nothing else. "Settings" holds the game folder, version and
 # account, the actions (install / uninstall the addon, read the data, open the page, Excel), the options, the design and
-# the log; "Page" shows the stats page in the window (QWebEngineView). The status bar shows what is going on and the state
+# the log; "Page" shows the stats page in the window (QWebEngineView); "Top 5" sets the tiles at the top of the page; "Characters" sets which
+# characters the page, the history pages and the Excel file leave out (the rules are in rules/char_rules.py). The status bar shows what is going on and the state
 # of the game folder, the data and the addon. The window only shows: what it does is in actions.py (the slow parts run in
 # a thread, the result comes back to the window through the `dispatch` signal). Replaces the Tk window.
 
@@ -21,9 +22,9 @@ from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QCompleter, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
-                             QLabel, QLineEdit, QMainWindow, QPlainTextEdit, QPushButton, QStackedWidget, QTabWidget,
-                             QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QCompleter, QFileDialog, QGridLayout, QGroupBox,
+                             QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
+                             QStackedWidget, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
 
 from app import actions, dialogs, page_bridge, qt_style
 from app.suggest_list import ShowAllOnClick, SuggestionDelegate
@@ -31,8 +32,10 @@ from app.qwebengine_hardening import harden
 from core import app_info, config, i18n, paths, theme, updater
 from core.i18n import t
 from game import wow_install
+from rules import char_rules
+from store import db_backup
 
-TAB_SETTINGS, TAB_PAGE, TAB_TOP5 = 0, 1, 2
+TAB_SETTINGS, TAB_PAGE, TAB_TOP5, TAB_CHARS = 0, 1, 2, 3
 LOCAL_SCHEMES = ("file", "about", "data", "blob", "qrc")
 
 
@@ -69,6 +72,10 @@ class MainWindow(QMainWindow):
         self._page_url = ""
         self._tile_choices = None        # what the Top 5 tab offers (actions.tile_choices) and for which data it was read
         self._tile_key = None
+        self._chars_key = None           # for which data, game versions and language the Characters tab was built (None: build it again)
+        self._chars_buttons = []         # the apply buttons of the blocks of the Characters tab (they are also in action_buttons and go with the blocks)
+        self._chars_drafts = {}          # {game version: draft of its block "Ignore"} that the next build of the blocks keeps (after deleting characters)
+        self._chars_notes = {}           # {game version: text} that the next build of the blocks shows in its block "Delete"
         self.dispatch.connect(lambda fn: fn())
 
         self.setMinimumSize(920, 640)
@@ -96,6 +103,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self._build_settings_tab(), "")
         self.tabs.addTab(self._build_page_tab(), "")
         self.tabs.addTab(self._build_top5_tab(), "")
+        self.tabs.addTab(self._build_chars_tab(), "")
         self.tabs.currentChanged.connect(self._tab_changed)
         self.lbl_status = QLabel()
         self.lbl_status.setObjectName("status")
@@ -350,8 +358,10 @@ class MainWindow(QMainWindow):
         self.tabs.setTabText(TAB_SETTINGS, t("tab_settings"))
         self.tabs.setTabText(TAB_TOP5, t("tab_top5"))
         self.tabs.setTabText(TAB_PAGE, t("tab_page"))
+        self.tabs.setTabText(TAB_CHARS, t("tab_chars"))
         self._label_tile_combos()
         self._tile_key = None                      # the names of the choices are in the language of the program: read them again when the tab is shown
+        self._chars_key = None
         self._tab_changed(self.tabs.currentIndex())
         repo = app_info.REPO_URL
         self.lbl_footer.setText(
@@ -459,7 +469,11 @@ class MainWindow(QMainWindow):
             self._tile_scope_changed(number, keep=tile["value"])
 
     def _tab_changed(self, index):
-        """Reads what the Top 5 tab offers (in a thread) the first time it is shown and whenever the data, the game version or the language changed."""
+        """Reads what the Top 5 tab or the Characters tab offers (in a thread) the first time it is shown and whenever the data, the game version or the
+        language changed."""
+        if index == TAB_CHARS:
+            self._chars_load()
+            return
         if index != TAB_TOP5 or self._busy:
             return
         _root, variant = self.root_and_variant()
@@ -471,9 +485,11 @@ class MainWindow(QMainWindow):
         if key == self._tile_key:
             return
 
+        rules = list(self.cfg["char_rules"].get(variant, []))
+
         def work():
             try:
-                return actions.tile_choices(variant)
+                return actions.tile_choices(variant, rules)
             except (SystemExit, Exception) as exc:                        # a database newer than this program, or a broken one: say it, do not hang
                 return exc
         self.run_in_thread(work, lambda result: self._tile_choices_loaded(result, key), t("status_busy_choices"))
@@ -544,17 +560,549 @@ class MainWindow(QMainWindow):
         if not variant or not wow_install.out_files(variant)[0].is_file():
             return
         saved = list(self.cfg["top5"])
-        self.run_in_thread(lambda: actions.rebuild_page(variant, saved), self._page_rebuilt, t("status_busy_top5"))
+        rules = list(self.cfg["char_rules"].get(variant, []))
+        self.run_in_thread(lambda: actions.rebuild_page(variant, saved, rules), self._page_rebuilt, t("status_busy_top5"))
 
-    def _page_rebuilt(self, result):
+    def _page_rebuilt(self, result, variant=None):
+        """The page of `variant` (None: the chosen game version) was written again: the lines it printed, then the page in the window is loaded again."""
         ok, out = result
         for line in out.strip().splitlines():
             self.write(line, "err" if (not ok or line.startswith(("FEHLER", "WARNUNG", "ERROR", "WARNING"))) else None)
         if not ok:
             self.write(t("log_top5_page_fail"), "err")
             return
-        self.write(t("log_top5_page", path=self.html_path()), "ok")
+        path = wow_install.out_files(variant)[1] if variant else self.html_path()
+        self.write(t("log_top5_page", path=path), "ok")
         self.load_page(force=True)
+
+    # ----------------------------------------------------------------- the Characters tab
+    CHAR_KINDS = (("class", "html_groups_by_class"), ("race", "html_groups_by_race"), ("faction", "html_groups_by_faction"),
+                  ("realm", "html_groups_by_realm"), ("char", "top5_scope_char"), (char_rules.LEVEL_BELOW, "chars_kind_level"))
+
+    def _build_chars_tab(self):
+        """The Characters tab: a choice of the game version and, below it, the block "Ignore" of that version (one per enabled game version, built when the
+        tab is shown, see _chars_loaded). What a rule keeps out, and how a list of rules changes, is rules/char_rules.py: the window shows and asks."""
+        tab = QWidget()
+        lay = QVBoxLayout(tab)
+        lay.setContentsMargins(12, 10, 12, 8)
+        intro = self._text(QLabel(), "setText", "chars_intro")
+        intro.setObjectName("hint")
+        intro.setWordWrap(True)
+        lay.addWidget(intro)
+        row = QHBoxLayout()
+        row.addWidget(self._text(QLabel(), "setText", "chars_variant"))
+        self.cmb_chars_variant = QComboBox()
+        self.cmb_chars_variant.currentIndexChanged.connect(self._chars_show)
+        row.addWidget(self.cmb_chars_variant)
+        row.addStretch()
+        lay.addLayout(row)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        self.chars_stack = QStackedWidget()
+        scroll.setWidget(self.chars_stack)
+        lay.addWidget(scroll, 1)
+        self.char_tiles = []
+        return tab
+
+    def _chars_show(self, index):
+        """Shows the block of the game version that is chosen (the other blocks keep what was set in them)."""
+        if 0 <= index < self.chars_stack.count():
+            self.chars_stack.setCurrentIndex(index)
+
+    def _chars_variants(self):
+        """The enabled game versions, Retail first."""
+        return sorted(self.cfg["enabled_variants"], key=lambda name: (name != wow_install.DEFAULT_VARIANT, name))
+
+    def _chars_load(self):
+        """Reads (in a thread) what the blocks offer, the first time the tab is shown and whenever the data, the game versions or the language changed."""
+        if self._busy:
+            return
+        variants = self._chars_variants()
+        stamps = tuple((name, path.stat().st_mtime_ns if path.is_file() else None) for name in variants for path in [wow_install.out_files(name)[0]])
+        key = (stamps, i18n.get_language())
+        if key == self._chars_key:
+            return
+
+        def work():
+            found = {}
+            for variant in variants:
+                try:
+                    found[variant] = actions.ignore_choices(variant)
+                except (SystemExit, Exception) as exc:                        # a database newer than this program, or a broken one: say it, do not hang
+                    found[variant] = exc
+            return found
+        self.run_in_thread(work, lambda result: self._chars_loaded(result, key), t("status_busy_chars_read"))
+
+    def _chars_loaded(self, found, key):
+        failed = False
+        for result in found.values():
+            if isinstance(result, BaseException):
+                failed = True
+                self.write(str(result.code if isinstance(result, SystemExit) else f"{type(result).__name__}: {result}"), "err")
+        self._chars_key = None if failed else key             # a failed read is tried again the next time the tab is shown
+        self._chars_rebuild(found)
+
+    def _chars_rebuild(self, found):
+        """Builds the blocks again: the old ones go (a list that was changed and not applied goes with them), and so do their apply buttons."""
+        self.action_buttons = [button for button in self.action_buttons if button not in self._chars_buttons]
+        self._chars_buttons = []
+        while self.chars_stack.count():
+            widget = self.chars_stack.widget(0)
+            self.chars_stack.removeWidget(widget)
+            widget.deleteLater()
+        keep = self.cmb_chars_variant.currentText()
+        self.char_tiles = []
+        self.cmb_chars_variant.blockSignals(True)
+        self.cmb_chars_variant.clear()
+        for variant in self._chars_variants():
+            tile = self._chars_tile(variant, found.get(variant))
+            if variant in self._chars_drafts and tile.table is not None:     # after deleting characters: a list of "Ignore" that was not applied stays
+                tile.draft = list(self._chars_drafts[variant])
+                self._chars_refresh(tile)
+            if variant in self._chars_notes and tile.del_message is not None:
+                tile.del_message.setText(self._chars_notes[variant])
+            self.char_tiles.append(tile)
+            self.chars_stack.addWidget(tile.panel)
+            self.cmb_chars_variant.addItem(variant)
+        self.cmb_chars_variant.setCurrentIndex(max(0, self.cmb_chars_variant.findText(keep)))
+        self.cmb_chars_variant.blockSignals(False)
+        self._chars_show(self.cmb_chars_variant.currentIndex())
+        self._chars_drafts, self._chars_notes = {}, {}
+
+    def _chars_tile(self, variant, result):
+        """The block "Ignore" of one game version: the form on top (type, value, targets, add), the list of the rules below it, the counter and "Apply".
+        `result` is what actions.ignore_choices read: None = no data yet, an exception = not readable. `rules` is what is saved, `draft` the list as it stands
+        now: adding and taking away change the draft, "Apply" saves it."""
+        box = QGroupBox(t("chars_group", variant=variant))
+        panel = QWidget()                                                  # the page of this game version in the stack: the block "Ignore", then "Delete"
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(0, 0, 0, 0)
+        panel_layout.addWidget(box)
+        tile = SimpleNamespace(variant=variant, box=box, panel=panel, chars=[], values={}, rules=[], draft=[], kind=None, value=None, level=None, page=None,
+                               excel=None, add=None, table=None, remove=None, counter=None, pending=None, save=None, message=None,
+                               del_box=None, del_char=None, del_add=None, del_table=None, del_remove=None, del_preview=None, del_message=None, del_save=None,
+                               del_list=[], by_key={}, bl_table=None, bl_remove=None, bl_note=None, bl_message=None)
+        lay = QVBoxLayout(box)
+        if result is None or isinstance(result, BaseException):
+            note = QLabel(t("top5_no_data") if result is None else t("chars_read_failed"))
+            note.setObjectName("hint")
+            note.setWordWrap(True)
+            lay.addWidget(note)
+            return tile
+        tile.chars = result["chars"]
+        tile.values = {kind: list(result["values"].get(kind, [])) for kind, _key in self.CHAR_KINDS if kind != char_rules.LEVEL_BELOW}
+        tile.rules = list(self.cfg["char_rules"].get(variant, []))
+        tile.draft = list(tile.rules)
+
+        form = QHBoxLayout()
+        form.addWidget(QLabel(t("chars_kind")))
+        tile.kind = QComboBox()
+        for kind, key in self.CHAR_KINDS:
+            tile.kind.addItem(t(key), kind)
+        form.addWidget(tile.kind)
+        form.addWidget(QLabel(t("chars_value")))
+        tile.value = self._searchable(QComboBox(), open_on_click=True)
+        form.addWidget(tile.value, 1)
+        tile.level = QSpinBox()
+        tile.level.setRange(1, 999)
+        tile.level.setValue(20)
+        form.addWidget(tile.level)
+        form.addWidget(QLabel(t("chars_for")))
+        tile.page = QCheckBox(t("chars_col_page"))
+        tile.page.setChecked(True)
+        tile.excel = QCheckBox(t("chars_col_excel"))
+        tile.excel.setChecked(True)
+        form.addWidget(tile.page)
+        form.addWidget(tile.excel)
+        tile.add = QPushButton(t("chars_add"))
+        form.addWidget(tile.add)
+        lay.addLayout(form)
+
+        lay.addWidget(QLabel(t("chars_list_title")))
+        tile.table = QTableWidget(0, 5)
+        tile.table.setHorizontalHeaderLabels(["", t("chars_list_kind"), t("chars_list_value"), t("chars_list_for"), t("chars_col_count")])
+        tile.table.verticalHeader().setVisible(False)
+        tile.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        tile.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        header = tile.table.horizontalHeader()
+        for column, mode in enumerate((QHeaderView.ResizeMode.ResizeToContents, QHeaderView.ResizeMode.ResizeToContents, QHeaderView.ResizeMode.Stretch,
+                                       QHeaderView.ResizeMode.ResizeToContents, QHeaderView.ResizeMode.ResizeToContents)):
+            header.setSectionResizeMode(column, mode)
+        tile.table.setMinimumHeight(150)
+        lay.addWidget(tile.table, 1)
+        bar = QHBoxLayout()
+        tile.remove = QPushButton(t("chars_remove"))
+        bar.addWidget(tile.remove)
+        bar.addStretch()
+        lay.addLayout(bar)
+        tile.counter = QLabel()
+        tile.counter.setWordWrap(True)
+        lay.addWidget(tile.counter)
+        apply_row = QHBoxLayout()
+        tile.save = QPushButton(t("chars_apply"))
+        tile.save.setObjectName("primary")
+        tile.save.setEnabled(not self._busy)
+        self.action_buttons.append(tile.save)                              # off while a slow action runs, like the others
+        self._chars_buttons.append(tile.save)
+        apply_row.addWidget(tile.save)
+        tile.pending = QLabel()                                            # "not applied yet" while the draft differs from what is saved
+        tile.pending.setObjectName("notice")
+        apply_row.addWidget(tile.pending, 1)
+        lay.addLayout(apply_row)
+        tile.message = QLabel()                                            # the result of the last click, on the tab itself: the log is on the other one
+        tile.message.setObjectName("hint")
+        tile.message.setWordWrap(True)
+        lay.addWidget(tile.message)
+        note = QLabel(t("chars_apply_note"))
+        note.setObjectName("hint")
+        note.setWordWrap(True)
+        lay.addWidget(note)
+
+        tile.kind.currentIndexChanged.connect(lambda _i, tile=tile: self._chars_kind_changed(tile))
+        for check in (tile.page, tile.excel):
+            check.toggled.connect(lambda _on, tile=tile: self._chars_add_state(tile))
+        tile.add.clicked.connect(lambda _checked=False, tile=tile: self._chars_add(tile))
+        tile.remove.clicked.connect(lambda _checked=False, tile=tile: self._chars_remove(tile))
+        tile.save.clicked.connect(lambda _checked=False, tile=tile: self._chars_apply(tile))
+        self._chars_kind_changed(tile)
+        self._chars_add_state(tile)
+        self._chars_refresh(tile)
+        panel_layout.addWidget(self._chars_delete_box(tile))
+        panel_layout.addStretch()
+        return tile
+
+    def _chars_kind_changed(self, tile):
+        """The form for the type that is chosen: a list of the entries of the data, or a number for "level under" (the box for the value starts empty)."""
+        kind = tile.kind.currentData()
+        level = kind == char_rules.LEVEL_BELOW
+        tile.value.setVisible(not level)
+        tile.level.setVisible(level)
+        tile.value.clear()
+        if not level:
+            for value, label in tile.values[kind]:
+                tile.value.addItem(label, value)
+            tile.value.setCurrentIndex(-1)
+        tile.message.setText("")
+
+    def _chars_add_state(self, tile):
+        tile.add.setEnabled(tile.page.isChecked() or tile.excel.isChecked())        # a rule for no target would do nothing
+
+    def _chars_add(self, tile):
+        """Adds the rule of the form to the draft (char_rules.add_rule: the same type and value is one rule with both targets)."""
+        kind = tile.kind.currentData()
+        if kind == char_rules.LEVEL_BELOW:
+            value = str(tile.level.value())
+        else:
+            index = self._resolve(tile.value)
+            if index < 0:                                                  # a text that fits no entry or several: nothing is guessed
+                tile.message.setText(t("chars_value_invalid"))
+                return
+            value = tile.value.itemData(index)
+        targets = [name for name, check in (("page", tile.page), ("excel", tile.excel)) if check.isChecked()]
+        tile.message.setText("")
+        tile.draft = char_rules.add_rule(tile.draft, kind, value, targets)
+        self._chars_refresh(tile)
+
+    def _chars_remove(self, tile):
+        """Takes the rules that are ticked in the list out of the draft."""
+        marked = [row for row in range(tile.table.rowCount()) if tile.table.item(row, 0).checkState() == Qt.CheckState.Checked]
+        tile.message.setText("")
+        tile.draft = char_rules.remove_rules(tile.draft, marked)
+        self._chars_refresh(tile)
+
+    def _chars_label(self, tile, rule):
+        """(type, value) of a rule as the list shows them, in the language of the program; what the data does not know is shown as it is."""
+        kind, value = rule.get("type"), rule.get("value")
+        names = dict(self.CHAR_KINDS)
+        kind_text = t(names[kind]) if kind in names else str(kind)
+        if kind in tile.values:
+            value_text = dict(tile.values[kind]).get(value, t("html_groups_unknown") if value == "" else str(value))
+        else:
+            value_text = str(value)
+        return kind_text, value_text
+
+    def _chars_refresh(self, tile):
+        """The list, the counter and the "not applied" note for the draft as it stands."""
+        table = tile.table
+        names = {"page": t("chars_col_page"), "excel": t("chars_col_excel")}
+        table.setRowCount(0)
+        for item in tile.draft:
+            rule = item if isinstance(item, dict) else {}
+            row = table.rowCount()
+            table.insertRow(row)
+            kind_text, value_text = self._chars_label(tile, rule)
+            targets = ", ".join(names[target] for target in char_rules.targets_of(rule))
+            for column, text in enumerate(("", kind_text, value_text, targets or "–", str(len(char_rules.named_by(tile.chars, rule))))):
+                cell = QTableWidgetItem(text)
+                flags = Qt.ItemFlag.ItemIsEnabled
+                if column == 0:
+                    flags |= Qt.ItemFlag.ItemIsUserCheckable
+                    cell.setCheckState(Qt.CheckState.Unchecked)
+                if column == 4:
+                    cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                cell.setFlags(flags)
+                table.setItem(row, column, cell)
+        counts = {target: len(char_rules.hidden_keys(tile.chars, tile.draft, target)) for target in char_rules.TARGETS}
+        tile.counter.setText(t("chars_counter", page=counts["page"], excel=counts["excel"], total=len(tile.chars)))
+        tile.pending.setText(t("chars_pending") if tile.draft != tile.rules else "")
+        tile.remove.setEnabled(bool(tile.draft))
+
+    def _chars_delete_box(self, tile):
+        """The block "Delete" of one game version (only built for one with data): the form (one character), the list of the characters marked for deleting
+        and the blacklist. Nothing is deleted here: this part only fills and shows the lists."""
+        box = QGroupBox(t("chars_del_group", variant=tile.variant))
+        tile.del_box = box
+        tile.del_list = []
+        tile.by_key = {c["key"]: c for c in tile.chars}
+        lay = QVBoxLayout(box)
+        note = QLabel(t("chars_del_note"))
+        note.setObjectName("hint")
+        note.setWordWrap(True)
+        lay.addWidget(note)
+
+        form = QHBoxLayout()
+        form.addWidget(QLabel(t("chars_del_char")))
+        tile.del_char = self._searchable(QComboBox(), open_on_click=True)
+        for key, label in tile.values.get("char", []):
+            tile.del_char.addItem(label, key)
+        tile.del_char.setCurrentIndex(-1)
+        form.addWidget(tile.del_char, 1)
+        tile.del_add = QPushButton(t("chars_del_add"))
+        form.addWidget(tile.del_add)
+        lay.addLayout(form)
+
+        lay.addWidget(QLabel(t("chars_del_list_title")))
+        tile.del_table = QTableWidget(0, 4)
+        tile.del_table.setHorizontalHeaderLabels(["", t("chars_del_char"), t("chars_del_col_class"), t("chars_del_col_level")])
+        self._chars_table_style(tile.del_table, stretch=1, height=110)
+        lay.addWidget(tile.del_table)
+        bar = QHBoxLayout()
+        tile.del_remove = QPushButton(t("chars_remove"))
+        bar.addWidget(tile.del_remove)
+        bar.addStretch()
+        lay.addLayout(bar)
+        tile.del_preview = QLabel()
+        lay.addWidget(tile.del_preview)
+        apply_row = QHBoxLayout()
+        tile.del_save = QPushButton(t("chars_apply"))
+        tile.del_save.setObjectName("primary")
+        tile.del_save.setEnabled(not self._busy)
+        self.action_buttons.append(tile.del_save)                          # off while a slow action runs, like the others
+        self._chars_buttons.append(tile.del_save)
+        apply_row.addWidget(tile.del_save)
+        apply_row.addStretch()
+        lay.addLayout(apply_row)
+        tile.del_message = QLabel()
+        tile.del_message.setObjectName("hint")
+        tile.del_message.setWordWrap(True)
+        lay.addWidget(tile.del_message)
+
+        lay.addWidget(QLabel(t("chars_bl_title")))
+        tile.bl_table = QTableWidget(0, 2)
+        tile.bl_table.setHorizontalHeaderLabels(["", t("chars_del_char")])
+        self._chars_table_style(tile.bl_table, stretch=1, height=90)
+        lay.addWidget(tile.bl_table)
+        tile.bl_note = QLabel()
+        tile.bl_note.setObjectName("hint")
+        lay.addWidget(tile.bl_note)
+        bl_bar = QHBoxLayout()
+        tile.bl_remove = QPushButton(t("chars_bl_remove"))
+        bl_bar.addWidget(tile.bl_remove)
+        bl_bar.addStretch()
+        lay.addLayout(bl_bar)
+        tile.bl_message = QLabel()
+        tile.bl_message.setObjectName("hint")
+        tile.bl_message.setWordWrap(True)
+        lay.addWidget(tile.bl_message)
+
+        tile.del_add.clicked.connect(lambda _checked=False, tile=tile: self._del_add(tile))
+        tile.del_remove.clicked.connect(lambda _checked=False, tile=tile: self._del_remove(tile))
+        tile.del_save.clicked.connect(lambda _checked=False, tile=tile: self._del_apply(tile))
+        tile.bl_remove.clicked.connect(lambda _checked=False, tile=tile: self._bl_remove(tile))
+        self._del_refresh(tile)
+        self._bl_refresh(tile)
+        return box
+
+    @staticmethod
+    def _chars_table_style(table, stretch, height):
+        """A table that only shows (no editing, no selection), a tick box in the first column, the column `stretch` takes the room."""
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        header = table.horizontalHeader()
+        for column in range(table.columnCount()):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch if column == stretch else QHeaderView.ResizeMode.ResizeToContents)
+        table.setMinimumHeight(height)
+
+    @staticmethod
+    def _chars_fill_rows(table, rows):
+        """Fills a table with rows of texts and puts a tick box (not ticked) in front of every one."""
+        table.setRowCount(0)
+        for texts in rows:
+            row = table.rowCount()
+            table.insertRow(row)
+            for column, text in enumerate(("",) + tuple(texts)):
+                cell = QTableWidgetItem(text)
+                flags = Qt.ItemFlag.ItemIsEnabled
+                if column == 0:
+                    flags |= Qt.ItemFlag.ItemIsUserCheckable
+                    cell.setCheckState(Qt.CheckState.Unchecked)
+                cell.setFlags(flags)
+                table.setItem(row, column, cell)
+
+    @staticmethod
+    def _chars_marked(table):
+        return [row for row in range(table.rowCount()) if table.item(row, 0).checkState() == Qt.CheckState.Checked]
+
+    def _del_add(self, tile):
+        """Puts the character of the form on the list of those marked for deleting (a character once)."""
+        index = self._resolve(tile.del_char)
+        if index < 0:                                                      # a text that fits no character or several: nothing is guessed
+            tile.del_message.setText(t("chars_value_invalid"))
+            return
+        key = tile.del_char.itemData(index)
+        tile.del_message.setText("")
+        if key not in tile.del_list:
+            tile.del_list.append(key)
+        tile.del_char.setCurrentIndex(-1)
+        self._del_refresh(tile)
+
+    def _del_remove(self, tile):
+        marked = set(self._chars_marked(tile.del_table))
+        tile.del_message.setText("")
+        tile.del_list = [key for row, key in enumerate(tile.del_list) if row not in marked]
+        self._del_refresh(tile)
+
+    def _del_refresh(self, tile):
+        rows = []
+        for key in tile.del_list:
+            char = tile.by_key.get(key, {})
+            rows.append((key, str(char.get("class") or ""), "" if char.get("level") is None else str(char["level"])))
+        self._chars_fill_rows(tile.del_table, rows)
+        tile.del_preview.setText(t("chars_del_preview", count=len(tile.del_list)))
+        tile.del_remove.setEnabled(bool(tile.del_list))
+
+    def _del_apply(self, tile):
+        """Deletes the characters of the list, after asking: the question names the number and the characters ("No" is the preselected answer). Then, in
+        this order: the keys go on the blacklist and that is saved (if it cannot be saved nothing is deleted: a deleted character would come back with
+        the next import), actions.delete_chars runs in a thread (copy, deleting, history pages, the page again), and when it did not delete anything
+        the keys come off the blacklist again."""
+        if self._busy:
+            return
+        variant, keys = tile.variant, list(tile.del_list)
+        if not keys:
+            tile.del_message.setText(t("chars_del_empty"))
+            return
+        names = "\n".join(keys[:12]) + (("\n" + t("chars_del_more", count=len(keys) - 12)) if len(keys) > 12 else "")
+        folder = db_backup.delete_dir(wow_install.out_files(variant)[0])
+        if not dialogs.ask_yes_no(self, t("chars_del_ask", count=len(keys), variant=variant, names=names, folder=folder)):
+            tile.del_message.setText(t("chars_del_cancelled"))
+            return
+        before = self.cfg["char_blacklist"].get(variant)
+        self.cfg["char_blacklist"][variant] = config.clean_key_list(list(before or []) + keys)
+        try:
+            config.save(self.cfg)
+        except OSError as exc:
+            self._bl_set(variant, before)
+            self.write(t("err_config_save", error=exc), "err")
+            tile.del_message.setText(t("chars_del_blacklist_failed"))
+            self._bl_refresh(tile)
+            return
+        top5 = list(self.cfg["top5"])
+        rules = list(self.cfg["char_rules"].get(variant, []))
+        self.run_in_thread(lambda: actions.delete_chars(variant, keys, top5, rules),
+                           lambda result: self._deleted(result, tile, before), t("status_busy_delete"))
+
+    def _bl_set(self, variant, keys):
+        """Puts the blacklist of a game version in the settings of the window as it was (None: it had no entry)."""
+        if keys is None:
+            self.cfg["char_blacklist"].pop(variant, None)
+        else:
+            self.cfg["char_blacklist"][variant] = keys
+
+    def _deleted(self, result, tile, before):
+        ok, out, deleted = result
+        for line in out.strip().splitlines():
+            self.write(line, "err" if (not ok or line.startswith(("FEHLER", "WARNUNG", "ERROR", "WARNING"))) else None)
+        variant = tile.variant
+        if not ok:                                       # nothing was deleted: the keys come off the blacklist again
+            self._bl_set(variant, before)
+            try:
+                config.save(self.cfg)
+                tile.del_message.setText(t("chars_del_failed"))
+            except OSError as exc:
+                self.write(t("err_config_save", error=exc), "err")
+                tile.del_message.setText(t("chars_del_stuck"))
+            self._bl_refresh(tile)
+            return
+        done = t("log_chars_deleted", variant=variant, count=len(deleted))
+        self.write(done, "ok")
+        self._tile_key = None                            # the Top 5 tab reads what it offers again
+        self._chars_drafts = {each.variant: list(each.draft) for each in self.char_tiles if each.table is not None and each.draft != each.rules}
+        self._chars_notes = {variant: done}
+        self._chars_key = None                           # the data changed: the blocks are built again, with the drafts of "Ignore" kept
+        self.load_page(force=True)
+        self._chars_load()
+
+    def _bl_keys(self, tile):
+        return list(self.cfg["char_blacklist"].get(tile.variant, []))
+
+    def _bl_refresh(self, tile):
+        keys = self._bl_keys(tile)
+        self._chars_fill_rows(tile.bl_table, [(key,) for key in keys])
+        tile.bl_note.setText("" if keys else t("chars_bl_empty"))
+        tile.bl_remove.setEnabled(bool(keys))
+
+    def _bl_remove(self, tile):
+        """Takes the ticked characters off the blacklist and saves that at once (nothing is deleted or read by this: the next import reads them again).
+        If the settings cannot be written, the blacklist stays as it was."""
+        keys = self._bl_keys(tile)
+        marked = {keys[row] for row in self._chars_marked(tile.bl_table)}
+        if not marked:
+            return
+        kept = [key for key in keys if key not in marked]
+        old = self.cfg["char_blacklist"].get(tile.variant)
+        if kept:
+            self.cfg["char_blacklist"][tile.variant] = kept
+        else:
+            self.cfg["char_blacklist"].pop(tile.variant, None)
+        try:
+            config.save(self.cfg)
+        except OSError as exc:
+            if old is None:
+                self.cfg["char_blacklist"].pop(tile.variant, None)
+            else:
+                self.cfg["char_blacklist"][tile.variant] = old
+            self.write(t("err_config_save", error=exc), "err")
+            return
+        message = t("chars_bl_removed", count=len(marked))
+        self.write(message, "ok")
+        tile.bl_message.setText(message)
+        self._bl_refresh(tile)
+
+    def _chars_apply(self, tile):
+        """Saves the list of one game version in the settings and writes its page again (from its database, in a thread): the rules stay in the list
+        until they are taken out. The page of another game version follows at its next import, the Excel file at the next export; the Top 5 tab reads
+        its choices again."""
+        if self._busy:
+            return
+        variant = tile.variant
+        rules = config.clean_rule_list(tile.draft)
+        if rules:
+            self.cfg["char_rules"][variant] = rules
+        else:
+            self.cfg["char_rules"].pop(variant, None)
+        tile.rules, tile.draft = list(rules), list(rules)
+        self.save()
+        self._tile_key = None
+        saved = t("log_chars_saved", variant=variant, count=len(rules))
+        self.write(saved, "ok")
+        tile.message.setText(saved)
+        self._chars_refresh(tile)
+        if not wow_install.out_files(variant)[0].is_file():
+            return
+        top5 = list(self.cfg["top5"])
+        self.run_in_thread(lambda: actions.rebuild_page(variant, top5, list(rules)), lambda result: self._page_rebuilt(result, variant), t("status_busy_top5"))
 
     # ----------------------------------------------------------------- log and status
     def write(self, text, tag=None):
@@ -793,13 +1341,16 @@ class MainWindow(QMainWindow):
         self.save()
         read_icons = self.cfg["read_icons"]
         top5 = list(self.cfg["top5"])
-        self.run_in_thread(lambda: actions.import_saved_variables(sv, root, variant, read_icons, top5),
+        rules = list(self.cfg["char_rules"].get(variant, []))
+        skip = list(self.cfg["char_blacklist"].get(variant, []))
+        self.run_in_thread(lambda: actions.import_saved_variables(sv, root, variant, read_icons, top5, rules, skip),
                            lambda result: self._parsed(result, root, variant, account, open_after),
                            t("status_busy_parse"))
 
     def _parsed(self, result, root, variant, account, open_after):
         ok, out = result
         self._tile_key = None                          # new data: the Top 5 tab reads what it offers again
+        self._chars_key = None                         # and the Characters tab
         for line in out.strip().splitlines():
             self.write(line, "err" if (not ok or line.startswith(("FEHLER", "WARNUNG", "ERROR", "WARNING"))) else None)
         self.write(t("log_parse_ok") if ok else t("log_parse_fail"), "ok" if ok else "err")
@@ -885,7 +1436,8 @@ class MainWindow(QMainWindow):
     def on_export(self):
         if self._busy:
             return
-        self.run_in_thread(actions.run_export, self._exported, t("status_busy_export"))
+        rules = {variant: list(variant_rules) for variant, variant_rules in self.cfg["char_rules"].items()}       # every game version: one workbook holds them all
+        self.run_in_thread(lambda: actions.run_export(rules), self._exported, t("status_busy_export"))
 
     def _exported(self, result):
         ok, out, path = result

@@ -14,10 +14,14 @@
 # new get their page written.
 #
 # --top5 gives the tiles of the Top 5 block (a JSON list, config.top5; the window hands over its settings); without it the page has no tiles.
+# --hide gives the rules of this game version that keep characters off the stats page (a JSON list, config.char_rules[variant]; rules/char_rules.py);
+# without it nobody is kept off. The database is not changed by either.
+# --skip gives the characters the import does not store (a JSON list of keys, config.char_blacklist of the game version: characters deleted on purpose);
+# their scans in the file are checked but not stored, and a line names them.
 #
 # Usage:
 #     python stat_parser.py --input PATH\StatTracker.lua [--db FILE] [--output FILE] [--history-dir DIR]
-#                           [--icons-dir DIR [--game-dir WOW_FOLDER --product wow]] [--top5 JSON]
+#                           [--icons-dir DIR [--game-dir WOW_FOLDER --product wow]] [--top5 JSON] [--hide JSON] [--skip JSON]
 # No external dependencies.
 
 import argparse
@@ -61,6 +65,28 @@ def read_tiles(text):
         return None, [t("parse_warn_top5", error=exc)]
 
 
+def read_rules(text):
+    """(the rules that keep characters off the stats page from the JSON text of --hide, lines to print): none and no line without the argument; a text
+    that is no JSON gives no rules and a warning (like the tiles, they never stop an import)."""
+    if not text:
+        return None, []
+    try:
+        return config.clean_rule_list(json.loads(text)), []
+    except ValueError as exc:
+        return None, [t("parse_warn_char_rules", error=exc)]
+
+
+def read_skip(text):
+    """(the keys of the characters the import leaves out, from the JSON text of --skip, lines to print): none and no line without the argument; a text
+    that is no JSON gives none and a warning. (A blacklist that cannot be read must not stop an import; the characters are stored then, and the line says so.)"""
+    if not text:
+        return [], []
+    try:
+        return config.clean_key_list(json.loads(text)), []
+    except ValueError as exc:
+        return [], [t("parse_warn_skip", error=exc)]
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--input", help="path to StatTracker.lua (SavedVariables)")
@@ -73,9 +99,13 @@ def main(argv=None):
                                        "the import also reads the item icons it lacks from the game files")
     ap.add_argument("--product", help="the product of the game version in .build.info, e.g. wow (see --game-dir)")
     ap.add_argument("--top5", help="the tiles of the Top 5 block as a JSON list (config.top5; no tiles if not given)")
+    ap.add_argument("--hide", help="the rules that keep characters off the stats page as a JSON list (config.char_rules of the game version; nobody is kept off if not given)")
+    ap.add_argument("--skip", help="the characters the import leaves out (deleted on purpose) as a JSON list of keys (config.char_blacklist of the game version; none if not given)")
     a = ap.parse_args(argv)
 
     tiles, tile_lines = read_tiles(a.top5)
+    rules, rule_lines = read_rules(a.hide)
+    skip, skip_lines = read_skip(a.skip)
     src = find_input(a.input)
     try:
         parsed = lua_reader.LuaReader(src.read_text(encoding="utf-8")).parse_file()
@@ -88,9 +118,9 @@ def main(argv=None):
     conn = db_schema.init_db(a.db)
     try:
         before = importer.last_scan_times(conn)
-        new, skipped, changed = importer.import_data(conn, parsed["StatTrackerDB"])
+        new, skipped, changed = importer.import_data(conn, parsed["StatTrackerDB"], skip)
         fixed = importer.refresh_numbers(conn)
-        payload, lines = outputs.build_outputs(conn, a.output, changed, a.history_dir, a.icons_dir, a.game_dir, a.product, top5=tiles)
+        payload, lines = outputs.build_outputs(conn, a.output, changed, a.history_dir, a.icons_dir, a.game_dir, a.product, top5=tiles, rules=rules)
     finally:
         conn.close()
 
@@ -100,9 +130,12 @@ def main(argv=None):
         print(t("parse_out_numbers", count=fixed))
     print(t("parse_out_db", path=a.db))
     print(t("parse_out_html", path=a.output, chars=len(payload["chars"]), stats=len(payload["stats"])))
-    for line in tile_lines + lines:
+    for line in tile_lines + rule_lines + skip_lines + lines:
         print(line)
-    for line in importer.import_notes(parsed["StatTrackerDB"], before, new):
+    left_out = importer.skipped_keys(parsed["StatTrackerDB"], skip)
+    if left_out:
+        print(t("parse_note_blacklisted", count=len(left_out), keys=", ".join(left_out)))
+    for line in importer.import_notes(parsed["StatTrackerDB"], before, new, skip=skip):
         print(line)
 
 

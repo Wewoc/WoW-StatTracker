@@ -86,11 +86,12 @@ def update_icons(conn, icons_dir, game_dir, product, extract=None):
 
 
 # ------------------------------------------------------------- history pages
-def update_history_pages(conn, history_dir, html_path, changed, icons_dir=None):
+def update_history_pages(conn, history_dir, html_path, changed, icons_dir=None, hidden=None):
     """Brings the history pages of the characters up to date (stat_history.write_pages) and returns
     (links for the stats page or None, lines to print). A failure here never stops the import or the
     stats page: it becomes a warning line, and the page then links only the pages that exist.
-    `icons_dir`: the folder whose item icons the pages embed (None = pages without icons)."""
+    `icons_dir`: the folder whose item icons the pages embed (None = pages without icons). `hidden`: the keys of the characters kept off
+    the page (page_payload.hidden_keys): they get no page and a page they have is deleted (a line says how many)."""
     folder, page = Path(history_dir), Path(html_path)
     try:
         rel = Path(os.path.relpath(folder, page.parent))
@@ -98,15 +99,19 @@ def update_history_pages(conn, history_dir, html_path, changed, icons_dir=None):
     except ValueError:           # another drive: there is no relative link
         rel = back = None
     try:
-        result = stat_history.write_pages(conn, folder, changed, back, icons_dir)
+        result = stat_history.write_pages(conn, folder, changed, back, icons_dir, hidden)
     except Exception as exc:     # not worth losing the import for: the pages are an extra
         return None, [t("parse_warn_history", error=f"{type(exc).__name__}: {exc}")]
     lines = []
     if result["written"]:
         lines.append(t("parse_out_history", count=len(result["written"]), path=folder))
+    if result["removed"]:
+        lines.append(t("parse_out_history_removed", count=len(result["removed"]), path=folder))
     for key, error in result["failed"]:
         lines.append(t("parse_warn_history", error=error) if key is None
                      else t("parse_warn_history_char", key=key, error=error))
+    for key, error in result["remove_failed"]:
+        lines.append(t("parse_warn_history_remove", key=key, error=error))
     if rel is None or not result["links"]:
         return None, lines
     links = {key: {"href": quote((rel / item["file"]).as_posix()), "scans": item["scans"]}
@@ -114,30 +119,33 @@ def update_history_pages(conn, history_dir, html_path, changed, icons_dir=None):
     return {"dir": rel.as_posix(), "links": links}, lines
 
 
-def build_outputs(conn, html_path, changed, history_dir=None, icons_dir=None, game_dir=None, product=None, top5=None):
+def build_outputs(conn, html_path, changed, history_dir=None, icons_dir=None, game_dir=None, product=None, top5=None, rules=None):
     """Everything an import leaves besides the database, in its order: the item icons the folder lacks (only with a
     history folder, an icons folder, the game folder and the product), the history pages (of the characters in `changed`,
     those without a page and, after a program update, all), the stats page. The connection is only read (it may be
-    read-only). `top5`: the tiles of the Top 5 block (config.top5). Returns (payload, lines to print): the warnings and notes of the icons
-    and the history pages."""
+    read-only). `top5`: the tiles of the Top 5 block (config.top5). `rules`: the rules of this game version that keep characters off the stats page
+    (config.char_rules[variant], page_payload.build_payload); the history pages follow them (a character kept off the page gets none and
+    loses the one it has). Returns (payload, lines to print): the warnings and notes of the icons and the history pages."""
     icon_lines = []
     if history_dir and icons_dir and game_dir and product:
         icon_chars, icon_lines = update_icons(conn, icons_dir, game_dir, product)
         changed = set(changed) | icon_chars
-    history, history_lines = (update_history_pages(conn, history_dir, html_path, changed, icons_dir)
+    hidden = page_payload.hidden_keys(conn, rules)           # before the history pages: they and the page start from the same characters
+    history, history_lines = (update_history_pages(conn, history_dir, html_path, changed, icons_dir, hidden)
                               if history_dir else (None, []))
-    payload = page_payload.build_payload(conn, history=history, top5=top5)
+    payload = page_payload.build_payload(conn, history=history, top5=top5, rules=rules)
     write_html(payload, Path(html_path))
     return payload, icon_lines + history_lines
 
 
-def rebuild_outputs(db_path, html_path, history_dir=None, icons_dir=None, top5=None):
+def rebuild_outputs(db_path, html_path, history_dir=None, icons_dir=None, top5=None, rules=None):
     """Writes the stats page (and the pages that are missing or from another program version) again from the database
     alone: no SavedVariables file, no import, no copy, no migration, nothing written to the database. A database newer
     than this program exits with the usual message; a missing file raises sqlite3.OperationalError. The game files
-    are not read (icons already in the folder are shown). `top5`: the tiles of the Top 5 block. Returns (payload, lines to print)."""
+    are not read (icons already in the folder are shown). `top5`: the tiles of the Top 5 block. `rules`: see build_outputs.
+    Returns (payload, lines to print)."""
     conn = stat_history.open_readonly(db_path)
     try:
-        return build_outputs(conn, html_path, set(), history_dir, icons_dir, top5=top5)
+        return build_outputs(conn, html_path, set(), history_dir, icons_dir, top5=top5, rules=rules)
     finally:
         conn.close()

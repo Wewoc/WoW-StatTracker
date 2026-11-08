@@ -49,8 +49,9 @@ def window(env, qtbot):
     w = env.win
     w.tabs.setCurrentIndex(main_window.TAB_SETTINGS)              # first: a Top 5 tab left open would read its choices in a thread
     i18n.set_language("en")
-    w.cfg.update(language="en", enabled_variants=["_retail_"], read_icons=True, check_updates=False, active_theme=1, group_presets=[], top5=[])
+    w.cfg.update(language="en", enabled_variants=["_retail_"], read_icons=True, check_updates=False, active_theme=1, group_presets=[], top5=[], char_rules={}, char_blacklist={})
     w._tile_choices, w._tile_key = None, None
+    w._chars_key = None
     w.cmb_lang.setCurrentIndex(w.cmb_lang.findData("en"))
     w.retranslate()
     w.clear_log()
@@ -77,7 +78,7 @@ def test_default_shows_retail_only(window):
     assert items(window.cmb_var) == ["_retail_"]
     assert window.cmb_var.currentText() == "_retail_" and window.cmb_acc.currentText() == "ACC1"
     assert "Addon: not installed" in window.status_text()
-    assert [window.tabs.tabText(i) for i in range(window.tabs.count())] == ["Settings", "Page", "Top 5"]
+    assert [window.tabs.tabText(i) for i in range(window.tabs.count())] == ["Settings", "Page", "Top 5", "Characters"]
 
 
 def test_enabling_another_version_adds_it_to_the_dropdown(window):
@@ -148,7 +149,7 @@ def test_the_language_switch_keeps_the_log_and_changes_every_text(window):
     assert i18n.get_language() == "de" and config.load()[0]["language"] == "de"
     assert "hello log" in window.log.toPlainText()
     assert "Addon: nicht installiert" in window.status_text()
-    assert [window.tabs.tabText(i) for i in range(window.tabs.count())] == ["Einstellungen", "Seite", "Top 5"]
+    assert [window.tabs.tabText(i) for i in range(window.tabs.count())] == ["Einstellungen", "Seite", "Top 5", "Charaktere"]
     assert window.action_buttons[1].text() == "2. Daten einlesen"
     window.cmb_lang.setCurrentIndex(window.cmb_lang.findData("en"))
     window.on_language()
@@ -932,7 +933,7 @@ def test_tiles_of_the_settings_are_shown_in_the_rows_and_one_that_names_somethin
 def test_the_choices_are_read_again_only_when_the_data_the_game_version_or_the_language_changed(window, qtbot, stats_data, monkeypatch):
     calls = []
     real = main_window.actions.tile_choices
-    monkeypatch.setattr(main_window.actions, "tile_choices", lambda variant: calls.append(variant) or real(variant))
+    monkeypatch.setattr(main_window.actions, "tile_choices", lambda variant, rules=None: calls.append(variant) or real(variant, rules))
     open_top5(window, qtbot)
     window.tabs.setCurrentIndex(main_window.TAB_SETTINGS)
     window.tabs.setCurrentIndex(main_window.TAB_TOP5)
@@ -941,6 +942,727 @@ def test_the_choices_are_read_again_only_when_the_data_the_game_version_or_the_l
     window.tabs.setCurrentIndex(main_window.TAB_SETTINGS)
     window.tabs.setCurrentIndex(main_window.TAB_TOP5)
     qtbot.waitUntil(lambda: len(calls) == 2 and not window._busy, timeout=20000)
+
+
+def test_the_top5_tab_does_not_offer_a_character_the_rules_keep_off_the_page(window, qtbot, stats_data):
+    window.cfg["char_rules"] = {"_retail_": [{"type": "char", "value": "Bob-Realm"}]}
+    open_top5(window, qtbot)
+    row = window.tile_rows[0]
+    pick(row.scope, "Character")
+    assert items(row.value) == ["Alice-Realm"]
+
+
+def test_saving_the_tiles_writes_the_page_without_the_characters_the_rules_keep_off_it(window, qtbot, stats_data):
+    _db, page = stats_data
+    assert "Bob-Realm" in page.read_text(encoding="utf-8")
+    window.cfg["char_rules"] = {"_retail_": [{"type": "char", "value": "Bob-Realm"}]}
+    open_top5(window, qtbot)
+    pick(window.tile_rows[0].stat, GOLD_LABEL)
+    window.btn_top5.click()
+    qtbot.waitUntil(lambda: 'id="top5"' in page.read_text(encoding="utf-8") and not window._busy, timeout=20000)
+    text = page.read_text(encoding="utf-8")
+    assert "Alice-Realm" in text and "Bob-Realm" not in text
+
+
+def test_reading_the_data_hands_the_rules_of_the_game_version_to_the_import(window, env, qtbot, monkeypatch):
+    path = wow_install.saved_vars_path(env.wow / "_retail_", "ACC1")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("StatTrackerDB = {}", encoding="utf-8")
+    seen = []
+    monkeypatch.setattr(actions, "run_parser", lambda *a, **k: seen.append(k) or (True, ""))
+    rule = {"type": "char", "value": "Bob-Realm", "for": ["page"]}
+    window.cfg["char_rules"] = {"_retail_": [rule], "_forever_": [{"type": "char", "value": "Other-Realm"}]}
+    window.cfg["char_blacklist"] = {"_retail_": ["Deleted-Realm"], "_forever_": ["Other-Realm"]}
+    try:
+        window.on_parse()
+        wait_idle(qtbot, window)
+        assert seen[-1]["rules"] == [rule]                                          # the rules of this game version only
+        assert seen[-1]["skip"] == ["Deleted-Realm"]                                # and the deleted characters of this game version only
+    finally:
+        path.unlink(missing_ok=True)
+
+
+# ------------------------------------------------------------------------------------------------------------ the Characters tab
+def open_chars(window, qtbot):
+    window.tabs.setCurrentIndex(main_window.TAB_CHARS)
+    qtbot.waitUntil(lambda: not window._busy and window._chars_key is not None, timeout=20000)
+    return window.char_tiles
+
+
+def tile_of(window, variant="_retail_"):
+    return next(tile for tile in window.char_tiles if tile.variant == variant)
+
+
+def list_rows(tile):
+    """What the list shows: [type, value, targets, hits] per rule."""
+    table = tile.table
+    return [[table.item(row, column).text() for column in (1, 2, 3, 4)] for row in range(table.rowCount())]
+
+
+def fill_form(tile, kind, value=None, page=True, excel=True):
+    tile.kind.setCurrentIndex(tile.kind.findData(kind))
+    if kind == "level_below":
+        tile.level.setValue(int(value))
+    elif value is not None:
+        tile.value.setCurrentIndex(tile.value.findText(value))
+    tile.page.setChecked(page)
+    tile.excel.setChecked(excel)
+
+
+def add_rule(tile, kind, value=None, page=True, excel=True):
+    fill_form(tile, kind, value, page, excel)
+    tile.add.click()
+
+
+def mark(tile, *rows):
+    for row in rows:
+        tile.table.item(row, 0).setCheckState(Qt.CheckState.Checked)
+
+
+def page_text(page):
+    return page.read_text(encoding="utf-8")
+
+
+def wait_page(window, qtbot, page, check):
+    qtbot.waitUntil(lambda: not window._busy and check(page_text(page)), timeout=20000)
+
+
+def apply_and_wait(window, qtbot, tile):
+    tile.save.click()
+    qtbot.waitUntil(lambda: not window._busy, timeout=20000)
+
+
+MAGE_PAGE = {"type": "class", "value": "MAGE", "for": ["page"]}
+
+
+def test_the_characters_tab_is_the_fourth_and_is_named_in_both_languages(window):
+    assert window.tabs.count() == 4 and main_window.TAB_CHARS == 3
+    assert window.tabs.tabText(main_window.TAB_CHARS) == "Characters"
+    window.cmb_lang.setCurrentIndex(window.cmb_lang.findData("de"))
+    window.on_language()
+    assert window.tabs.tabText(main_window.TAB_CHARS) == "Charaktere"
+
+
+def test_without_data_the_block_of_a_game_version_says_so_and_has_no_form(window, qtbot):
+    wow_install.out_files("_retail_")[0].unlink(missing_ok=True)
+    tiles = open_chars(window, qtbot)
+    assert [tile.variant for tile in tiles] == ["_retail_"] and tiles[0].table is None and tiles[0].add is None and tiles[0].save is None
+    assert tiles[0].box.title() == "Ignore – _retail_"
+    assert "no data for this game version" in tiles[0].box.findChild(main_window.QLabel).text()
+
+
+def test_a_choice_of_the_game_version_shows_the_block_of_each_enabled_one_and_each_keeps_what_was_set_in_it(window, qtbot, stats_data):
+    window.cfg["enabled_variants"] = ["_forever_", "_retail_"]
+    tiles = open_chars(window, qtbot)
+    assert [tile.variant for tile in tiles] == ["_retail_", "_forever_"] and items(window.cmb_chars_variant) == ["_retail_", "_forever_"]
+    assert window.chars_stack.currentWidget() is tiles[0].panel and tiles[1].table is None            # this one has no database
+    add_rule(tiles[0], "class", "Mage")
+    window.cmb_chars_variant.setCurrentIndex(1)
+    assert window.chars_stack.currentWidget() is tiles[1].panel
+    window.cmb_chars_variant.setCurrentIndex(0)
+    assert window.chars_stack.currentWidget() is tiles[0].panel and list_rows(tiles[0]) == [["Class", "Mage", "Page, Excel", "1"]]
+
+
+def test_the_form_offers_the_types_and_the_entries_of_the_data(window, qtbot, stats_data):
+    tile = open_chars(window, qtbot)[0]
+    assert items(tile.kind) == ["Class", "Race", "Faction", "Realm", "Character", "Level under"]
+    assert tile.kind.currentData() == "class" and items(tile.value) == ["Druid", "Mage"] and tile.value.currentText() == ""      # nothing is chosen for the person
+    tile.kind.setCurrentIndex(tile.kind.findData("race"))
+    assert items(tile.value) == ["Human", "Night Elf"]
+    tile.kind.setCurrentIndex(tile.kind.findData("faction"))
+    assert items(tile.value) == ["Alliance"]
+    tile.kind.setCurrentIndex(tile.kind.findData("char"))
+    assert items(tile.value) == ["Alice-Realm", "Bob-Realm"]
+    tile.kind.setCurrentIndex(tile.kind.findData("level_below"))
+    assert tile.value.isHidden() and not tile.level.isHidden() and tile.level.value() == 20
+    tile.kind.setCurrentIndex(tile.kind.findData("class"))
+    assert not tile.value.isHidden() and tile.level.isHidden()
+
+
+def test_the_saved_rules_are_the_list_with_their_targets_and_the_characters_they_hit(window, qtbot, stats_data):
+    ghost = {"type": "char", "value": "Ghost-Realm"}
+    window.cfg["char_rules"] = {"_retail_": [MAGE_PAGE, {"type": "class", "value": "DRUID"}, {"type": "level_below", "value": "75", "for": ["excel"]}, ghost]}
+    tile = open_chars(window, qtbot)[0]
+    assert list_rows(tile) == [["Class", "Mage", "Page", "1"], ["Class", "Druid", "Page, Excel", "1"], ["Level under", "75", "Excel", "1"],
+                               ["Character", "Ghost-Realm", "Page, Excel", "0"]]                 # a rule for a character the data lacks is seen, with 0 hits
+    assert tile.counter.text() == "Page: 2 of 2 hidden · Excel: 1 of 2" and tile.pending.text() == ""
+
+
+def test_adding_a_rule_puts_it_in_the_list_and_the_counter_but_saves_nothing(window, qtbot, stats_data):
+    tile = open_chars(window, qtbot)[0]
+    add_rule(tile, "class", "Mage")
+    assert list_rows(tile) == [["Class", "Mage", "Page, Excel", "1"]]
+    assert tile.counter.text() == "Page: 1 of 2 hidden · Excel: 1 of 2" and tile.pending.text() == "Changed, not applied yet."
+    add_rule(tile, "class", "Druid", excel=False)
+    add_rule(tile, "level_below", "75", page=False)
+    assert list_rows(tile) == [["Class", "Mage", "Page, Excel", "1"], ["Class", "Druid", "Page", "1"], ["Level under", "75", "Excel", "1"]]
+    assert window.cfg["char_rules"] == {} and config.load()[0]["char_rules"] == {}                   # nothing is saved before "Apply"
+
+
+def test_the_same_type_and_value_is_one_rule_with_the_targets_of_both(window, qtbot, stats_data):
+    window.cfg["char_rules"] = {"_retail_": [MAGE_PAGE]}
+    tile = open_chars(window, qtbot)[0]
+    add_rule(tile, "class", "Mage", page=False, excel=True)
+    assert list_rows(tile) == [["Class", "Mage", "Page, Excel", "1"]]
+    add_rule(tile, "class", "Mage")
+    assert list_rows(tile) == [["Class", "Mage", "Page, Excel", "1"]]                                # the same again: still one
+
+
+def test_a_rule_for_no_target_cannot_be_added(window, qtbot, stats_data):
+    tile = open_chars(window, qtbot)[0]
+    fill_form(tile, "class", "Mage", page=False, excel=False)
+    assert not tile.add.isEnabled()
+    tile.excel.setChecked(True)
+    assert tile.add.isEnabled()
+
+
+def test_a_value_that_fits_no_entry_is_not_added_and_the_person_is_told(window, qtbot, stats_data):
+    tile = open_chars(window, qtbot)[0]
+    tile.add.click()                                                                                 # nothing chosen
+    assert list_rows(tile) == [] and "does not fit an entry" in tile.message.text()
+    tile.value.setCurrentText("nothing like it")
+    tile.add.click()
+    assert list_rows(tile) == [] and tile.pending.text() == ""
+    tile.value.setCurrentText("mag")                                                                 # a part of one name is enough, like in the Top 5 tab
+    tile.add.click()
+    assert list_rows(tile) == [["Class", "Mage", "Page, Excel", "1"]] and tile.message.text() == ""
+
+
+def test_the_ticked_rules_are_taken_out_of_the_list_and_the_others_stay(window, qtbot, stats_data):
+    other = {"type": "race", "value": "Human"}
+    window.cfg["char_rules"] = {"_retail_": [MAGE_PAGE, other, {"type": "char", "value": "Ghost-Realm"}]}
+    tile = open_chars(window, qtbot)[0]
+    mark(tile, 0, 2)
+    tile.remove.click()
+    assert list_rows(tile) == [["Race", "Human", "Page, Excel", "1"]] and tile.pending.text() == "Changed, not applied yet."
+    assert window.cfg["char_rules"] == {"_retail_": [MAGE_PAGE, other, {"type": "char", "value": "Ghost-Realm"}]}      # not saved yet
+    mark(tile, 0)
+    tile.remove.click()
+    assert list_rows(tile) == [] and not tile.remove.isEnabled()
+
+
+def test_the_note_that_the_list_is_not_applied_goes_when_it_is_the_saved_one_again(window, qtbot, stats_data):
+    window.cfg["char_rules"] = {"_retail_": [MAGE_PAGE]}
+    tile = open_chars(window, qtbot)[0]
+    assert tile.pending.text() == ""
+    add_rule(tile, "class", "Druid")
+    assert tile.pending.text() == "Changed, not applied yet."
+    mark(tile, 1)
+    tile.remove.click()
+    assert tile.pending.text() == ""
+
+
+def test_applying_saves_the_list_and_writes_its_page_again_without_the_characters_and_the_rules_stay_in_the_list(window, qtbot, stats_data):
+    _db, page = stats_data
+    assert "Alice-Realm" in page_text(page) and "Bob-Realm" in page_text(page)
+    tile = open_chars(window, qtbot)[0]
+    add_rule(tile, "class", "Mage", excel=False)
+    tile.save.click()
+    wanted = {"_retail_": [MAGE_PAGE]}
+    assert window.cfg["char_rules"] == wanted and config.load()[0]["char_rules"] == wanted
+    wait_page(window, qtbot, page, lambda text: "Alice-Realm" not in text)
+    assert "Bob-Realm" in page_text(page)
+    log = window.log.toPlainText()
+    assert "Ignore saved (_retail_): 1 rules." in log and "Page written again" in log
+    assert tile.message.text() == "Ignore saved (_retail_): 1 rules." and tile.pending.text() == ""
+    assert list_rows(tile) == [["Class", "Mage", "Page", "1"]]                                       # it stays until it is taken out
+
+
+def test_the_targets_of_a_rule_are_saved_as_they_were_set(window, qtbot, stats_data):
+    tile = open_chars(window, qtbot)[0]
+    for page_on, excel_on, expected in ((True, True, {"type": "class", "value": "MAGE"}), (True, False, MAGE_PAGE),
+                                        (False, True, {"type": "class", "value": "MAGE", "for": ["excel"]})):
+        tile.draft = []
+        add_rule(tile, "class", "Mage", page=page_on, excel=excel_on)
+        apply_and_wait(window, qtbot, tile)
+        assert window.cfg["char_rules"] == {"_retail_": [expected]}
+
+
+def test_taking_every_rule_out_and_applying_brings_the_characters_back_to_the_page(window, qtbot, stats_data):
+    _db, page = stats_data
+    tile = open_chars(window, qtbot)[0]
+    add_rule(tile, "class", "Mage")
+    tile.save.click()
+    wait_page(window, qtbot, page, lambda text: "Alice-Realm" not in text)
+    mark(tile, 0)
+    tile.remove.click()
+    assert window.cfg["char_rules"] != {} and "Alice-Realm" not in page_text(page)                   # taken out, not applied: nothing changed yet
+    tile.save.click()
+    wait_page(window, qtbot, page, lambda text: "Alice-Realm" in text)                              # the database never lost her
+    assert window.cfg["char_rules"] == {} and config.load()[0]["char_rules"] == {}
+
+
+def test_rules_of_other_kinds_stay_in_their_place_when_a_rule_is_added_and_applied(window, qtbot, stats_data):
+    ghost, odd, other = {"type": "char", "value": "Ghost-Realm"}, {"type": "guild", "value": "x"}, {"type": "class", "value": "ROGUE", "for": ["excel"]}
+    window.cfg["char_rules"] = {"_retail_": [ghost, odd, other]}
+    tile = open_chars(window, qtbot)[0]
+    assert list_rows(tile)[1] == ["guild", "x", "Page, Excel", "0"]                                  # what the program does not know is shown as it is
+    add_rule(tile, "class", "Mage", excel=False)
+    apply_and_wait(window, qtbot, tile)
+    assert config.load()[0]["char_rules"] == {"_retail_": [ghost, odd, other, MAGE_PAGE]}
+
+
+def test_a_level_is_a_rule_of_its_targets(window, qtbot, stats_data):
+    _db, page = stats_data
+    tile = open_chars(window, qtbot)[0]
+    add_rule(tile, "level_below", "75", excel=False)                                                 # Bob is level 70
+    tile.save.click()
+    assert window.cfg["char_rules"] == {"_retail_": [{"type": "level_below", "value": "75", "for": ["page"]}]}
+    wait_page(window, qtbot, page, lambda text: "Bob-Realm" not in text)
+    assert "Alice-Realm" in page_text(page)
+
+
+def test_applying_makes_the_top5_tab_read_what_it_offers_again(window, qtbot, stats_data):
+    tile = open_chars(window, qtbot)[0]
+    window._tile_key = ("something", "read before")
+    add_rule(tile, "class", "Mage")
+    apply_and_wait(window, qtbot, tile)
+    assert window._tile_key is None
+
+
+def test_applying_one_game_version_writes_only_its_page_and_leaves_the_other_block_alone(window, env, qtbot, stats_data):
+    from app import stat_parser
+    forever_db, forever_page = wow_install.out_files("_forever_")
+    stat_parser.main(["--input", str(env.base / "TopFive.lua"), "--db", str(forever_db), "--output", str(forever_page)])
+    try:
+        _db, retail_page = stats_data
+        window.cfg["enabled_variants"] = ["_retail_", "_forever_"]
+        retail, forever = open_chars(window, qtbot)
+        add_rule(retail, "class", "Mage")                                                            # not applied
+        add_rule(forever, "class", "Druid", excel=False)
+        apply_and_wait(window, qtbot, forever)
+        assert window.cfg["char_rules"] == {"_forever_": [{"type": "class", "value": "DRUID", "for": ["page"]}]}
+        wait_page(window, qtbot, forever_page, lambda text: "Bob-Realm" not in text)
+        assert "Alice-Realm" in page_text(forever_page) and "Alice-Realm" in page_text(retail_page) and "Bob-Realm" in page_text(retail_page)
+        assert "stats_forever.html" in window.log.toPlainText()                                      # the log names the page that was written
+        assert list_rows(retail) == [["Class", "Mage", "Page, Excel", "1"]] and retail.pending.text() == "Changed, not applied yet."
+    finally:
+        forever_db.unlink(missing_ok=True)
+        forever_page.unlink(missing_ok=True)
+
+
+def test_a_new_language_builds_the_blocks_again_with_its_names(window, qtbot, stats_data):
+    window.cfg["char_rules"] = {"_retail_": [{"type": "class", "value": "DRUID"}]}
+    tile = open_chars(window, qtbot)[0]
+    assert tile.box.title() == "Ignore – _retail_" and list_rows(tile)[0][:2] == ["Class", "Druid"]
+    window.cmb_lang.setCurrentIndex(window.cmb_lang.findData("de"))
+    window.on_language()
+    qtbot.waitUntil(lambda: not window._busy and window._chars_key is not None and window.char_tiles[0].box.title() == "Ignorieren – _retail_", timeout=20000)
+    assert list_rows(window.char_tiles[0])[0][0] == "Klasse" and list_rows(window.char_tiles[0])[0][1].startswith("Druid")
+
+
+def test_the_blocks_are_read_again_only_when_the_data_the_game_versions_or_the_language_changed(window, qtbot, stats_data, monkeypatch):
+    calls = []
+    real = main_window.actions.ignore_choices
+    monkeypatch.setattr(main_window.actions, "ignore_choices", lambda variant: calls.append(variant) or real(variant))
+    open_chars(window, qtbot)
+    window.tabs.setCurrentIndex(main_window.TAB_SETTINGS)
+    window.tabs.setCurrentIndex(main_window.TAB_CHARS)
+    assert calls == ["_retail_"]
+    window._chars_key = None                                                                         # as after an import
+    window.tabs.setCurrentIndex(main_window.TAB_SETTINGS)
+    window.tabs.setCurrentIndex(main_window.TAB_CHARS)
+    qtbot.waitUntil(lambda: len(calls) == 2 and not window._busy, timeout=20000)
+    window.cfg["enabled_variants"] = ["_retail_", "_forever_"]                                       # another game version: read again
+    window.tabs.setCurrentIndex(main_window.TAB_SETTINGS)
+    window.tabs.setCurrentIndex(main_window.TAB_CHARS)
+    qtbot.waitUntil(lambda: len(calls) == 4 and not window._busy, timeout=20000)
+
+
+def test_a_database_that_cannot_be_read_is_said_in_the_log_and_the_block_and_read_again_next_time(window, qtbot, stats_data, monkeypatch):
+    def broken(variant):
+        raise SystemExit("ERROR: too new")
+    monkeypatch.setattr(main_window.actions, "ignore_choices", broken)
+    window.tabs.setCurrentIndex(main_window.TAB_CHARS)
+    qtbot.waitUntil(lambda: not window._busy and len(window.char_tiles) == 1, timeout=20000)
+    assert window._chars_key is None and "ERROR: too new" in window.log.toPlainText()
+    assert window.char_tiles[0].table is None and "could not be read" in window.char_tiles[0].box.findChild(main_window.QLabel).text()
+
+
+def test_building_the_blocks_again_leaves_no_block_behind(window, qtbot, stats_data):
+    open_chars(window, qtbot)
+    window._chars_rebuild({"_retail_": None})
+    window._chars_rebuild({"_retail_": None})
+    qtbot.wait(50)
+    assert len(window.char_tiles) == 1 and window.chars_stack.count() == 1 and items(window.cmb_chars_variant) == ["_retail_"]
+
+
+def test_the_apply_buttons_are_off_while_a_slow_action_runs_and_none_is_left_behind_by_a_new_build(window, qtbot, stats_data):
+    tile = open_chars(window, qtbot)[0]
+    plain = [button for button in window.action_buttons if button not in window._chars_buttons]
+    assert window._chars_buttons == [tile.save, tile.del_save] and all(button in window.action_buttons for button in window._chars_buttons)
+    window.set_busy(True, "x")
+    assert not tile.save.isEnabled() and not tile.del_save.isEnabled()
+    window.set_busy(False)
+    assert tile.save.isEnabled() and tile.del_save.isEnabled()
+    window._chars_rebuild({"_retail_": None})
+    window._chars_rebuild({"_retail_": None})
+    assert window._chars_buttons == [] and window.action_buttons == plain                            # a block without data has no button, the old ones are gone
+    window.set_busy(True, "x")                                                                       # no error from a button that was deleted
+    window.set_busy(False)
+
+
+def test_a_settings_file_that_cannot_be_written_is_said_and_the_page_is_still_written_again(window, qtbot, stats_data, monkeypatch):
+    _db, page = stats_data
+
+    def refuse(_cfg):
+        raise OSError("disk full")
+    monkeypatch.setattr(main_window.config, "save", refuse)
+    tile = open_chars(window, qtbot)[0]
+    add_rule(tile, "class", "Mage")
+    tile.save.click()
+    assert "disk full" in window.log.toPlainText()
+    wait_page(window, qtbot, page, lambda text: "Alice-Realm" not in text)
+
+
+# ------------------------------------------------------------------------------------------------------------ the block "Delete"
+def del_rows(tile):
+    """What the list of the characters marked for deleting shows: [character, class, level] per row."""
+    table = tile.del_table
+    return [[table.item(row, column).text() for column in (1, 2, 3)] for row in range(table.rowCount())]
+
+
+def bl_rows(tile):
+    return [tile.bl_table.item(row, 1).text() for row in range(tile.bl_table.rowCount())]
+
+
+def mark_in(table, *rows):
+    for row in rows:
+        table.item(row, 0).setCheckState(Qt.CheckState.Checked)
+
+
+def pick_char(tile, key):
+    tile.del_char.setCurrentIndex(tile.del_char.findText(key))
+    tile.del_add.click()
+
+
+def test_the_block_delete_stands_under_ignore_for_a_game_version_with_data_only(window, qtbot, stats_data):
+    window.cfg["enabled_variants"] = ["_retail_", "_forever_"]
+    retail, forever = open_chars(window, qtbot)
+    assert retail.del_box.title() == "Delete – _retail_" and forever.del_box is None and forever.del_table is None     # no data: nothing to delete
+    layout = retail.panel.layout()
+    assert layout.itemAt(0).widget() is retail.box and layout.itemAt(1).widget() is retail.del_box
+
+
+def test_the_form_offers_the_characters_of_the_data_and_the_list_shows_what_was_picked(window, qtbot, stats_data):
+    tile = open_chars(window, qtbot)[0]
+    assert items(tile.del_char) == ["Alice-Realm", "Bob-Realm"] and tile.del_char.currentText() == ""        # nothing is chosen for the person
+    assert del_rows(tile) == [] and tile.del_preview.text() == "This list deletes 0 characters." and not tile.del_remove.isEnabled()
+    pick_char(tile, "Bob-Realm")
+    assert del_rows(tile) == [["Bob-Realm", "Druid", "70"]] and tile.del_preview.text() == "This list deletes 1 characters."
+    assert tile.del_char.currentText() == ""                                                                  # ready for the next one
+    pick_char(tile, "Bob-Realm")                                                                              # a character once
+    assert del_rows(tile) == [["Bob-Realm", "Druid", "70"]]
+    pick_char(tile, "Alice-Realm")
+    assert del_rows(tile) == [["Bob-Realm", "Druid", "70"], ["Alice-Realm", "Mage", "80"]] and tile.del_remove.isEnabled()
+
+
+def test_the_ticked_characters_are_taken_off_the_list_and_nothing_else_happens(window, qtbot, stats_data):
+    tile = open_chars(window, qtbot)[0]
+    pick_char(tile, "Alice-Realm")
+    pick_char(tile, "Bob-Realm")
+    mark_in(tile.del_table, 0)
+    tile.del_remove.click()
+    assert del_rows(tile) == [["Bob-Realm", "Druid", "70"]] and tile.del_preview.text() == "This list deletes 1 characters."
+    assert window.cfg["char_blacklist"] == {} and config.load()[0]["char_blacklist"] == {}                  # nothing is saved, nothing is deleted
+    assert scans_in_data("_retail_") == 2
+
+
+def scans_in_data(variant):
+    import sqlite3
+    conn = sqlite3.connect(wow_install.out_files(variant)[0])
+    try:
+        return conn.execute("SELECT COUNT(DISTINCT char_key) FROM scans").fetchone()[0]
+    finally:
+        conn.close()
+
+
+def test_a_text_that_fits_no_character_is_not_added_and_a_part_of_a_name_is_enough_when_it_fits_one(window, qtbot, stats_data):
+    tile = open_chars(window, qtbot)[0]
+    tile.del_add.click()                                                                                      # nothing chosen
+    assert del_rows(tile) == [] and "does not fit an entry" in tile.del_message.text()
+    tile.del_char.setCurrentText("nobody like it")
+    tile.del_add.click()
+    assert del_rows(tile) == []
+    tile.del_char.setCurrentText("ali")
+    tile.del_add.click()
+    assert del_rows(tile) == [["Alice-Realm", "Mage", "80"]] and tile.del_message.text() == ""
+
+
+def test_a_character_the_list_names_but_the_data_does_not_have_shows_without_class_and_level(window, qtbot, stats_data):
+    tile = open_chars(window, qtbot)[0]
+    tile.del_list = ["Ghost-Realm"]
+    window._del_refresh(tile)
+    assert del_rows(tile) == [["Ghost-Realm", "", ""]]
+
+
+def test_the_blacklist_of_the_game_version_is_listed(window, qtbot, stats_data):
+    window.cfg["char_blacklist"] = {"_retail_": ["Gone-Realm", "Other-Realm"], "_forever_": ["Forever-Realm"]}
+    tile = open_chars(window, qtbot)[0]
+    assert bl_rows(tile) == ["Gone-Realm", "Other-Realm"] and tile.bl_note.text() == "" and tile.bl_remove.isEnabled()
+    window.cfg["char_blacklist"] = {}
+    window._bl_refresh(tile)
+    assert bl_rows(tile) == [] and tile.bl_note.text() == "The blacklist is empty." and not tile.bl_remove.isEnabled()
+
+
+def test_the_ticked_entries_leave_the_blacklist_and_that_is_saved_at_once(window, qtbot, stats_data):
+    window.cfg["char_blacklist"] = {"_retail_": ["Gone-Realm", "Other-Realm", "Third-Realm"], "_forever_": ["Forever-Realm"]}
+    tile = open_chars(window, qtbot)[0]
+    mark_in(tile.bl_table, 0, 2)
+    tile.bl_remove.click()
+    wanted = {"_retail_": ["Other-Realm"], "_forever_": ["Forever-Realm"]}
+    assert window.cfg["char_blacklist"] == wanted and config.load()[0]["char_blacklist"] == wanted
+    assert bl_rows(tile) == ["Other-Realm"] and "2 entries removed from the blacklist" in tile.bl_message.text()
+    assert "2 entries removed" in window.log.toPlainText() and "read again" in tile.bl_message.text()
+    mark_in(tile.bl_table, 0)
+    tile.bl_remove.click()
+    assert window.cfg["char_blacklist"] == {"_forever_": ["Forever-Realm"]} and bl_rows(tile) == [] and tile.bl_note.text() == "The blacklist is empty."
+
+
+def test_nothing_ticked_changes_nothing(window, qtbot, stats_data):
+    window.cfg["char_blacklist"] = {"_retail_": ["Gone-Realm"]}
+    tile = open_chars(window, qtbot)[0]
+    tile.bl_remove.click()
+    assert window.cfg["char_blacklist"] == {"_retail_": ["Gone-Realm"]} and bl_rows(tile) == ["Gone-Realm"] and tile.bl_message.text() == ""
+
+
+def test_a_blacklist_that_cannot_be_saved_stays_as_it_was(window, qtbot, stats_data, monkeypatch):
+    window.cfg["char_blacklist"] = {"_retail_": ["Gone-Realm", "Other-Realm"]}
+    tile = open_chars(window, qtbot)[0]
+
+    def refuse(_cfg):
+        raise OSError("disk full")
+    monkeypatch.setattr(main_window.config, "save", refuse)
+    mark_in(tile.bl_table, 0)
+    tile.bl_remove.click()
+    assert window.cfg["char_blacklist"] == {"_retail_": ["Gone-Realm", "Other-Realm"]} and "disk full" in window.log.toPlainText()
+    assert bl_rows(tile) == ["Gone-Realm", "Other-Realm"]
+
+
+def test_the_delete_block_has_its_own_names_in_german(window, qtbot, stats_data):
+    open_chars(window, qtbot)
+    window.cmb_lang.setCurrentIndex(window.cmb_lang.findData("de"))
+    window.on_language()
+    qtbot.waitUntil(lambda: not window._busy and window._chars_key is not None and window.char_tiles[0].box.title() == "Ignorieren – _retail_", timeout=20000)
+    tile = window.char_tiles[0]
+    assert tile.del_box.title() == "Löschen – _retail_" and tile.del_preview.text() == "Diese Liste löscht 0 Charaktere." and tile.bl_note.text() == "Die Blacklist ist leer."
+
+
+# ------------------------------------------------------------------------------------------------------------ deleting characters
+def ask(monkeypatch, answer):
+    """Replaces the question of the window by an answer and returns the list of the questions that were asked."""
+    texts = []
+    monkeypatch.setattr(main_window.dialogs, "ask_yes_no", lambda parent, text: texts.append(text) or answer)
+    return texts
+
+
+def spy_delete(monkeypatch, result=None):
+    """Replaces actions.delete_chars by a function that notes its arguments and what config.json holds at that very moment, and then returns `result`
+    (None: does the real deleting)."""
+    calls = []
+    real = main_window.actions.delete_chars
+
+    def wrapper(variant, keys, top5=None, rules=None):
+        calls.append({"variant": variant, "keys": list(keys), "top5": top5, "rules": rules, "on_disk": config.load()[0]["char_blacklist"]})
+        return result if result is not None else real(variant, keys, top5, rules)
+    monkeypatch.setattr(main_window.actions, "delete_chars", wrapper)
+    return calls
+
+
+def wait_rebuilt(window, qtbot, check):
+    qtbot.waitUntil(lambda: not window._busy and window._chars_key is not None and check(window.char_tiles[0]), timeout=20000)
+
+
+def delete_dir():
+    return wow_install.out_files("_retail_")[0].parent / "backups" / "delete"
+
+
+def delete_copies():
+    """How many copies before deleting exist (the instance is shared by the tests of this module, so tests compare before and after)."""
+    return len(list(delete_dir().glob("*.pre-delete.bak"))) if delete_dir().exists() else 0
+
+
+def test_an_empty_delete_list_asks_nothing_and_does_nothing(window, qtbot, stats_data, monkeypatch):
+    questions, calls = ask(monkeypatch, True), spy_delete(monkeypatch)
+    tile = open_chars(window, qtbot)[0]
+    tile.del_save.click()
+    assert tile.del_message.text() == "The delete list is empty." and questions == [] and calls == []
+
+
+def test_the_question_names_the_number_and_the_characters_and_no_deletes_nothing_and_changes_nothing(window, qtbot, stats_data, monkeypatch):
+    questions, calls = ask(monkeypatch, False), spy_delete(monkeypatch)
+    tile = open_chars(window, qtbot)[0]
+    copies = delete_copies()
+    pick_char(tile, "Alice-Realm")
+    pick_char(tile, "Bob-Realm")
+    tile.del_save.click()
+    assert len(questions) == 1 and "Delete 2 characters for good from the database of _retail_" in questions[0]
+    assert "Alice-Realm\nBob-Realm" in questions[0] and str(delete_dir()) in questions[0] and "blacklist" in questions[0]
+    assert calls == [] and window.cfg["char_blacklist"] == {} and config.load()[0]["char_blacklist"] == {}
+    assert del_rows(tile) != [] and len(del_rows(tile)) == 2 and tile.del_message.text() == "Cancelled, nothing was deleted."
+    assert scans_in_data("_retail_") == 2 and delete_copies() == copies                              # no copy for a deleting that did not happen
+
+
+def test_the_question_lists_twelve_names_and_says_how_many_more(window, qtbot, stats_data, monkeypatch):
+    questions = ask(monkeypatch, False)
+    tile = open_chars(window, qtbot)[0]
+    tile.del_list = [f"C{n:02d}-R" for n in range(14)]
+    tile.del_save.click()
+    assert "C11-R" in questions[0] and "C12-R" not in questions[0] and "... and 2 more" in questions[0] and "Delete 14 characters" in questions[0]
+
+
+def test_after_yes_the_keys_are_on_the_blacklist_before_deleting_and_the_characters_are_gone(window, qtbot, stats_data, monkeypatch):
+    _db, page = stats_data
+    ask(monkeypatch, True)
+    calls = spy_delete(monkeypatch)
+    tile = open_chars(window, qtbot)[0]
+    copies = delete_copies()
+    pick_char(tile, "Alice-Realm")
+    window._tile_key = ("read before",)
+    tile.del_save.click()
+    wait_rebuilt(window, qtbot, lambda built: built.del_list == [] and items(built.del_char) == ["Bob-Realm"])
+    assert calls[0]["variant"] == "_retail_" and calls[0]["keys"] == ["Alice-Realm"]
+    assert calls[0]["on_disk"] == {"_retail_": ["Alice-Realm"]}                                       # saved BEFORE the deleting began
+    assert window.cfg["char_blacklist"] == {"_retail_": ["Alice-Realm"]} and config.load()[0]["char_blacklist"] == {"_retail_": ["Alice-Realm"]}
+    assert scans_in_data("_retail_") == 1 and delete_copies() == copies + 1
+    wait_page(window, qtbot, page, lambda text: "Alice-Realm" not in text)
+    assert "Bob-Realm" in page_text(page)
+    built = window.char_tiles[0]
+    assert bl_rows(built) == ["Alice-Realm"] and built.del_message.text() == "Deleted (_retail_): 1 characters."
+    log = window.log.toPlainText()
+    assert "Deleted (_retail_): 1 characters." in log and "characters deleted (1 scans): Alice-Realm" in log
+    assert window._tile_key is None
+
+
+def test_the_tiles_and_the_rules_of_the_game_version_reach_the_deleting(window, qtbot, stats_data, monkeypatch):
+    ask(monkeypatch, True)
+    calls = spy_delete(monkeypatch, result=(True, "", ["Alice-Realm"]))
+    tiles = [{"stat": 2, "agg": "sum", "by": "all", "value": ""}]
+    rules = [{"type": "char", "value": "Ghost-Realm"}]
+    window.cfg["top5"], window.cfg["char_rules"] = tiles, {"_retail_": rules, "_forever_": [{"type": "char", "value": "Other-Realm"}]}
+    tile = open_chars(window, qtbot)[0]
+    pick_char(tile, "Alice-Realm")
+    tile.del_save.click()
+    qtbot.waitUntil(lambda: not window._busy and window._chars_key is not None, timeout=20000)
+    assert calls[0]["top5"] == tiles and calls[0]["rules"] == rules                                  # the rules of this game version only
+
+
+def test_a_key_that_is_on_the_blacklist_already_is_not_put_there_twice(window, qtbot, stats_data, monkeypatch):
+    ask(monkeypatch, True)
+    calls = spy_delete(monkeypatch, result=(True, "", ["Alice-Realm"]))
+    window.cfg["char_blacklist"] = {"_retail_": ["Old-Realm", "Alice-Realm"]}
+    tile = open_chars(window, qtbot)[0]
+    pick_char(tile, "Alice-Realm")
+    tile.del_save.click()
+    qtbot.waitUntil(lambda: not window._busy and window._chars_key is not None, timeout=20000)
+    assert calls[0]["on_disk"] == {"_retail_": ["Old-Realm", "Alice-Realm"]}
+
+
+def test_when_nothing_was_deleted_the_keys_come_off_the_blacklist_again(window, qtbot, stats_data, monkeypatch):
+    ask(monkeypatch, True)
+    calls = spy_delete(monkeypatch, result=(False, "ERROR: the backup of the database failed, nothing was changed.\n", []))
+    window.cfg["char_blacklist"] = {"_retail_": ["Old-Realm"]}
+    tile = open_chars(window, qtbot)[0]
+    pick_char(tile, "Alice-Realm")
+    tile.del_save.click()
+    qtbot.waitUntil(lambda: not window._busy, timeout=20000)
+    assert calls[0]["on_disk"] == {"_retail_": ["Old-Realm", "Alice-Realm"]}
+    assert window.cfg["char_blacklist"] == {"_retail_": ["Old-Realm"]} and config.load()[0]["char_blacklist"] == {"_retail_": ["Old-Realm"]}
+    assert "the backup of the database failed" in window.log.toPlainText()
+    assert tile.del_message.text() == "Nothing was deleted, the blacklist is as it was (see the log)." and bl_rows(tile) == ["Old-Realm"]
+    assert del_rows(tile) == [["Alice-Realm", "Mage", "80"]] and scans_in_data("_retail_") == 2          # the list stays, nothing is gone
+
+
+def test_a_blacklist_that_had_no_entry_has_none_again_after_a_failure(window, qtbot, stats_data, monkeypatch):
+    ask(monkeypatch, True)
+    spy_delete(monkeypatch, result=(False, "ERROR: x\n", []))
+    tile = open_chars(window, qtbot)[0]
+    pick_char(tile, "Alice-Realm")
+    tile.del_save.click()
+    qtbot.waitUntil(lambda: not window._busy, timeout=20000)
+    assert window.cfg["char_blacklist"] == {} and config.load()[0]["char_blacklist"] == {}
+
+
+def test_a_blacklist_that_cannot_be_saved_stops_the_deleting_before_it_starts(window, qtbot, stats_data, monkeypatch):
+    ask(monkeypatch, True)
+    calls = spy_delete(monkeypatch)
+    window.cfg["char_blacklist"] = {"_retail_": ["Old-Realm"]}
+    tile = open_chars(window, qtbot)[0]
+
+    def refuse(_cfg):
+        raise OSError("disk full")
+    monkeypatch.setattr(main_window.config, "save", refuse)
+    copies = delete_copies()
+    pick_char(tile, "Alice-Realm")
+    tile.del_save.click()
+    assert calls == [] and scans_in_data("_retail_") == 2 and delete_copies() == copies
+    assert window.cfg["char_blacklist"] == {"_retail_": ["Old-Realm"]} and "disk full" in window.log.toPlainText()
+    assert tile.del_message.text() == "The blacklist could not be saved, nothing was deleted." and len(del_rows(tile)) == 1
+
+
+def test_a_blacklist_that_cannot_be_set_back_is_said_plainly(window, qtbot, stats_data, monkeypatch):
+    ask(monkeypatch, True)
+    spy_delete(monkeypatch, result=(False, "ERROR: x\n", []))
+    tile = open_chars(window, qtbot)[0]
+    real, state = main_window.config.save, {"calls": 0}
+
+    def flaky(cfg):
+        state["calls"] += 1
+        if state["calls"] >= 2:                                                                       # the first save (the keys on the blacklist) works
+            raise OSError("disk full")
+        real(cfg)
+    monkeypatch.setattr(main_window.config, "save", flaky)
+    pick_char(tile, "Alice-Realm")
+    tile.del_save.click()
+    qtbot.waitUntil(lambda: not window._busy, timeout=20000)
+    assert "disk full" in window.log.toPlainText() and "still on it although nothing was deleted" in tile.del_message.text()
+    assert window.cfg["char_blacklist"] == {}                                                         # in memory it is as it was
+
+
+def test_a_list_of_ignore_that_was_not_applied_survives_the_deleting(window, qtbot, stats_data, monkeypatch):
+    ask(monkeypatch, True)
+    tile = open_chars(window, qtbot)[0]
+    add_rule(tile, "class", "Mage", excel=False)
+    pick_char(tile, "Alice-Realm")                                                                    # she is the mage
+    tile.del_save.click()
+    wait_rebuilt(window, qtbot, lambda built: built.del_list == [] and items(built.del_char) == ["Bob-Realm"])
+    built = window.char_tiles[0]
+    assert list_rows(built) == [["Class", "MAGE", "Page", "0"]]                                       # still there, hits nobody, and shown as it is: the data has no mage now
+    assert built.pending.text() == "Changed, not applied yet." and window.cfg["char_rules"] == {}
+
+
+def test_a_list_of_ignore_that_was_applied_is_not_taken_for_a_draft(window, qtbot, stats_data, monkeypatch):
+    ask(monkeypatch, True)
+    window.cfg["char_rules"] = {"_retail_": [MAGE_PAGE]}
+    tile = open_chars(window, qtbot)[0]
+    pick_char(tile, "Bob-Realm")
+    tile.del_save.click()
+    wait_rebuilt(window, qtbot, lambda built: built.del_list == [] and items(built.del_char) == ["Alice-Realm"])
+    built = window.char_tiles[0]
+    assert list_rows(built) == [["Class", "Mage", "Page", "1"]] and built.pending.text() == ""
+
+
+def test_while_a_slow_action_runs_the_apply_button_of_the_block_delete_does_nothing(window, qtbot, stats_data, monkeypatch):
+    questions = ask(monkeypatch, True)
+    tile = open_chars(window, qtbot)[0]
+    pick_char(tile, "Alice-Realm")
+    window.set_busy(True, "x")
+    assert not tile.del_save.isEnabled()
+    window._del_apply(tile)                                                                           # even called directly: nothing
+    window.set_busy(False)
+    assert questions == [] and scans_in_data("_retail_") == 2
+
+
+def test_the_excel_export_hands_the_rules_of_every_game_version_on(window, qtbot, monkeypatch):
+    from pathlib import Path
+    given, shown = [], []
+    monkeypatch.setattr(actions, "run_export", lambda rules=None: given.append(rules) or (True, "", Path("x.xlsx")))
+    monkeypatch.setattr(window, "_exported", lambda result: shown.append(result))          # not the real one: it would open Excel
+    first, second = {"type": "char", "value": "Bob-Realm", "for": ["excel"]}, {"type": "char", "value": "Other-Realm"}
+    window.cfg["char_rules"] = {"_retail_": [first], "_forever_": [second]}
+    window.on_export()
+    qtbot.waitUntil(lambda: bool(shown) and not window._busy, timeout=10000)
+    assert given == [{"_retail_": [first], "_forever_": [second]}]
 
 
 def test_the_save_button_is_off_while_a_slow_action_runs(window):

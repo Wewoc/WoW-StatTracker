@@ -155,3 +155,70 @@ def test_at_most_five_tiles_are_kept_and_a_list_that_is_not_a_list_gives_none(in
     for bad in ({"a": 1}, "text", 7, None):
         config.config_path().write_text(json.dumps({"top5": bad}), encoding="utf-8")
         assert config.load()[0]["top5"] == []
+
+
+def test_there_is_no_blacklist_until_a_character_is_deleted_and_it_survives_the_file(instance):
+    cfg, _ = config.load()
+    assert cfg["char_blacklist"] == {}
+    cfg["char_blacklist"] = {"_retail_": ["A-B", "Zoë-Realm"], "_forever_": ["C-D"]}
+    config.save(cfg)
+    assert config.load()[0]["char_blacklist"] == cfg["char_blacklist"]
+
+
+def test_what_is_no_key_is_dropped_from_the_blacklist_and_every_key_stays_once(instance):
+    junk = {"_retail_": ["A-B", "A-B", "", None, 5, ["C-D"], "E-F"], "_forever_": [None, ""], "_classic_": "no list", "retail": ["A-B"], "": ["A-B"],
+            5: ["A-B"], "_x": ["A-B"], "_anniversary_": {"A-B": 1}}
+    config.config_path().parent.mkdir(parents=True, exist_ok=True)
+    config.config_path().write_text(json.dumps({"char_blacklist": junk}), encoding="utf-8")
+    assert config.load()[0]["char_blacklist"] == {"_retail_": ["A-B", "E-F"]}           # no key left for a version: no entry
+
+
+def test_the_blacklist_is_cut_at_its_maximum_and_what_is_no_dict_gives_none(instance):
+    config.config_path().parent.mkdir(parents=True, exist_ok=True)
+    many = [f"C{i}-R" for i in range(config.CHAR_BLACKLIST_MAX + 20)]
+    config.config_path().write_text(json.dumps({"char_blacklist": {"_retail_": many}}), encoding="utf-8")
+    assert config.load()[0]["char_blacklist"]["_retail_"] == many[:config.CHAR_BLACKLIST_MAX] and config.CHAR_BLACKLIST_MAX == 5000
+    for bad in (["A-B"], "text", 7, None):
+        config.config_path().write_text(json.dumps({"char_blacklist": bad}), encoding="utf-8")
+        assert config.load()[0]["char_blacklist"] == {}
+    assert config.clean_key_list(["A-B", "A-B", "", 5]) == ["A-B"] and config.clean_key_list("A-B") == []
+
+
+RULE = {"type": "char", "value": "A-B"}
+
+
+def test_there_are_no_char_rules_until_some_are_set_and_good_ones_survive_the_file(instance):
+    cfg, _ = config.load()
+    assert cfg["char_rules"] == {}
+    cfg["char_rules"] = {"_retail_": [RULE, {"type": "char", "value": "C-D", "for": ["page"]}], "_forever_": [{"type": "char", "value": "E-F", "for": []}]}
+    config.save(cfg)
+    assert config.load()[0]["char_rules"] == cfg["char_rules"]
+
+
+def test_rules_that_are_not_shaped_like_one_are_dropped_and_the_rest_stays_in_order(instance):
+    junk = {"_retail_": [RULE, "text", None, 5, {"type": "char"}, {"value": "x"}, {"type": 1, "value": "x"}, {"type": "char", "value": 7},
+                         {"type": "char", "value": "", "more": 1}, {"type": "class", "value": "MAGE", "for": "page"},
+                         {"type": "char", "value": "G-H", "for": ["excel", 3, None]}],
+            "_forever_": ["nothing", {"type": "char"}],                              # no rule left: no entry
+            "retail": [RULE], "": [RULE], 5: [RULE], "_x": [RULE],                   # not a game version folder name
+            "_classic_": "no list", "_anniversary_": {"type": "char", "value": "x"}}
+    config.config_path().parent.mkdir(parents=True, exist_ok=True)
+    config.config_path().write_text(json.dumps({"char_rules": junk}), encoding="utf-8")
+    assert config.load()[0]["char_rules"] == {"_retail_": [
+        RULE, {"type": "char", "value": ""}, {"type": "class", "value": "MAGE"}, {"type": "char", "value": "G-H", "for": ["excel"]}]}
+
+
+def test_a_value_may_be_empty_but_not_missing_and_a_for_that_is_no_list_is_left_out(instance):
+    assert config.clean_rule_list([{"type": "race", "value": ""}, {"type": "race"}, {"type": "race", "value": "Orc", "for": None}]) == \
+        [{"type": "race", "value": ""}, {"type": "race", "value": "Orc"}]
+
+
+def test_at_most_char_rules_max_rules_are_kept_per_version_and_what_is_not_a_dict_gives_none(instance):
+    config.config_path().parent.mkdir(parents=True, exist_ok=True)
+    many = [{"type": "char", "value": f"C{i}-R"} for i in range(config.CHAR_RULES_MAX + 20)]
+    config.config_path().write_text(json.dumps({"char_rules": {"_retail_": many}}), encoding="utf-8")
+    kept = config.load()[0]["char_rules"]["_retail_"]
+    assert kept == many[:config.CHAR_RULES_MAX] and config.CHAR_RULES_MAX == 500
+    for bad in ([RULE], "text", 7, None):
+        config.config_path().write_text(json.dumps({"char_rules": bad}), encoding="utf-8")
+        assert config.load()[0]["char_rules"] == {}
