@@ -23,7 +23,7 @@ from export import export_xlsx
 from game import wow_install
 from pages import outputs, page_payload, stat_history
 from pages.blocks import top5
-from rules import char_rules
+from rules import char_names, char_rules
 from store import db_backup, db_schema, importer
 
 
@@ -109,6 +109,20 @@ def rebuild_page(variant, top5_tiles, rules=None):
         return False, t("log_parse_unexpected", error=f"{type(e).__name__}: {e}") + "\n"
 
 
+def rebuild_pages(jobs):
+    """Writes the stats pages of several game versions again (rebuild_page for each): `jobs` is [(game version, tiles, rules)], the result
+    [(game version, ok, output text)] in the same order. One version that fails never stops the others, and nothing is raised: whatever goes
+    wrong becomes the text of its entry (the window runs this in a thread and must always get an answer)."""
+    results = []
+    for variant, tiles, rules in jobs:
+        try:
+            ok, text = rebuild_page(variant, tiles, rules)
+        except Exception as e:  # rebuild_page catches almost everything itself; this is the net below it
+            ok, text = False, t("log_parse_unexpected", error=f"{type(e).__name__}: {e}") + "\n"
+        results.append((variant, ok, text))
+    return results
+
+
 def delete_chars(variant, keys, top5_tiles=None, rules=None):
     """Deletes characters from the database of this game version, for good, and returns (ok, output text, the keys that were deleted). In this order: the
     database is opened (db_schema.init_db: the copy of the day, a migration if it is old, a newer one stops here), the keys it does not have are left out,
@@ -180,7 +194,7 @@ def run_export(rules_by_variant=None):
     def hidden(db_path, chars):
         return char_rules.hidden_keys(chars, rules_by_db.get(Path(db_path).name), "excel")
     try:
-        buf.write("\n".join(export_xlsx.export(out, hidden=hidden if rules_by_db else None)) + "\n")
+        buf.write("\n".join(export_xlsx.export(out, hidden=hidden if rules_by_db else None, label=lambda c: char_names.display(c["key"], c.get("surname")))) + "\n")
     except SystemExit as e:
         ok = False
         buf.write(str(e.code) + "\n")
@@ -201,24 +215,41 @@ def import_saved_variables(sv_file, root, variant, read_icons, top5=None, rules=
                       wow_install.icons_dir(variant), root if product else None, product, top5=top5, rules=rules, skip=skip)
 
 
+def import_all(jobs):
+    """Reads the SavedVariables file of several game versions (import_saved_variables for each): `jobs` is [(game version, data file, game folder,
+    read_icons, tiles, rules, skip)], the result [(game version, ok, output text)] in the same order. One version that fails never stops the others,
+    and nothing is raised: whatever goes wrong becomes the text of its entry (the window runs this in a thread and must always get an answer)."""
+    results = []
+    for variant, sv_file, root, read_icons, tiles, rules, skip in jobs:
+        try:
+            ok, text = import_saved_variables(sv_file, root, variant, read_icons, tiles, rules, skip)
+        except Exception as e:  # run_parser catches almost everything itself; this is the net below it
+            ok, text = False, t("log_parse_unexpected", error=f"{type(e).__name__}: {e}") + "\n"
+        results.append((variant, ok, text))
+    return results
+
+
 def other_accounts(root, variant, account):
     """The other accounts of this game version that have a data file of their own (they are not read)."""
     return [a for a in wow_install.list_accounts(root / variant)
             if a != account and wow_install.saved_vars_path(root / variant, a).is_file()]
 
 
-def status_parts(root, variant, account):
-    """The parts of the status line for a usable game folder and version (the window joins them)."""
-    parts = [t("status_game", path=root / variant)]
-    if account:
-        sv = wow_install.saved_vars_path(root / variant, account)
-        if sv.is_file():
-            ts = datetime.fromtimestamp(sv.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-            parts.append(t("status_data_present", ts=ts))
-        else:
-            parts.append(t("status_data_missing"))
-    else:
+def status_parts(root, variants, account, variant):
+    """The parts of the status line for a usable game folder (the window joins them): the game folder; for every game version that is read, whether
+    it has the data file of the account and when it was written; the state of the addon in `variant`, the game version the addon buttons act on."""
+    parts = [t("status_game", path=root)]
+    if not account:
         parts.append(t("status_no_account"))
+    elif variants:
+        items = []
+        for name in variants:
+            sv = wow_install.saved_vars_path(root / name, account)
+            if sv.is_file():
+                items.append(t("status_data_item", variant=name, ts=datetime.fromtimestamp(sv.stat().st_mtime).strftime("%Y-%m-%d %H:%M")))
+            else:
+                items.append(t("status_data_item_missing", variant=name))
+        parts.append(t("status_data_all", items=" · ".join(items)))
     status = wow_install.addon_status(root, variant)
     if status[0] == "missing":
         parts.append(t("status_addon_missing"))
@@ -230,8 +261,6 @@ def status_parts(root, variant, account):
         parts.append(t("status_addon_interface", installed=status[1], expected=status[2]))
     else:
         parts.append(t("status_addon_unknown"))
-    html = wow_install.out_files(variant)[1]
-    parts.append(t("status_html_present" if html.is_file() else "status_html_missing", name=html.name))
     return parts
 
 

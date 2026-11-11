@@ -12,7 +12,7 @@
 -- Chat messages are German on a German client (deDE), English otherwise.
 --
 -- Data structure (account-wide):
---   StatTrackerDB.version            = 4
+--   StatTrackerDB.version            = 5
 --   StatTrackerDB.auto               = true/false
 --   StatTrackerDB.meta[statID]       = { name = "...", cat = "category > subcategory" }
 --   StatTrackerDB.repMeta[factionID] = { name = "..." }       -- last known (localized) faction name
@@ -22,6 +22,8 @@
 --       scannedAt = "YYYY-MM-DD HH:MM:SS", scannedEpoch = time(),
 --       class = "...", level = N, faction = "...",
 --       classFile = "MAGE", race = "...", raceFile = "Human",   -- classFile/raceFile are language independent
+--       surname = "...",       -- optional (version 5): the second return value of UnitName("player") when it is a text that is not the realm
+--                              -- (WoW Forever: the last name that is shown with the character); the key stays "Name-Realm" with the first value
 --       stats = { [statID] = "value as text" },
 --       playedTotal = seconds, playedLevel = seconds,   -- arrives shortly after the scan (TIME_PLAYED_MSG)
 --       -- all of the following are optional: a part that cannot be read is left out, the scan stays valid
@@ -56,7 +58,7 @@ loader:RegisterEvent("ADDON_LOADED")
 loader:SetScript("OnEvent", function(self, _, name)
     if name ~= ADDON then return end
     StatTrackerDB = StatTrackerDB or {}
-    StatTrackerDB.version = 4
+    StatTrackerDB.version = 5
     StatTrackerDB.meta = StatTrackerDB.meta or {}
     StatTrackerDB.repMeta = StatTrackerDB.repMeta or {}
     StatTrackerDB.chars = StatTrackerDB.chars or {}
@@ -450,6 +452,16 @@ local function DropLinks(into)
     end
 end
 
+-- The second return value of UnitName("player") is the realm of a player from another realm and nil for your own. On WoW Forever it carries the
+-- last name that is shown with the character ("Catless Everbeen"). Kept as an optional text: nothing but a non-empty text that is not the realm.
+local function Surname(second)
+    local text = NonEmpty(second)
+    if not text then return nil end
+    if text == GetRealmName() then return nil end
+    if GetNormalizedRealmName and text == GetNormalizedRealmName() then return nil end
+    return text
+end
+
 -- Store the finished scan, then ask for the played time (TIME_PLAYED_MSG). The record exists before the request,
 -- because the answer is written into it.
 local function StoreScan(key, st, extra)
@@ -465,6 +477,7 @@ local function StoreScan(key, st, extra)
         classFile = st.classFile,
         race = st.race,
         raceFile = st.raceFile,
+        surname = st.surname,
         stats = st.stats,
     }
     for field, value in pairs(extra) do rec[field] = value end
@@ -539,13 +552,14 @@ local function ScanAllStats()
     end
 
     local key = UnitName("player") .. "-" .. GetRealmName()
+    local _, nameExtra = UnitName("player")
     -- the second return value of UnitClass/UnitRace is the language independent file name
     local className, classFile = UnitClass("player")
     local raceName, raceFile = UnitRace("player")
     local st = {
         tasks = tasks, ti = 1, ai = 1, stats = {}, meta = {}, count = 0,
         class = className, level = UnitLevel("player"), faction = UnitFactionGroup("player"),
-        classFile = classFile, race = raceName, raceFile = raceFile,
+        classFile = classFile, race = raceName, raceFile = raceFile, surname = Surname(nameExtra),
     }
     local perTick = math.max(1, math.ceil(total / (SCAN_SECONDS / SCAN_TICK)))
 

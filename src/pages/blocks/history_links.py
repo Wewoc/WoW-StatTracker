@@ -7,7 +7,7 @@
 # block is left out (empty text) when the payload holds no links. It replaces the script that built the same elements in
 # the page (setupHistory): same elements, ids and classes, so the style sheet of the page is unchanged. Needs markup.
 
-from pages.blocks.markup import esc, fmt, ui
+from pages.blocks.markup import esc, fmt, label, ui
 
 
 def render(payload, view=None, slot=None, **_) -> str:
@@ -16,11 +16,12 @@ def render(payload, view=None, slot=None, **_) -> str:
     history = payload.get("history") or {}
     links = history.get("links") or {}
     keys = [c["key"] for c in payload.get("chars") or []]
+    shown = {c["key"]: label(c) for c in payload.get("chars") or []}
     linked = [key for key in keys if key in links]
     if not linked:
         return ""
     anchors = "".join(
-        f'<a class="hlink" href="{esc(links[key]["href"])}">{esc(key)}<span> ({esc(links[key]["scans"])})</span></a>'
+        f'<a class="hlink" href="{esc(links[key]["href"])}">{esc(shown[key])}<span> ({esc(links[key]["scans"])})</span></a>'
         for key in linked)
     missing = len(keys) - len(linked)
     note = fmt(ui(payload, "hist_links_note"), dir=history.get("dir", ""))

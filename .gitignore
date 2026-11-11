@@ -41,6 +41,9 @@ _update_success.flag
 CLAUDE.md
 ROADMAP.md
 
+# Local skills for the coding assistant (not part of the project)
+.claude/
+
 # Local audit concepts, prompts and results (not part of the project)
 audit/
 

@@ -32,7 +32,16 @@ WOW_CANDIDATES = (
     Path(r"C:\Program Files\World of Warcraft"),
 )
 
-# Folder name -> Product column in .build.info. Only wow (Retail) is tested; the
+# The game versions that were tried with a real client (Retail and WoW Forever; BC Anniversary was tried too and provides no statistics): only these
+# can be enabled in the window. A version is added here after it was tested with the real client, not before (see the table in the README).
+TESTED_VARIANTS = ("_retail_", "_forever_")
+
+
+def is_tested(variant):
+    return variant in TESTED_VARIANTS
+
+
+# Folder name -> Product column in .build.info. Only wow (Retail) and wowf (Forever) were tried with a real client; the
 # other entries are assumptions. Unknown -> the interface number is left alone.
 VARIANT_PRODUCT = {
     "_retail_": "wow",
@@ -93,6 +102,17 @@ def list_accounts(game_dir):
     names = [d.name for d in base.iterdir() if d.is_dir() and d.name.lower() != "savedvariables"]
     names.sort(key=lambda n: (not saved_vars_path(game_dir, n).is_file(), n.lower()))
     return names
+
+
+def list_accounts_of(root, variants):
+    """The accounts of several game versions together, each name once: those that have a StatTracker.lua in any of the versions come first,
+    then the others, each part by name (list_accounts for one version)."""
+    has_data = {}
+    for variant in variants:
+        game = Path(root) / variant
+        for account in list_accounts(game):
+            has_data[account] = has_data.get(account, False) or saved_vars_path(game, account).is_file()
+    return sorted(has_data, key=lambda n: (not has_data[n], n.lower()))
 
 
 def saved_vars_path(game_dir, account):

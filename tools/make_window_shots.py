@@ -43,6 +43,7 @@ WINDOW_SIZE = (1180, 720)                                    # as wide as the wi
 NEUTRAL_GAME = r"C:\Games\World of Warcraft"                  # what the window shows as the game folder
 NEUTRAL_FILE = r"C:\Games\World of Warcraft\_retail_\WTF\Account\DEMO\SavedVariables\StatTracker.lua"
 LOG = (                                                       # invented lines for the log (keys of i18n, neutral paths)
+    ("log_parse_version", {"variant": "_retail_"}, None),
     ("parse_out_source", {"path": NEUTRAL_FILE}, None),
     ("parse_out_scans", {"new": 5, "skipped": 0}, None),
     ("parse_out_html", {"path": r"data\stats.html", "chars": 5, "stats": None}, None),
@@ -83,7 +84,7 @@ def _instance(demo, lang, base):
     (game / ".build.info").write_text("Branch!STRING:0|Active!DEC:1|Product!STRING:0|Version!STRING:0\neu|1|wow|12.1.5.70575\n", encoding="utf-8")
     cfg = config.defaults()
     cfg.update(language=lang, wow_dir=str(game), variant="_retail_", enabled_variants=["_retail_"], accounts={"_retail_": "DEMO"},
-               check_updates=False, read_icons=True, active_theme=1, top5=[dict(tile) for tile in make_demo.DEMO_TOP5])
+               check_updates=False, read_icons=True, active_theme=1, top5={"_retail_": [dict(tile) for tile in make_demo.DEMO_TOP5]})
     config.save(cfg)
     return game
 
@@ -99,8 +100,8 @@ def _neutral(window, stats):
     window.clear_log()
     for key, values, tag in LOG:
         window.write(t(key, **{k: (stats if v is None else v) for k, v in values.items()}), tag)
-    parts = [t("status_game", path=NEUTRAL_GAME + r"\_retail_"), t("status_data_present", ts="2026-10-28 19:44:10"),
-             t("status_addon_ok", version=app_info.APP_VERSION), t("status_html_present", name="stats.html")]
+    parts = [t("status_game", path=NEUTRAL_GAME), t("status_data_all", items=t("status_data_item", variant="_retail_", ts="2026-10-28 19:44")),
+             t("status_addon_ok", version=app_info.APP_VERSION)]
     window.lbl_status.setText("  |  ".join(parts))                # the permanent label of the status bar (update_status writes it)
 
 

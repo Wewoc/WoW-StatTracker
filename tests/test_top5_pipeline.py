@@ -41,7 +41,7 @@ def test_the_import_writes_the_tiles_it_is_given_into_the_page(sv, tmp_path):
     text = run(sv, tmp_path, "--top5", json.dumps([GOLD, PLAYED]))
     assert data_of(text)["top5"] == [GOLD, PLAYED]
     block = text.split('id="top5"')[1].split('<div data-slot="1">')[0]
-    assert "Gold earned" in block and "12.05" in block and "Alice-Realm" in block and "25.0" in block       # 12g 5s 3c = 12.05 g, 90061 s = 25.0 h
+    assert "Gold earned" in block and "12.05" in block and "Alice / Realm" in block and "25.0" in block       # 12g 5s 3c = 12.05 g, 90061 s = 25.0 h
 
 
 def test_the_page_written_again_from_the_database_takes_the_tiles_it_is_given(sv, tmp_path):

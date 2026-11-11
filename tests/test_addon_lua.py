@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from store import importer
+
 lupa = pytest.importorskip("lupa")
 
 ADDON = Path(__file__).resolve().parent.parent / "addon" / "StatTracker" / "StatTracker.lua"
@@ -127,12 +129,12 @@ def test_everything_is_stored_with_the_played_time(en):
     assert db.meta[1030700].cat == "Cat101 > Cat103"
 
 
-def test_class_file_race_and_race_file_are_stored_and_the_contract_version_is_4(en):
+def test_class_file_race_and_race_file_are_stored_and_the_contract_version_is_the_one_the_parser_knows(en):
     db = en.StatTrackerDB
     rec = db.chars["Alice-Realm"]
     assert (rec.classFile, rec.race, rec.raceFile) == ("MAGE", "Human", "Human")
     assert rec["class"] == "Mage"                            # the localized class name stays as it was
-    assert db.version == 4
+    assert db.version == importer.DATA_VERSION
 
 
 def test_the_file_names_do_not_depend_on_the_client_language():
@@ -217,12 +219,31 @@ def run_scans(scans, locale="enUS", tweak="", before_load=""):
     lua.execute('Fire("ADDON_LOADED", "StatTracker")')
     for scan in scans:
         lua.execute(f'CLOCK = {scan["epoch"]}; REQUESTED = false; '
-                    f'function UnitName() return "{scan.get("name", "Alice")}" end')
+                    f'function UnitName() return "{scan.get("name", "Alice")}"{", " + scan["second"] if "second" in scan else ""} end')
         lua.execute('SlashCmdList["STATTRACKER"]("")')
         lua.execute("RunTimers(true)")
         lua.execute(f'Fire("TIME_PLAYED_MSG", {scan["played"]}, 60)')
         lua.execute("RunTimers()")
     return lua.globals()
+
+
+def test_the_second_value_of_unitname_is_kept_as_the_surname_when_it_is_a_text_that_is_not_the_realm():
+    g = run_scans([{"epoch": BASE_EPOCH, "played": 100, "second": '"Everbeen"'}])
+    db = g.StatTrackerDB
+    assert list(db.chars.keys()) == ["Alice-Realm"]                          # the key is made with the first value only
+    assert db.chars["Alice-Realm"].surname == "Everbeen"
+
+
+@pytest.mark.parametrize("second", ["nil", '""', '"Realm"', "5"])         # nothing, empty, the realm of the character, not a text
+def test_no_surname_is_kept_when_the_second_value_is_nothing_empty_the_realm_or_no_text(second):
+    g = run_scans([{"epoch": BASE_EPOCH, "played": 100, "second": second}])
+    assert g.StatTrackerDB.chars["Alice-Realm"].surname is None
+
+
+def test_a_normalized_realm_name_is_not_taken_for_a_surname():
+    tweak = 'function GetNormalizedRealmName() return "NormalizedRealm" end'
+    g = run_scans([{"epoch": BASE_EPOCH, "played": 100, "second": '"NormalizedRealm"'}], tweak=tweak)
+    assert g.StatTrackerDB.chars["Alice-Realm"].surname is None
 
 
 def history_max():
@@ -240,7 +261,7 @@ def history_of(g, key="Alice-Realm"):
 def test_the_database_has_the_tables_of_version_4_after_loading():
     g = run_scans([])
     db = g.StatTrackerDB
-    assert db.version == 4
+    assert db.version == importer.DATA_VERSION
     assert list(db.history.keys()) == [] and list(db.repMeta.keys()) == []
 
 
@@ -293,7 +314,7 @@ def test_a_file_of_version_3_is_kept_and_its_scan_becomes_the_first_history_entr
            f'{{ scannedAt = "{at(BASE_EPOCH)}", stats = {{ [7] = "5" }}, playedTotal = 99 }} }} }}')
     g = run_scans([{"epoch": BASE_EPOCH + DAY, "played": 100}], before_load=old)
     db = g.StatTrackerDB
-    assert db.version == 4 and db.auto is False and db.meta[7].name == "x"
+    assert db.version == importer.DATA_VERSION and db.auto is False and db.meta[7].name == "x"
     assert history_of(g) == [(at(BASE_EPOCH), 99)]
     assert db.history["Alice-Realm"][1].stats[7] == "5"
 

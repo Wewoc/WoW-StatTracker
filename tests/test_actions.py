@@ -112,14 +112,18 @@ def test_the_other_accounts_with_a_data_file_are_named(tmp_path):
 
 
 # ------------------------------------------------------------------------ the status line
-def test_the_status_line_names_the_game_the_data_and_the_addon(instance, fake_wow, monkeypatch):
+def test_the_status_line_names_the_game_the_data_of_every_version_and_the_addon(instance, fake_wow, monkeypatch):
     monkeypatch.setattr(wow_install, "WOW_CANDIDATES", ())
-    parts = actions.status_parts(fake_wow, "_retail_", "")
-    assert str(fake_wow / "_retail_") in parts[0]
-    assert "no account" in parts[1].lower()
+    both = ["_retail_", "_forever_"]
+    parts = actions.status_parts(fake_wow, both, "", "_retail_")
+    assert parts[0] == f"Game: {fake_wow}" and "no account" in parts[1].lower()
     assert any("Addon: not installed" in p for p in parts)
+    wow_install.saved_vars_path(fake_wow / "_retail_", "ACC1").write_text("x", encoding="utf-8")
+    data = actions.status_parts(fake_wow, both, "ACC1", "_retail_")[1]
+    assert data.startswith("Data: _retail_ 20") and data.endswith(" · _forever_ missing")      # the time of the file, then the version without one
     wow_install.install_addon(fake_wow, "_retail_")
-    assert any(f"Addon: version {app_info.APP_VERSION}" in p for p in actions.status_parts(fake_wow, "_retail_", "ACC1"))
+    assert any(f"Addon: version {app_info.APP_VERSION}" in p for p in actions.status_parts(fake_wow, both, "ACC1", "_retail_"))
+    assert any("Addon: not installed" in p for p in actions.status_parts(fake_wow, both, "ACC1", "_forever_"))     # the addon part follows the version asked for
 
 
 def test_the_import_hands_the_tiles_of_the_top_5_on_as_an_argument(instance, fake_wow, monkeypatch):
@@ -209,7 +213,7 @@ def test_the_choices_of_the_tiles_come_from_the_database(instance):
     found = actions.tile_choices("_retail_")
     labels = dict(found["stats"])
     assert labels[2] == "Gold earned (Wealth)" and -1 in labels and set(found["values"]) == {"char", "class", "race", "faction", "realm"}
-    assert found["values"]["char"] == [("Alice-Realm", "Alice-Realm")] and found["values"]["faction"] == [("Alliance", "Alliance")]
+    assert found["values"]["char"] == [("Alice-Realm", "Alice / Realm")] and found["values"]["faction"] == [("Alliance", "Alliance")]
 
 
 def test_the_choices_for_the_rules_need_a_database(instance):
@@ -221,7 +225,7 @@ def test_the_choices_for_the_rules_come_from_the_database_and_know_no_rule(insta
     _database(instance)
     found = actions.ignore_choices("_retail_")
     assert set(found["values"]) == {"char", "class", "race", "faction", "realm"}
-    assert found["values"]["char"] == [("Alice-Realm", "Alice-Realm")] and found["values"]["faction"] == [("Alliance", "Alliance")]
+    assert found["values"]["char"] == [("Alice-Realm", "Alice / Realm")] and found["values"]["faction"] == [("Alliance", "Alliance")]
     assert [(c["key"], c["level"], c["faction"]) for c in found["chars"]] == [("Alice-Realm", 80, "Alliance")]
     cfg, _ = config.load()
     cfg["char_rules"] = {"_retail_": [{"type": "char", "value": "Alice-Realm"}]}
@@ -244,8 +248,8 @@ def test_the_choices_leave_out_a_character_the_rules_keep_off_the_page(instance)
     _database(instance)
     found = actions.tile_choices("_retail_", [{"type": "char", "value": "Alice-Realm"}])
     assert found["values"]["char"] == [] and found["stats"] == []
-    assert actions.tile_choices("_retail_", [{"type": "char", "value": "Bob-Realm"}])["values"]["char"] == [("Alice-Realm", "Alice-Realm")]
-    assert actions.tile_choices("_retail_", [])["values"]["char"] == [("Alice-Realm", "Alice-Realm")]
+    assert actions.tile_choices("_retail_", [{"type": "char", "value": "Bob-Realm"}])["values"]["char"] == [("Alice-Realm", "Alice / Realm")]
+    assert actions.tile_choices("_retail_", [])["values"]["char"] == [("Alice-Realm", "Alice / Realm")]
 
 
 def test_the_page_is_written_again_without_the_characters_the_rules_keep_off_it(instance):
@@ -284,3 +288,52 @@ def test_writing_the_page_again_without_a_database_is_reported_and_creates_nothi
     ok, out = actions.rebuild_page("_retail_", [])
     db, page = wow_install.out_files("_retail_")
     assert ok is False and "OperationalError" in out and not db.exists() and not page.exists()
+
+
+def _database_of(instance, variant):
+    """A database and page for this game version, made by the parser from the small sample file of its tests."""
+    from app import stat_parser
+    from test_stat_parser import SAMPLE
+    source = instance / "StatTracker.lua"
+    source.write_text(SAMPLE, encoding="utf-8")
+    db, page = wow_install.out_files(variant)
+    stat_parser.main(["--input", str(source), "--db", str(db), "--output", str(page)])
+    return db, page
+
+
+def test_the_pages_of_several_game_versions_are_written_again_in_order(instance):
+    _r_db, r_page = _database_of(instance, "_retail_")
+    _f_db, f_page = _database_of(instance, "_forever_")
+    r_page.unlink()
+    f_page.unlink()
+    results = actions.rebuild_pages([("_retail_", [], []), ("_forever_", [], [])])
+    assert [(variant, ok) for variant, ok, _text in results] == [("_retail_", True), ("_forever_", True)]
+    assert r_page.is_file() and f_page.is_file()
+
+
+def test_one_version_that_fails_does_not_stop_the_others(instance):
+    import sqlite3
+    r_db, _r_page = _database_of(instance, "_retail_")
+    _f_db, f_page = _database_of(instance, "_forever_")
+    f_page.unlink()
+    conn = sqlite3.connect(r_db)
+    conn.execute("PRAGMA user_version = 999")                       # newer than the program: Retail stops with the usual message
+    conn.commit()
+    conn.close()
+    results = actions.rebuild_pages([("_retail_", [], []), ("_forever_", [], [])])
+    assert results[0][0] == "_retail_" and results[0][1] is False and results[0][2].strip()
+    assert results[1][:2] == ("_forever_", True) and f_page.is_file()
+
+
+def test_an_unexpected_error_becomes_the_text_of_its_entry(instance, monkeypatch):
+    def broken(variant, tiles, rules=None):
+        if variant == "_retail_":
+            raise RuntimeError("boom")
+        return True, ""
+    monkeypatch.setattr(actions, "rebuild_page", broken)
+    results = actions.rebuild_pages([("_retail_", [], []), ("_forever_", [], [])])
+    assert results[0][1] is False and "RuntimeError: boom" in results[0][2] and results[1] == ("_forever_", True, "")
+
+
+def test_no_jobs_give_no_results():
+    assert actions.rebuild_pages([]) == []

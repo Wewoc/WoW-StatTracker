@@ -10,7 +10,7 @@
 # box off when all are on) and the text of the button; the page then reports the new selection like for any other tick. Empty text when the
 # page has no characters. Needs markup.
 
-from pages.blocks.markup import esc, ui
+from pages.blocks.markup import esc, label, ui
 
 USES_SELECTION = True
 
@@ -23,9 +23,10 @@ def render(payload, view=None, slot=None, **_) -> str:
     keys = [c["key"] for c in payload.get("chars") or []]
     if not keys:
         return ""
+    shown = {c["key"]: label(c) for c in payload.get("chars") or []}
     ticked = set(view.selected) if view is not None else set(keys)
     boxes = "".join(
-        f'<label><input type="checkbox" id="chk_{esc(key)}" data-pick data-name="{esc(key)}"{" checked" if key in ticked else ""}> {esc(key)}</label>'
+        f'<label><input type="checkbox" id="chk_{esc(key)}" data-pick data-name="{esc(key)}"{" checked" if key in ticked else ""}> {esc(shown[key])}</label>'
         for key in keys)
     return (f'<div class="bar chars" id="chars"><button type="button" id="toggleAll" data-action="pick_all" data-then="selection">'
             f'{esc(_label(payload, all(key in ticked for key in keys)))}</button>{boxes}</div>')

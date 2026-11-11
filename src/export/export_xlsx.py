@@ -58,7 +58,7 @@ def load_db(db_path):
     try:
         db_schema.check_schema(conn, db_path)      # a database from a newer program is not read
         have = {row[1] for row in conn.execute("PRAGMA table_info(scans)")}       # a database before schema 2 has no class_file and race_file
-        extra = ", ".join(f"s.{column}" if column in have else "NULL" for column in ("faction", "class_file", "race_file"))
+        extra = ", ".join(f"s.{column}" if column in have else "NULL" for column in ("faction", "class_file", "race_file", "surname"))
         scans = conn.execute(f"""
             SELECT s.scan_id, s.char_key, s.scanned_at, s.class, s.level, {extra}
             FROM scans s
@@ -66,7 +66,7 @@ def load_db(db_path):
                                ORDER BY scanned_at DESC, scan_id DESC LIMIT 1)
             ORDER BY s.char_key""").fetchall()
         chars = [{"scan_id": r[0], "key": r[1], "scanned_at": r[2], "class": r[3], "level": r[4],
-                  "faction": r[5], "class_file": r[6], "race_file": r[7]} for r in scans]
+                  "faction": r[5], "class_file": r[6], "race_file": r[7], "surname": r[8]} for r in scans]
         by_scan = {c["scan_id"]: c["key"] for c in chars}
         defs = {r[0]: [r[0], r[1], r[2], {}] for r in conn.execute("SELECT stat_id,name,category FROM stat_defs")}
         for sid, (name, cat) in stat_values.played_labels().items():
@@ -133,11 +133,12 @@ def keep_as_text(ws):
                 cell.data_type = "s"
 
 
-def export(out_path=None, folder=None, hidden=None):
+def export(out_path=None, folder=None, hidden=None, label=None):
     """Writes the workbook. Returns a list of info lines. Raises SystemExit(str) on errors.
     `hidden`: a function (path of the database, its characters as load_db gives them) -> the keys of the characters to leave out of the
     workbook (actions.run_export makes it from config.char_rules; this module knows no rules). A sheet whose characters are all left out is
-    skipped; the lines say how many were left out."""
+    skipped; the lines say how many were left out. `label`: a function character (as load_db gives it: "key", "surname" ...) -> the text a character is shown with in the head of its column
+    (actions.run_export gives rules.char_names.display; this module knows no rules); without it the key is written."""
     out_path = Path(out_path) if out_path else default_out()
     try:
         from openpyxl import Workbook
@@ -179,7 +180,7 @@ def export(out_path=None, folder=None, hidden=None):
 
         header = [t("xl_col_category"), t("xl_col_stat"), t("xl_col_unit"), t("xl_col_diff")]
         for c in chars:
-            parts = [c["key"], " ".join(str(p) for p in (c["class"], c["level"]) if p), c["scanned_at"]]
+            parts = [label(c) if label else c["key"], " ".join(str(p) for p in (c["class"], c["level"]) if p), c["scanned_at"]]
             header.append("\n".join(p for p in parts if p))
         ws.append(header)
         for cell in ws[1]:

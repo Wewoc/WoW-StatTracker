@@ -174,3 +174,21 @@ def test_list_accounts_puts_accounts_with_data_first(fake_wow):
     (game / "WTF" / "Account" / "SavedVariables").mkdir()   # global folder, not an account
     wow_install.saved_vars_path(game, "ACC1").write_text("x", encoding="utf-8")
     assert wow_install.list_accounts(game) == ["ACC1", "AAA"]
+
+
+def test_only_retail_and_forever_count_as_tested_and_each_has_a_product():
+    assert wow_install.TESTED_VARIANTS == ("_retail_", "_forever_")
+    assert wow_install.is_tested("_retail_") and wow_install.is_tested("_forever_")
+    for name in ("_classic_", "_classic_era_", "_classic_beta_", "_anniversary_", "_unknown_", ""):
+        assert not wow_install.is_tested(name)
+    assert all(name in wow_install.VARIANT_PRODUCT for name in wow_install.TESTED_VARIANTS)
+
+
+def test_list_accounts_of_joins_the_game_versions(fake_wow):
+    retail, forever = fake_wow / "_retail_", fake_wow / "_forever_"
+    (retail / "WTF" / "Account" / "AAA").mkdir()
+    (forever / "WTF" / "Account" / "ZZZ" / "SavedVariables").mkdir(parents=True)
+    wow_install.saved_vars_path(forever, "ZZZ").write_text("x", encoding="utf-8")         # data in one version is enough to come first
+    assert wow_install.list_accounts_of(fake_wow, ["_retail_", "_forever_"]) == ["ZZZ", "AAA", "ACC1"]      # each name once, ACC1 is in both
+    assert wow_install.list_accounts_of(fake_wow, ["_retail_"]) == ["AAA", "ACC1"]
+    assert wow_install.list_accounts_of(fake_wow, []) == [] and wow_install.list_accounts_of(fake_wow, ["_missing_"]) == []

@@ -4,7 +4,7 @@
 # markup.py
 # StatTracker - the small helpers every block of the stats page uses to write HTML: esc (text and attribute values are
 # escaped here and nowhere else), fmt ("{name}" placeholders of the page texts, like the fmt of the page script), plain (a number as
-# text) and ui (a page text of the payload, "" when it is missing). Leaf module: standard library only.
+# text), label (the text a character is shown with) and ui (a page text of the payload, "" when it is missing). Leaf module: standard library only.
 
 import html
 import re
@@ -25,6 +25,11 @@ def fmt(text, **values) -> str:
 def plain(number) -> str:
     """A number as the page script wrote it into a text (1 and not 1.0)."""
     return str(int(number)) if float(number).is_integer() else str(number)
+
+
+def label(char) -> str:
+    """The text a character is shown with: its `label` in the payload ("Name / Realm"), else its key (a payload made by hand has no label)."""
+    return char.get("label") or char["key"]
 
 
 def ui(payload, name) -> str:

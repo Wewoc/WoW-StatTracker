@@ -15,9 +15,11 @@
 #   active_theme      number of the colour scheme of the window (core/theme.py; default 1, unknown numbers fall back)
 #   group_presets     the presets of the Groups block of the stats page: [{name, by, off: [figure ids], extras: [{id, agg}]}];
 #                     only the shape is checked here (what a preset may name is checked when it is applied)
-#   top5              the tiles of the Top 5 block at the top of the stats page: [{stat: statistic id, agg: "sum"|"avg"|"max",
-#                     by: "all"|"class"|"race"|"faction"|"realm"|"char", value: the scope as text, "" for all}], at most TOP5_MAX;
-#                     only the shape is checked here (tile_rules and the block know what a tile may name); empty = no block
+#   top5              the tiles of the Top 5 block at the top of the stats page, per game version: {variant: [{stat: statistic id,
+#                     agg: "sum"|"avg"|"max", by: "all"|"class"|"race"|"faction"|"realm"|"char", value: the scope as text, "" for all}]},
+#                     at most TOP5_MAX per version; only the shape is checked here (tile_rules and the block know what a tile may name); a version
+#                     without tiles has no entry (no block). A plain list (the form before the tiles were kept per game version) is read as the
+#                     tiles of Retail: its statistic ids come from Retail
 #   char_rules        the rules that keep characters out of the outputs, per game version: {variant: [{type: text, value: text, for: [texts]}]},
 #                     at most CHAR_RULES_MAX per version; "for" (the outputs a rule applies to) is left out when it is missing or no list; only the
 #                     shape is checked here (rules/char_rules.py knows the types and targets); a version without rules has no entry
@@ -69,7 +71,7 @@ def defaults() -> dict:
         "read_icons": True,
         "active_theme": theme.DEFAULT_THEME,
         "group_presets": [],
-        "top5": [],
+        "top5": {},
         "char_rules": {},
         "char_blacklist": {},
     }
@@ -113,6 +115,22 @@ def clean_top5(raw) -> list:
         if _is_int(stat) and isinstance(agg, str) and isinstance(by, str) and isinstance(value, str):
             clean.append({"stat": stat, "agg": agg, "by": by, "value": value})
     return clean[:TOP5_MAX]
+
+
+def clean_top5_by_variant(raw) -> dict:
+    """The tiles per game version (clean_top5 for each): only entries whose key is a game version folder name and that keep a tile. A plain list is the
+    old form (one list for every game version): it becomes the tiles of Retail, whose statistic ids it was made with."""
+    if isinstance(raw, list):
+        raw = {DEFAULT_VARIANT: raw}
+    if not isinstance(raw, dict):
+        return {}
+    clean = {}
+    for variant, tiles in raw.items():
+        if isinstance(variant, str) and VARIANT_RE.fullmatch(variant):
+            tiles = clean_top5(tiles)
+            if tiles:
+                clean[variant] = tiles
+    return clean
 
 
 def clean_rule_list(raw) -> list:
@@ -191,7 +209,7 @@ def _sanitize(raw: dict) -> dict:
     if theme.is_known(raw.get("active_theme")):
         cfg["active_theme"] = raw["active_theme"]
     cfg["group_presets"] = clean_presets(raw.get("group_presets"))
-    cfg["top5"] = clean_top5(raw.get("top5"))
+    cfg["top5"] = clean_top5_by_variant(raw.get("top5"))
     cfg["char_rules"] = clean_char_rules(raw.get("char_rules"))
     cfg["char_blacklist"] = clean_char_blacklist(raw.get("char_blacklist"))
     return cfg

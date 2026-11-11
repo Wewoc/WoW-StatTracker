@@ -18,14 +18,14 @@ StatTracker liest die **Spielstatistiken** deiner World-of-Warcraft-Charaktere �
 
 1. `StatTracker.zip` aus dem neuesten Release laden und in **einen eigenen Ordner** entpacken, zum Beispiel `Dokumente\StatTracker`. Nicht nach `C:\Program Files`: Das Programm legt seine Daten neben sich ab und braucht Schreibrechte. Der Download ist etwa 160 MB groß, weil das Programm seine eigene Browser-Engine für die Seite mitbringt.
 2. `StatTracker.exe` starten. Windows SmartScreen warnt eventuell, weil die Datei nicht signiert ist: *Weitere Informationen -> Trotzdem ausführen*.
-3. **WoW-Ordner** wählen (der Ordner, der `_retail_` enthält), dazu Spielversion und Account.
-4. **1. Addon installieren / aktualisieren**.
+3. **WoW-Ordner** wählen (der Ordner, der `_retail_` enthält), dazu den Account.
+4. In der Gruppe *Addon* die Spielversion wählen und **Addon installieren / aktualisieren** anklicken.
 5. Im Spiel, einmal pro Charakter: `/statscan`. Der Scan dauert etwa 10 Sekunden (gestreckt, damit das Spiel nicht einfriert): Im Chat erscheinen „Stat-Sync gestartet“, dann „Stat-Sync fertig“ und „Spielzeit ... erfasst“. Darauf warten, dann `/reload` (oder ausloggen). Das Addon scannt auch automatisch 10 Sekunden nach dem Einloggen.
-6. **2. Daten einlesen**, dann **3. Statistik-Seite öffnen** (sie erscheint im Reiter *Seite* des Fensters) - oder **Excel exportieren**.
+6. **Einlesen + öffnen**: Es liest die Daten jeder aktivierten Spielversion nacheinander ein und zeigt die Seiten im Reiter *Seite* des Fensters (die Spielversion oben wählen) - oder **Excel exportieren**.
 
 Schritt 5/6 wiederholen, wenn du frische Zahlen willst. Eingelesene Scans bleiben in der Datenbank. Das Addon selbst behält die letzten fünf Scans je Charakter: Ein Scan geht nur verloren, wenn zwischen zwei Einlesungen mehr als fünf gemacht wurden (das Protokoll sagt, wenn Scans fehlen können) - lies die Daten nach jeder Spielsitzung ein, wenn dir der Verlauf wichtig ist. Jeder WoW-Account hat eine eigene Datei; wähle den Account im Programm (das Protokoll nennt die anderen Accounts mit Daten).
 
-Das Addon speichert bei jedem Scan auch die Klasse (als sprachunabhängigen Namen) und die Rasse des Charakters. Scans eines älteren Addons haben diese Angaben nicht, sie werden nie nachgetragen: Solche Charaktere stehen im Gruppen-Block bei Klasse und Rasse unter „unbekannt“ - es wird nichts geraten. *1. Addon installieren / aktualisieren* ausführen und den Charakter erneut scannen, um sie zu bekommen.
+Das Addon speichert bei jedem Scan auch die Klasse (als sprachunabhängigen Namen) und die Rasse des Charakters. Scans eines älteren Addons haben diese Angaben nicht, sie werden nie nachgetragen: Solche Charaktere stehen im Gruppen-Block bei Klasse und Rasse unter „unbekannt“ - es wird nichts geraten. *Addon installieren / aktualisieren* ausführen und den Charakter erneut scannen, um sie zu bekommen.
 
 Jeder Scan speichert außerdem die Spezialisierung, das durchschnittliche Itemlevel, die angelegte Ausrüstung (mit Verzauberung, Aufwertungsstufe und Sockeln) und die Rufliste; sie liegen in der Datenbank. Die Ausrüstung zeigt die Verlaufsseite des Charakters (unten), den Ruf der ausklappbare Block *Ruf* der Statistik-Seite; er listet jede Fraktion der angehakten Charaktere in der Reihenfolge des Spiels mit Stufe und einem Balken zur nächsten Stufe (Freundschaften, Ruhm und Paragon inklusive; kontoweiter Ruf steht einmal). Scans eines älteren Addons haben nichts davon und es wird nie nachgetragen: Solche Charaktere stehen unter dem Block als „ohne Rufdaten“ - mit dem aktualisierten Addon erneut scannen.
 
@@ -33,7 +33,7 @@ Die Statistik-Seite zeigt Rasse, Klasse und Level unter jedem Namen. Ihr ausklap
 
 ![Der Gruppen-Block: Charaktere nach Fraktion gruppiert mit Anzahl, Durchschnittslevel, Spielzeit, Raten pro Stunde und zwei hinzugefügten Statistiken.](docs/images/groups-de.png)
 
-Jeder Charakter mit mindestens zwei Scans bekommt außerdem eine **Verlaufsseite**, verlinkt im Block *Verläufe* der Statistik-Seite: bis zu zehn Statistiken auswählen und als Linien über deine Scans ansehen, absolut oder als Index (erster Wert = 100). Ein Scan ohne Zahl hinterlässt eine Lücke, es wird nichts aufgefüllt. *2. Daten einlesen* erzeugt die Seiten (für Charaktere mit neuem Scan oder neuen Item-Bildern) und braucht kein Internet; die Links funktionieren, solange der Ordner `history` neben der Statistik-Seite liegt.
+Jeder Charakter mit mindestens zwei Scans bekommt außerdem eine **Verlaufsseite**, verlinkt im Block *Verläufe* der Statistik-Seite: bis zu zehn Statistiken auswählen und als Linien über deine Scans ansehen, absolut oder als Index (erster Wert = 100). Ein Scan ohne Zahl hinterlässt eine Lücke, es wird nichts aufgefüllt. *Einlesen + öffnen* erzeugt die Seiten (für Charaktere mit neuem Scan oder neuen Item-Bildern) und braucht kein Internet; die Links funktionieren, solange der Ordner `history` neben der Statistik-Seite liegt.
 
 Zwei weitere Linien stehen dort zur Wahl: das ausgerüstete und das gesamte Itemlevel (Gegenstandsstufe) jedes Scans (das gesamte nimmt für jeden Slot das beste Teil, das der Charakter bei sich hat; es liegt höher, wenn in den Taschen ein besseres Teil wartet). Über dem Diagramm zeigt der ausklappbare Bereich *Charakter* die Ausrüstung eines Scans, angeordnet wie der Charakterbildschirm des Spiels: je Slot das Teil mit Itemlevel, Aufwertungsspur, Verzauberung, Werten und einem Hinweis auf einen leeren Edelsteinsockel, dazu die Summe der Zweitwerte (die Werte eingesetzter Edelsteine stehen nicht in den gespeicherten Daten und sind nicht enthalten). Jeder Scan lässt sich wählen und mit dem vorigen vergleichen; geänderte Slots sind markiert. Hemd und Wappenrock fehlen.
 
@@ -47,7 +47,7 @@ Die Slots zeigen die Item-Bilder des Spiels, wenn StatTracker sie hat. Beim Einl
 
 Das Fenster hat vier Reiter. **Einstellungen** enthält Spielordner, Spielversion und Account, die Optionen (Spielversionen, Update-Prüfung, Item-Bilder, das *Design*), die Knöpfe und das Protokoll. **Seite** zeigt die Statistik-Seite im Fenster; *Neu laden* liest die Datei erneut, und *Im Browser öffnen* öffnet eine **Momentaufnahme** dessen, was das Fenster jetzt zeigt - die angehakten Charaktere, Filter, Sortierung, Gruppierung und hinzugefügte Statistiken - als Datei `stats_snapshot.html` neben der Statistik-Seite (sie wird bei jedem Klick neu geschrieben). Im Browser sind die Bedienelemente der Momentaufnahme gesperrt, weil eine Seite dort keine Verbindung zum Programm hat: Sie ist ein Stand, keine mitlaufende Kopie. **Top 5** stellt die Kacheln ein (unten). **Charaktere** lässt Charaktere weg oder löscht sie (unten).
 
-![Das Programmfenster, Reiter Einstellungen: Spielordner, Version und Account, die Optionen, die Knöpfe und das Protokoll.](docs/images/app-de.png)
+![Das Programmfenster, Reiter Einstellungen: Spielordner und Account, die Optionen, die Gruppe Addon (Spielversion, installieren, deinstallieren), die Aktionen und das Protokoll.](docs/images/app-de.png)
 
 Das *Design* bietet sechs Farbschemata; das Fenster und die Statistik-Seite folgen ihm, die Änderung gilt nach einem Neustart. Eine im Browser geöffnete Seite zeigt die ursprünglichen Farben.
 
@@ -55,7 +55,7 @@ Das *Design* bietet sechs Farbschemata; das Fenster und die Statistik-Seite folg
 
 Bis zu fünf Kacheln stehen ganz oben auf der Statistik-Seite. Jede zeigt einen Wert aus dem neuesten Scan deiner Charaktere: eine Statistik deiner Wahl, zusammengefasst als **Summe**, **Durchschnitt** oder **Maximum** über alle Charaktere, über eine Klasse, Rasse, Fraktion oder einen Realm oder für einen einzelnen Charakter. Die Kachel nennt die Statistik, die Funktion und für wen der Wert gilt, und sagt, aus wie vielen Charakteren er besteht, wenn einige keine Zahl hatten ("10 von 23 Charakteren"); wo es keine Zahl gibt, steht das da, nichts wird erfunden. Gold steht in Gold, Spielzeit in Stunden. Die Kacheln folgen nicht den angehakten Charakteren.
 
-Eingestellt werden sie im Reiter **Top 5**: Einen Teil des Namens einer Statistik tippen und aus der Liste wählen, die sich unter dem Feld öffnet, Funktion und Bereich wählen (ein Klick ins letzte Feld öffnet dessen Liste), dann *Speichern und Seite neu schreiben*. Die Einstellung gilt für alle Spielversionen; die Seite der gewählten Spielversion wird sofort neu geschrieben, die anderen beim nächsten Einlesen. Eine Zeile ohne Statistik bleibt leer.
+Eingestellt werden sie im Reiter **Top 5**: Einen Teil des Namens einer Statistik tippen und aus der Liste wählen, die sich unter dem Feld öffnet, Funktion und Bereich wählen (ein Klick ins letzte Feld öffnet dessen Liste), dann *Speichern und Seite neu schreiben*. Jede Spielversion hat ihre eigenen Kacheln: Die Version über den Zeilen wählen, ihre Seite wird sofort neu geschrieben. Eine Zeile ohne Statistik bleibt leer.
 
 ![Der Reiter Top 5: fünf Zeilen mit Statistik, Funktion, Bereich und Auswahl und der Knopf zum Speichern und Neuschreiben der Seite.](docs/images/top5-de.png)
 
@@ -69,7 +69,7 @@ Der Reiter **Charaktere** hat für jede aktivierte Spielversion einen Block (die
 
 ## Spielversionen
 
-Im Dropdown erscheinen nur Spielversionen, die du aktiviert hast. Standard ist nur **Retail**. Im Reiter *Einstellungen* lassen sich weitere aktivieren. Jede Spielversion hat eigene Datenbank und Seite (`wow_stats.db` / `stats.html` für Retail, `wow_stats_<Version>.db` / `stats_<Version>.html` für die anderen).
+In den Auswahlen erscheinen nur Spielversionen, die du aktiviert hast. Standard ist nur **Retail**. Im Reiter *Einstellungen* lässt sich **WoW Forever** aktivieren; noch nicht getestete Spielversionen stehen dort ausgegraut und lassen sich nicht aktivieren. Jede Spielversion hat eigene Datenbank und Seite (`wow_stats.db` / `stats.html` für Retail, `wow_stats_<Version>.db` / `stats_<Version>.html` für die anderen).
 
 | Spielversion | Stand |
 |---|---|

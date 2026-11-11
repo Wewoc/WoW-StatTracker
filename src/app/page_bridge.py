@@ -65,7 +65,7 @@ def _loads(text):
 
 
 class PageBridge(QObject):
-    """What the page calls. One page at a time: attach starts a new View (the state of the blocks) for the page that is shown."""
+    """What the page calls. One page per bridge (the window has a bridge for every page tab): attach starts a new View (the state of the blocks) for the page of this bridge."""
 
     def __init__(self, presets, parent=None):
         super().__init__(parent)

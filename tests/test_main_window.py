@@ -8,6 +8,7 @@
 import shutil
 import threading
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -20,6 +21,7 @@ from conftest import ROOT, make_fake_wow
 from core import app_info, config, i18n, paths, theme
 from game import wow_install
 from pages import outputs
+from rules import char_names
 from test_groups_block import make_payload
 
 
@@ -49,7 +51,7 @@ def window(env, qtbot):
     w = env.win
     w.tabs.setCurrentIndex(main_window.TAB_SETTINGS)              # first: a Top 5 tab left open would read its choices in a thread
     i18n.set_language("en")
-    w.cfg.update(language="en", enabled_variants=["_retail_"], read_icons=True, check_updates=False, active_theme=1, group_presets=[], top5=[], char_rules={}, char_blacklist={})
+    w.cfg.update(language="en", enabled_variants=["_retail_"], read_icons=True, check_updates=False, active_theme=1, group_presets=[], top5={}, char_rules={}, char_blacklist={})
     w._tile_choices, w._tile_key = None, None
     w._chars_key = None
     w.cmb_lang.setCurrentIndex(w.cmb_lang.findData("en"))
@@ -67,6 +69,11 @@ def window(env, qtbot):
 
 def items(combo):
     return [combo.itemText(i) for i in range(combo.count())]
+
+
+def as_shown(*keys):
+    """The texts a character is shown with ("Name / Realm"): the lists of the window show these, the keys stay the data behind them."""
+    return [char_names.display(key) for key in keys]
 
 
 def wait_idle(qtbot, window):
@@ -97,6 +104,25 @@ def variant_boxes(window):
     """The check boxes of the game versions as they are now (they are made again after every change)."""
     return {window.variant_boxes.itemAt(i).widget().text(): window.variant_boxes.itemAt(i).widget()
             for i in range(window.variant_boxes.count())}
+
+
+def test_a_version_that_was_not_tested_has_a_greyed_check_box_that_cannot_be_enabled(window):
+    boxes = variant_boxes(window)
+    assert boxes["_retail_"].isEnabled() and boxes["_forever_"].isEnabled() and boxes["_forever_"].toolTip() == ""
+    assert "_classic_" in boxes                                                  # found in the game folder, but not tried with a real client
+    assert not boxes["_classic_"].isEnabled() and not boxes["_classic_"].isChecked()
+    assert boxes["_classic_"].toolTip() == "Untested: not available yet"
+
+
+def test_an_untested_version_that_is_enabled_already_can_still_be_switched_off_and_is_never_taken_out_of_the_settings(window):
+    window.cfg["enabled_variants"] = ["_retail_", "_classic_"]
+    window.refresh_variants()
+    assert window.cfg["enabled_variants"] == ["_retail_", "_classic_"]           # kept as it is
+    box = variant_boxes(window)["_classic_"]
+    assert box.isEnabled() and box.isChecked() and box.toolTip() == ""
+    box.setChecked(False)
+    assert window.cfg["enabled_variants"] == ["_retail_"]
+    assert not variant_boxes(window)["_classic_"].isEnabled()                    # off now: it cannot be switched on again
 
 
 def test_the_version_check_boxes_enable_a_version_and_keep_at_least_one(window, env, monkeypatch):
@@ -150,10 +176,10 @@ def test_the_language_switch_keeps_the_log_and_changes_every_text(window):
     assert "hello log" in window.log.toPlainText()
     assert "Addon: nicht installiert" in window.status_text()
     assert [window.tabs.tabText(i) for i in range(window.tabs.count())] == ["Einstellungen", "Seite", "Top 5", "Charaktere"]
-    assert window.action_buttons[1].text() == "2. Daten einlesen"
+    assert window.action_buttons[2].text() == "Einlesen + öffnen"
     window.cmb_lang.setCurrentIndex(window.cmb_lang.findData("en"))
     window.on_language()
-    assert window.action_buttons[1].text() == "2. Read data"
+    assert window.action_buttons[2].text() == "Read + open"
 
 
 def test_the_design_is_chosen_in_the_window_and_applies_after_a_restart(window):
@@ -246,22 +272,214 @@ def test_reading_without_a_data_file_says_so_and_starts_nothing(window, monkeypa
     assert not window._busy and errors and not called
 
 
+def _both_versions(window):
+    window.cfg["enabled_variants"] = ["_retail_", "_forever_"]
+    window.refresh_variants()
+
+
+def _data_files(env, *variants, account="ACC1"):
+    files = []
+    for variant in variants:
+        path = wow_install.saved_vars_path(env.wow / variant, account)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("StatTrackerDB = {}", encoding="utf-8")
+        files.append(path)
+    return files
+
+
+def _recording_parser(monkeypatch, fail=()):
+    """run_parser that records (database file name, keyword arguments); the versions in `fail` (their database file) fail."""
+    seen = []
+
+    def run(*args, **kwargs):
+        seen.append((Path(args[1]), kwargs))
+        return (Path(args[1]) not in fail), ("Boom" if Path(args[1]) in fail else "")
+    monkeypatch.setattr(actions, "run_parser", run)
+    return seen
+
+
+def test_reading_reads_every_enabled_version_with_its_own_rules(window, env, qtbot, monkeypatch):
+    files = _data_files(env, "_retail_", "_forever_")
+    rule = {"type": "char", "value": "Other-Realm"}
+    try:
+        seen = _recording_parser(monkeypatch)
+        _both_versions(window)
+        window.cfg["char_rules"] = {"_forever_": [rule]}
+        window.on_parse()
+        wait_idle(qtbot, window)
+        assert [db for db, _kw in seen] == [wow_install.out_files("_retail_")[0], wow_install.out_files("_forever_")[0]]
+        assert seen[0][1]["rules"] == [] and seen[1][1]["rules"] == [rule]
+        text = window.log.toPlainText()
+        assert "Game version _retail_:" in text and "Game version _forever_:" in text and text.count("Read successfully.") == 2
+    finally:
+        for path in files:
+            path.unlink(missing_ok=True)
+
+
+def test_a_version_without_a_data_file_of_the_account_is_left_out_and_named(window, env, qtbot, monkeypatch):
+    files = _data_files(env, "_retail_")
+    try:
+        seen = _recording_parser(monkeypatch)
+        _both_versions(window)
+        window.on_parse()
+        wait_idle(qtbot, window)
+        assert [db for db, _kw in seen] == [wow_install.out_files("_retail_")[0]]
+        assert "_forever_: no data file for the account ACC1, not read." in window.log.toPlainText()
+    finally:
+        for path in files:
+            path.unlink(missing_ok=True)
+
+
+def test_with_no_data_file_at_all_the_dialog_names_every_place_and_nothing_starts(window, env, monkeypatch):
+    errors = []
+    monkeypatch.setattr(dialogs, "error", lambda parent, text: errors.append(text))
+    seen = _recording_parser(monkeypatch)
+    _both_versions(window)
+    window.on_parse()
+    assert not window._busy and not seen and len(errors) == 1
+    assert str(wow_install.saved_vars_path(env.wow / "_retail_", "ACC1")) in errors[0]
+    assert str(wow_install.saved_vars_path(env.wow / "_forever_", "ACC1")) in errors[0]
+
+
+def test_one_version_that_fails_does_not_stop_the_other_and_the_page_opens(window, env, qtbot, monkeypatch):
+    files = _data_files(env, "_retail_", "_forever_")
+    try:
+        _recording_parser(monkeypatch, fail=(wow_install.out_files("_retail_")[0],))
+        _both_versions(window)
+        window.on_parse_open()
+        wait_idle(qtbot, window)
+        text = window.log.toPlainText()
+        assert text.count("Reading failed.") == 1 and text.count("Read successfully.") == 1 and "Boom" in text
+        assert window.tabs.currentIndex() == main_window.TAB_PAGE                  # one version was read: the Page tab opens
+    finally:
+        for path in files:
+            path.unlink(missing_ok=True)
+
+
+def test_when_nothing_could_be_read_the_page_tab_does_not_open(window, env, qtbot, monkeypatch):
+    files = _data_files(env, "_retail_")
+    try:
+        _recording_parser(monkeypatch, fail=(wow_install.out_files("_retail_")[0],))
+        window.on_parse_open()
+        wait_idle(qtbot, window)
+        assert window.tabs.currentIndex() == main_window.TAB_SETTINGS
+    finally:
+        for path in files:
+            path.unlink(missing_ok=True)
+
+
+def test_a_typed_in_version_folder_reads_only_that_version(window, env, qtbot, monkeypatch):
+    files = _data_files(env, "_retail_", "_forever_")
+    try:
+        seen = _recording_parser(monkeypatch)
+        _both_versions(window)
+        window.ed_wow.setText(str(env.wow / "_forever_"))
+        window.on_parse()
+        wait_idle(qtbot, window)
+        assert [db for db, _kw in seen] == [wow_install.out_files("_forever_")[0]]
+    finally:
+        for path in files:
+            path.unlink(missing_ok=True)
+
+
+def test_one_account_for_all_versions_is_listed_chosen_and_kept(window, env):
+    saved = dict(window.cfg["accounts"])
+    extra = _data_files(env, "_forever_", account="ZZZ")                       # an account only Forever has, with data
+    try:
+        _both_versions(window)
+        assert items(window.cmb_acc) == ["ZZZ", "ACC1"]                         # joined over the versions, the one with data first
+        window.cmb_acc.setCurrentText("ACC1")
+        window.save()
+        assert window.cfg["accounts"] == {"_retail_": "ACC1", "_forever_": "ACC1"}
+        window.cmb_acc.setCurrentText("ZZZ")
+        window.save()
+        assert window.cfg["accounts"] == {"_retail_": "ACC1", "_forever_": "ZZZ"}  # kept for the versions that have it only
+        window.cmb_acc.clear()                                                  # nothing chosen: the saved one comes back
+        window.refresh_accounts()
+        assert window.cmb_acc.currentText() == "ACC1"
+        window.cfg["accounts"] = {"_forever_": "ZZZ"}
+        window.cmb_acc.clear()
+        window.refresh_accounts()
+        assert window.cmb_acc.currentText() == "ZZZ"
+    finally:
+        window.cfg["accounts"] = saved
+        shutil.rmtree(extra[0].parent.parent, ignore_errors=True)
+
+
+def test_the_drop_down_for_the_addon_does_not_change_the_accounts(window):
+    _both_versions(window)
+    before = (items(window.cmb_acc), window.cmb_acc.currentText())
+    window.cmb_var.setCurrentText("_forever_")
+    assert (items(window.cmb_acc), window.cmb_acc.currentText()) == before
+
+
+def _group_title(widget):
+    parent = widget.parent()
+    while parent is not None and not isinstance(parent, main_window.QGroupBox):
+        parent = parent.parent()
+    return parent.title() if parent is not None else None
+
+
+def test_the_version_and_the_addon_buttons_are_one_group_and_the_reading_buttons_another(window):
+    install, uninstall, read, export = window.action_buttons[:4]
+    assert [b.text() for b in (install, uninstall, read, export)] == ["Install / update addon", "Uninstall addon", "Read + open", "Export to Excel"]
+    assert [_group_title(w) for w in (window.cmb_var, install, uninstall)] == ["Addon", "Addon", "Addon"]
+    assert [_group_title(w) for w in (read, export)] == ["Actions", "Actions"]
+    assert _group_title(window.cmb_acc) == "Game" and _group_title(window.ed_wow) == "Game"          # the game group has no version box any more
+
+
+def test_the_addon_buttons_act_on_the_chosen_version_only(window, env, monkeypatch):
+    monkeypatch.setattr(dialogs, "ask_yes_no", lambda *a, **k: True)
+    _both_versions(window)
+    try:
+        window.cmb_var.setCurrentText("_forever_")
+        window.on_install()
+        assert wow_install.addon_dir(env.wow, "_forever_").is_dir() and not wow_install.addon_dir(env.wow, "_retail_").exists()
+        assert "Addon: version" in window.status_text()
+        window.cmb_var.setCurrentText("_retail_")
+        assert "Addon: not installed" in window.status_text()                    # the status follows the chosen version
+        window.cmb_var.setCurrentText("_forever_")
+        window.on_uninstall()
+        assert not wow_install.addon_dir(env.wow, "_forever_").exists()
+    finally:
+        wow_install.uninstall_addon(env.wow, "_forever_")
+
+
+def test_the_status_line_shows_the_data_of_every_version(window, env):
+    files = _data_files(env, "_retail_")
+    try:
+        _both_versions(window)
+        text = window.status_text()
+        assert f"Game: {env.wow}" in text and "Data: _retail_ 20" in text and "_forever_ missing" in text
+        assert "stats" not in text                                               # the pages are tabs now: no part for the page file
+    finally:
+        for path in files:
+            path.unlink(missing_ok=True)
+
+
 # ------------------------------------------------------------------------------ the page
 def _page_file():
     return wow_install.out_files("_retail_")[1]
 
 
+def retail_tab(window):
+    return window.page_views["_retail_"]
+
+
 def test_without_a_page_the_tab_shows_the_hint(window):
-    window.load_page()
-    assert window.stack.currentWidget() is window.placeholder
-    assert "no stats page" in window.placeholder.text()
+    tab = retail_tab(window)
+    window.tabs.setCurrentIndex(main_window.TAB_PAGE)             # a page is loaded when its tab is shown
+    assert tab.stack.currentWidget() is tab.placeholder
+    assert "no stats page" in tab.placeholder.text()
 
 
-def test_open_without_a_page_says_so_and_stays_on_the_settings_tab(window, monkeypatch):
+def test_open_without_a_page_shows_the_page_tab_with_the_hint(window, monkeypatch):
     shown = []
-    monkeypatch.setattr(dialogs, "info", lambda parent, text: shown.append(text))
+    monkeypatch.setattr(dialogs, "info", lambda parent, text: shown.append(text))          # no dialog any more: the tab says it
     window.on_open()
-    assert shown and window.tabs.currentIndex() == main_window.TAB_SETTINGS
+    tab = retail_tab(window)
+    assert not shown and window.tabs.currentIndex() == main_window.TAB_PAGE
+    assert tab.stack.currentWidget() is tab.placeholder and "no stats page" in tab.placeholder.text()
 
 
 def test_open_shows_the_page_in_the_page_tab_and_runs_its_script(window, qtbot):
@@ -270,10 +488,181 @@ def test_open_shows_the_page_in_the_page_tab_and_runs_its_script(window, qtbot):
     page.write_text("<html><body><script>document.title = 'page ' + (1 + 1);</script></body></html>", encoding="utf-8")
     try:
         window.on_open()
-        assert window.tabs.currentIndex() == main_window.TAB_PAGE and window.stack.currentWidget() is window.view
+        tab = retail_tab(window)
+        assert window.tabs.currentIndex() == main_window.TAB_PAGE and tab.stack.currentWidget() is tab.view
         qtbot.waitUntil(lambda: window.view.title() == "page 2", timeout=15000)
     finally:
         page.unlink(missing_ok=True)
+
+
+def picker_items(picker):
+    return [picker.combo.itemText(i) for i in range(picker.combo.count())]
+
+
+def write_small_page(variant, title):
+    page = wow_install.out_files(variant)[1]
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(f"<html><body><script>document.title = {title!r};</script></body></html>", encoding="utf-8")
+    return page
+
+
+def test_the_page_tab_has_one_page_per_enabled_version(window):
+    assert picker_items(window.pick_page) == ["_retail_"] and window.page_stack.count() == 1
+    retail = retail_tab(window)
+    window.cfg["enabled_variants"] = ["_forever_", "_retail_"]
+    window.refresh_variants()
+    assert picker_items(window.pick_page) == picker_items(window.pick_chars) == ["_retail_", "_forever_"]      # Retail first, the same list in both tabs
+    assert window.page_stack.count() == 2
+    window.cfg["enabled_variants"] = ["_retail_"]
+    window.refresh_variants()
+    assert picker_items(window.pick_page) == ["_retail_"] and list(window.page_views) == ["_retail_"] and window.page_stack.count() == 1
+    assert retail_tab(window) is retail                                         # the page that stays is not made again
+
+
+def test_every_game_version_shows_its_own_page(window, qtbot):
+    retail_page, forever_page = write_small_page("_retail_", "retail page"), write_small_page("_forever_", "forever page")
+    try:
+        window.cfg["enabled_variants"] = ["_retail_", "_forever_"]
+        window.refresh_variants()
+        window.on_open()                                                         # the Page tab: the page that is on view (Retail) loads
+        assert window.page_stack.currentWidget() is window.page_views["_retail_"]
+        qtbot.waitUntil(lambda: window.view.title() == "retail page", timeout=15000)
+        window.pick_page.combo.setCurrentText("_forever_")                       # chosen in the box of the Page tab
+        assert window.page_stack.currentWidget() is window.page_views["_forever_"]
+        qtbot.waitUntil(lambda: window.view.title() == "forever page", timeout=15000)
+        assert window.page_views["_retail_"].view.title() == "retail page"      # the other page keeps what it shows
+        window.cmb_var.setCurrentText("_retail_")                                # the box of the addon does not choose the page, and opening leaves it as it is
+        window.on_open()
+        assert window.page_stack.currentWidget() is window.page_views["_forever_"]
+    finally:
+        retail_page.unlink(missing_ok=True)
+        forever_page.unlink(missing_ok=True)
+
+
+def test_a_page_is_loaded_when_its_tab_is_shown(window, qtbot):
+    page = write_small_page("_retail_", "shown late")
+    try:
+        tab = retail_tab(window)
+        window.load_page(force=True, variant="_retail_")                         # the Settings tab is on view: the page waits
+        assert tab.pending and tab.forced
+        window.tabs.setCurrentIndex(main_window.TAB_PAGE)
+        assert not tab.pending
+        qtbot.waitUntil(lambda: window.view.title() == "shown late", timeout=15000)
+    finally:
+        page.unlink(missing_ok=True)
+
+
+def test_loading_marks_only_the_page_of_that_version(window):
+    window.cfg["enabled_variants"] = ["_retail_", "_forever_"]
+    window.refresh_variants()
+    retail, forever = window.page_views["_retail_"], window.page_views["_forever_"]
+    retail.pending = forever.pending = False
+    window.load_page(force=True, variant="_forever_")
+    assert forever.pending and not retail.pending
+    window.load_page()
+    assert retail.pending
+
+
+def test_the_choice_of_the_game_version_is_one_for_the_page_and_the_characters_tab(window):
+    _both_versions(window)
+    assert window.pick_page.current() == window.pick_chars.current() == "_retail_"
+    window.pick_chars.combo.setCurrentText("_forever_")                          # chosen in the Characters tab: the Page tab follows
+    assert window.pick_page.current() == "_forever_" and window.page_stack.currentWidget() is window.page_views["_forever_"]
+    window.pick_page.combo.setCurrentText("_retail_")                            # and the other way round
+    assert window.pick_chars.current() == "_retail_" and window.page_stack.currentWidget() is window.page_views["_retail_"]
+    window.cmb_var.setCurrentText("_forever_")                                   # the box of the addon is another choice
+    assert window.pick_page.current() == window.pick_chars.current() == "_retail_"
+
+
+def test_the_chosen_version_falls_back_to_the_first_when_it_is_not_enabled_any_more(window):
+    _both_versions(window)
+    window.pick_page.combo.setCurrentText("_forever_")
+    window.cfg["enabled_variants"] = ["_retail_"]
+    window.refresh_variants()
+    assert window._version == window.pick_page.current() == window.pick_chars.current() == "_retail_"
+
+
+def test_the_boxes_of_the_game_version_are_wide_enough_for_the_longest_name(window):
+    for picker in (window.pick_page, window.pick_chars):
+        assert picker.combo.sizeAdjustPolicy() == main_window.QComboBox.SizeAdjustPolicy.AdjustToContents
+        assert picker.combo.minimumContentsLength() >= len("_anniversary_")
+
+
+def test_open_in_browser_opens_the_page_of_the_chosen_version(window, monkeypatch):
+    page = write_small_page("_forever_", "forever page")
+    try:
+        window.cfg["enabled_variants"] = ["_retail_", "_forever_"]
+        window.refresh_variants()
+        window.pick_page.combo.setCurrentText("_forever_")                       # not loaded (the Settings tab is on view): no snapshot, the file itself
+        opened = []
+        monkeypatch.setattr(main_window.webbrowser, "open", lambda url: opened.append(url) or True)
+        window.open_in_browser()
+        assert opened and opened[0].endswith("stats_forever.html")
+    finally:
+        page.unlink(missing_ok=True)
+
+
+def make_data_of(env, variant):
+    """A database and page for this game version, made by the parser from the small sample file of the Top 5 tests (two characters)."""
+    from app import stat_parser
+    db, page = wow_install.out_files(variant)
+    source = env.base / "TopFive.lua"
+    source.write_text(TOP5_LUA, encoding="utf-8")
+    stat_parser.main(["--input", str(source), "--db", str(db), "--output", str(page)])
+    return db, page
+
+
+def test_the_pages_of_the_enabled_versions_are_made_from_their_databases(window, qtbot, stats_data):
+    _db, page = stats_data
+    page.unlink()
+    tab = retail_tab(window)
+    window.build_pages()
+    assert window._busy and tab.building                                        # written in a thread; the hint stands meanwhile
+    assert tab.placeholder.text() == "The page is being made ..." and tab.stack.currentWidget() is tab.placeholder
+    wait_idle(qtbot, window)
+    assert page.is_file() and not tab.building
+    assert "Pages made: _retail_" in window.log.toPlainText()
+    window.tabs.setCurrentIndex(main_window.TAB_PAGE)                           # the page loads when its tab is shown
+    qtbot.waitUntil(lambda: window.view.url().isLocalFile() and Path(window.view.url().toLocalFile()) == page, timeout=15000)
+
+
+def test_without_a_database_no_page_is_made(window):
+    wow_install.out_files("_retail_")[0].unlink(missing_ok=True)
+    window.build_pages()
+    assert not window._busy and not retail_tab(window).building
+
+
+def test_a_page_that_could_not_be_made_is_reported_and_stays_as_it_was(window):
+    tab = retail_tab(window)
+    tab.set_building(True)
+    window._pages_built([("_retail_", False, "Boom\n"), ("_gone_", False, "")])    # a version that is not enabled any more is skipped quietly
+    text = window.log.toPlainText()
+    assert not tab.building and tab.placeholder.text().startswith("There is no stats page")
+    assert "Boom" in text and "The page of _retail_ could not be made." in text and "Pages made" not in text
+
+
+def test_a_page_that_is_being_made_is_not_loaded(window):
+    tab = retail_tab(window)
+    tab.set_building(True)
+    try:
+        window.load_page(force=True, variant="_retail_")
+        window.tabs.setCurrentIndex(main_window.TAB_PAGE)
+        assert tab.pending and tab.stack.currentWidget() is tab.placeholder     # nothing was loaded
+    finally:
+        tab.set_building(False)
+
+
+def test_enabling_a_version_makes_its_page_from_its_database(window, env, qtbot):
+    db, page = make_data_of(env, "_forever_")
+    page.unlink()
+    try:
+        variant_boxes(window)["_forever_"].setChecked(True)
+        assert window.page_views["_forever_"].building
+        wait_idle(qtbot, window)
+        assert page.is_file() and not window.page_views["_forever_"].building
+    finally:
+        page.unlink(missing_ok=True)
+        db.unlink(missing_ok=True)
 
 
 def test_the_view_is_hardened(window):
@@ -289,7 +678,7 @@ def test_the_page_follows_local_links_and_sends_internet_links_to_the_browser(wi
     opened = []
     monkeypatch.setattr(main_window.QDesktopServices, "openUrl", lambda url: opened.append(url.toString()))
     link = QWebEnginePage.NavigationType.NavigationTypeLinkClicked
-    page = window._page
+    page = window.view.page()
     assert page.acceptNavigationRequest(QUrl("file:///C:/x/history/history-a.html"), link, True) is True
     assert page.acceptNavigationRequest(QUrl("https://example.org/"), link, True) is False
     assert opened == ["https://example.org/"]
@@ -454,7 +843,7 @@ def shown(window, qtbot):
     try:
         with qtbot.waitSignal(window.view.loadFinished, timeout=20000):          # the page of a test before must be gone first
             window.view.setUrl(QUrl("about:blank"))
-        window._page_url = ""
+        retail_tab(window).url = ""
         with qtbot.waitSignal(window.view.loadFinished, timeout=20000):
             window.on_open()
         wait_js(window.view, qtbot, "typeof STT !== 'undefined' && STT.ready")
@@ -846,6 +1235,135 @@ def pick(combo, text):
     combo.setCurrentIndex(index)
 
 
+def _two_versions_with_data(window, env):
+    """Retail (the stats_data database) and Forever (a database of its own) enabled."""
+    forever_db, forever_page = make_data_of(env, "_forever_")
+    window.cfg["enabled_variants"] = ["_retail_", "_forever_"]
+    window.refresh_variants()
+    return forever_db, forever_page
+
+
+def _forget(*files):
+    for path in files:
+        path.unlink(missing_ok=True)
+
+
+def test_the_top5_tab_has_the_choice_of_the_game_version_that_the_other_tabs_have(window, env, qtbot, stats_data):
+    forever_db, forever_page = _two_versions_with_data(window, env)
+    try:
+        assert picker_items(window.pick_top5) == ["_retail_", "_forever_"] and window.pick_top5.current() == "_retail_"
+        window.pick_top5.combo.setCurrentText("_forever_")                      # chosen in the Top 5 tab: the others follow
+        assert window.pick_page.current() == window.pick_chars.current() == "_forever_"
+        window.cmb_var.setCurrentText("_retail_")                               # the box of the addon is another choice
+        assert window.pick_top5.current() == "_forever_"
+    finally:
+        _forget(forever_db, forever_page)
+
+
+def test_the_tiles_are_kept_per_game_version_and_a_switch_reads_the_other_one(window, env, qtbot, stats_data):
+    forever_db, forever_page = _two_versions_with_data(window, env)
+    retail_tile = {"stat": 2, "agg": "sum", "by": "all", "value": ""}
+    forever_tile = {"stat": 3, "agg": "max", "by": "all", "value": ""}
+    window.cfg["top5"] = {"_retail_": [retail_tile], "_forever_": [forever_tile]}
+    try:
+        open_top5(window, qtbot)
+        assert window._tile_variant == "_retail_" and window.tile_rows[0].stat.currentData() == 2
+        window.pick_top5.combo.setCurrentText("_forever_")
+        qtbot.waitUntil(lambda: not window._busy and window._tile_variant == "_forever_", timeout=20000)
+        assert (window.tile_rows[0].stat.currentData(), window.tile_rows[0].agg.currentData()) == (3, "max")
+        assert window.lbl_top5.text() == ""                                      # nothing was changed in Retail: nothing to say
+    finally:
+        _forget(forever_db, forever_page)
+
+
+def test_saving_in_one_game_version_leaves_the_tiles_of_the_other_alone_and_writes_only_its_page(window, env, qtbot, stats_data):
+    forever_db, forever_page = _two_versions_with_data(window, env)
+    retail_tile = {"stat": 2, "agg": "sum", "by": "all", "value": ""}
+    window.cfg["top5"] = {"_retail_": [retail_tile]}
+    retail_page = stats_data[1]
+    try:
+        open_top5(window, qtbot)
+        window.pick_top5.combo.setCurrentText("_forever_")
+        qtbot.waitUntil(lambda: not window._busy and window._tile_variant == "_forever_", timeout=20000)
+        retail_before = retail_page.read_text(encoding="utf-8")
+        pick(window.tile_rows[0].stat, "Quests done (Quests)")
+        window.btn_top5.click()
+        qtbot.waitUntil(lambda: not window._busy, timeout=20000)
+        assert window.cfg["top5"] == {"_retail_": [retail_tile], "_forever_": [{"stat": 3, "agg": "sum", "by": "all", "value": ""}]}
+        assert config.load()[0]["top5"] == window.cfg["top5"]
+        assert 'id="top5"' in forever_page.read_text(encoding="utf-8") and retail_page.read_text(encoding="utf-8") == retail_before     # only the page of Forever was written
+        assert "Top 5 saved (_forever_): 1 tiles." in window.log.toPlainText()
+        pick(window.tile_rows[0].stat, "– none –")                              # taking the last tile away: the version has no entry any more
+        window.btn_top5.click()
+        qtbot.waitUntil(lambda: not window._busy, timeout=20000)
+        assert window.cfg["top5"] == {"_retail_": [retail_tile]}
+    finally:
+        _forget(forever_db, forever_page)
+
+
+def test_a_switch_drops_what_was_changed_and_not_saved_and_says_so(window, env, qtbot, stats_data):
+    forever_db, forever_page = _two_versions_with_data(window, env)
+    try:
+        open_top5(window, qtbot)
+        pick(window.tile_rows[0].stat, GOLD_LABEL)                              # changed in Retail, not saved
+        window.pick_top5.combo.setCurrentText("_forever_")
+        qtbot.waitUntil(lambda: not window._busy and window._tile_variant == "_forever_", timeout=20000)
+        assert window.lbl_top5.text() == "Changes to the other game version that were not saved were dropped."
+        assert window.cfg["top5"] == {} and window.tile_rows[0].stat.currentText() == "– none –"
+    finally:
+        _forget(forever_db, forever_page)
+
+
+def test_saving_never_goes_into_a_version_the_rows_do_not_show(window, env, qtbot, stats_data):
+    forever_db, forever_page = _two_versions_with_data(window, env)
+    try:
+        open_top5(window, qtbot)
+        pick(window.tile_rows[0].stat, GOLD_LABEL)
+        window._version = "_forever_"                                           # the choice moved while the rows could not be read (the window was busy)
+        window.btn_top5.click()
+        qtbot.waitUntil(lambda: not window._busy and window._tile_variant == "_forever_", timeout=20000)
+        assert window.cfg["top5"] == {}                                         # nothing was saved: the rows were read for the chosen version first
+    finally:
+        _forget(forever_db, forever_page)
+
+
+def test_every_game_version_gets_its_own_tiles_when_the_data_is_read_and_when_the_pages_are_made(window, env, qtbot, monkeypatch):
+    files = _data_files(env, "_retail_", "_forever_")
+    retail_tile = {"stat": 2, "agg": "sum", "by": "all", "value": ""}
+    forever_tile = {"stat": 3, "agg": "max", "by": "all", "value": ""}
+    try:
+        seen = _recording_parser(monkeypatch)
+        _both_versions(window)
+        window.cfg["top5"] = {"_retail_": [retail_tile], "_forever_": [forever_tile]}
+        window.on_parse()
+        wait_idle(qtbot, window)
+        assert [kw["top5"] for _db, kw in seen] == [[retail_tile], [forever_tile]]
+        jobs = []
+        monkeypatch.setattr(actions, "rebuild_pages", lambda given: jobs.extend(given) or [])
+        make_data_of(env, "_retail_")
+        make_data_of(env, "_forever_")
+        window.build_pages()
+        wait_idle(qtbot, window)
+        assert [(variant, tiles) for variant, tiles, _rules in jobs] == [("_retail_", [retail_tile]), ("_forever_", [forever_tile])]
+    finally:
+        _forget(*files, *wow_install.out_files("_retail_"), *wow_install.out_files("_forever_"))
+
+
+def test_a_character_is_shown_as_name_and_realm_and_the_key_stays_the_data_behind_it(window, qtbot, stats_data):
+    open_top5(window, qtbot)
+    row = window.tile_rows[0]
+    pick(row.scope, "Character")
+    assert items(row.value) == as_shown("Alice-Realm", "Bob-Realm")             # the text the person sees
+    assert [row.value.itemData(i) for i in range(row.value.count())] == ["Alice-Realm", "Bob-Realm"]          # the key is what a tile stores
+    pick(row.stat, GOLD_LABEL)
+    row.value.setCurrentText("Bob / Realm")                                       # a part of the text shown is enough when it fits one entry
+    window.btn_top5.click()
+    qtbot.waitUntil(lambda: not window._busy, timeout=20000)
+    assert window.cfg["top5"] == {"_retail_": [{"stat": 2, "agg": "sum", "by": "char", "value": "Bob-Realm"}]}
+    pick(row.scope, "All characters")                                             # the rows are shared by the tests: leave them empty
+    row.stat.setCurrentIndex(0)
+
+
 def test_the_top5_tab_has_five_rows_with_the_names_in_the_language_of_the_program(window):
     assert len(window.tile_rows) == 5 and window.btn_top5.text() == "Save and write the page again"
     row = window.tile_rows[0]
@@ -859,7 +1377,7 @@ def test_the_top5_tab_has_five_rows_with_the_names_in_the_language_of_the_progra
 
 def test_without_data_the_tab_says_so_and_saving_changes_nothing(window, qtbot, monkeypatch):
     wow_install.out_files("_retail_")[0].unlink(missing_ok=True)
-    window.cfg["top5"] = [{"stat": 2, "agg": "sum", "by": "all", "value": ""}]
+    window.cfg["top5"] = {"_retail_": [{"stat": 2, "agg": "sum", "by": "all", "value": ""}]}
     shown = []
     monkeypatch.setattr(main_window.dialogs, "info", lambda _parent, text: shown.append(text))
     window.tabs.setCurrentIndex(main_window.TAB_TOP5)
@@ -867,7 +1385,7 @@ def test_without_data_the_tab_says_so_and_saving_changes_nothing(window, qtbot, 
     assert "no data for this game version" in window.lbl_top5.text() and window._tile_choices is None
     window.btn_top5.click()
     assert shown == ["There is no data for this game version yet. Read the data first."]
-    assert window.cfg["top5"] == [{"stat": 2, "agg": "sum", "by": "all", "value": ""}]       # not cleared by a tab that offered nothing
+    assert window.cfg["top5"] == {"_retail_": [{"stat": 2, "agg": "sum", "by": "all", "value": ""}]}       # not cleared by a tab that offered nothing
 
 
 def test_the_rows_offer_the_statistics_with_a_number_and_the_choices_of_the_data(window, qtbot, stats_data):
@@ -880,7 +1398,7 @@ def test_the_rows_offer_the_statistics_with_a_number_and_the_choices_of_the_data
     pick(row.scope, "Class")
     assert row.value.isEnabled() and items(row.value) == ["Druid", "Mage"]
     pick(row.scope, "Character")
-    assert items(row.value) == ["Alice-Realm", "Bob-Realm"]                       # nothing of the class that was chosen before stays in the list
+    assert items(row.value) == as_shown("Alice-Realm", "Bob-Realm")                       # nothing of the class that was chosen before stays in the list
     pick(row.scope, "Faction")
     assert items(row.value) == ["Alliance"]
     pick(row.scope, "All characters")
@@ -898,13 +1416,13 @@ def test_saving_stores_the_tiles_in_the_settings_and_writes_the_page_again(windo
     pick(second.agg, "Maximum")
     window.btn_top5.click()
     wanted = [{"stat": 2, "agg": "sum", "by": "class", "value": "MAGE"}, {"stat": 3, "agg": "max", "by": "all", "value": ""}]
-    assert window.cfg["top5"] == wanted and config.load()[0]["top5"] == wanted
+    assert window.cfg["top5"] == {"_retail_": wanted} and config.load()[0]["top5"] == {"_retail_": wanted}
     qtbot.waitUntil(lambda: 'id="top5"' in page.read_text(encoding="utf-8") and not window._busy, timeout=20000)
     text = page.read_text(encoding="utf-8")
     block = text.split('id="top5"')[1].split('<div data-slot="1">')[0]
     assert "Gold earned" in block and "Class: Mage" in block and "12.05" in block and "Quests done" in block
     log = window.log.toPlainText()
-    assert "Top 5 saved: 2 tiles." in log and "Page written again" in log
+    assert "Top 5 saved (_retail_): 2 tiles." in log and "Page written again" in log
 
 
 def test_a_row_whose_statistic_is_not_in_the_list_stays_empty_and_is_reported(window, qtbot, stats_data):
@@ -912,21 +1430,21 @@ def test_a_row_whose_statistic_is_not_in_the_list_stays_empty_and_is_reported(wi
     pick(window.tile_rows[0].stat, GOLD_LABEL)
     window.tile_rows[1].stat.setCurrentText("not a statistic")
     window.btn_top5.click()
-    assert window.cfg["top5"] == [{"stat": 2, "agg": "sum", "by": "all", "value": ""}]
+    assert window.cfg["top5"] == {"_retail_": [{"stat": 2, "agg": "sum", "by": "all", "value": ""}]}
     assert "Top 5, row 2: the statistic does not fit exactly one entry" in window.log.toPlainText()
-    assert "Top 5 saved: 1 tiles. Top 5, row 2:" in window.lbl_top5.text()                 # said on the tab itself, where the person is looking
+    assert "Top 5 saved (_retail_): 1 tiles. Top 5, row 2:" in window.lbl_top5.text()                 # said on the tab itself, where the person is looking
     qtbot.waitUntil(lambda: not window._busy, timeout=20000)
 
 
 def test_tiles_of_the_settings_are_shown_in_the_rows_and_one_that_names_something_missing_is_kept(window, qtbot, stats_data):
-    window.cfg["top5"] = [{"stat": 2, "agg": "avg", "by": "char", "value": "Bob-Realm"}, {"stat": 999, "agg": "max", "by": "class", "value": "WARLOCK"}]
+    window.cfg["top5"] = {"_retail_": [{"stat": 2, "agg": "avg", "by": "char", "value": "Bob-Realm"}, {"stat": 999, "agg": "max", "by": "class", "value": "WARLOCK"}]}
     open_top5(window, qtbot)
     first, second = window.tile_rows[:2]
     assert (first.stat.currentText(), first.agg.currentData(), first.scope.currentData(), first.value.currentData()) == (GOLD_LABEL, "avg", "char", "Bob-Realm")
     assert (second.stat.currentText(), second.stat.currentData(), second.scope.currentData(), second.value.currentData()) == ("#999", 999, "class", "WARLOCK")
     assert window.tile_rows[2].stat.currentText() == "– none –" and not window.tile_rows[2].value.isEnabled()
     window.btn_top5.click()
-    assert window.cfg["top5"][1] == {"stat": 999, "agg": "max", "by": "class", "value": "WARLOCK"}        # saving does not lose what the data lacks
+    assert window.cfg["top5"]["_retail_"][1] == {"stat": 999, "agg": "max", "by": "class", "value": "WARLOCK"}        # saving does not lose what the data lacks
     qtbot.waitUntil(lambda: not window._busy, timeout=20000)
 
 
@@ -949,7 +1467,7 @@ def test_the_top5_tab_does_not_offer_a_character_the_rules_keep_off_the_page(win
     open_top5(window, qtbot)
     row = window.tile_rows[0]
     pick(row.scope, "Character")
-    assert items(row.value) == ["Alice-Realm"]
+    assert items(row.value) == as_shown("Alice-Realm")
 
 
 def test_saving_the_tiles_writes_the_page_without_the_characters_the_rules_keep_off_it(window, qtbot, stats_data):
@@ -1054,12 +1572,12 @@ def test_without_data_the_block_of_a_game_version_says_so_and_has_no_form(window
 def test_a_choice_of_the_game_version_shows_the_block_of_each_enabled_one_and_each_keeps_what_was_set_in_it(window, qtbot, stats_data):
     window.cfg["enabled_variants"] = ["_forever_", "_retail_"]
     tiles = open_chars(window, qtbot)
-    assert [tile.variant for tile in tiles] == ["_retail_", "_forever_"] and items(window.cmb_chars_variant) == ["_retail_", "_forever_"]
+    assert [tile.variant for tile in tiles] == ["_retail_", "_forever_"] and picker_items(window.pick_chars) == ["_retail_", "_forever_"]
     assert window.chars_stack.currentWidget() is tiles[0].panel and tiles[1].table is None            # this one has no database
     add_rule(tiles[0], "class", "Mage")
-    window.cmb_chars_variant.setCurrentIndex(1)
+    window.pick_chars.combo.setCurrentText("_forever_")
     assert window.chars_stack.currentWidget() is tiles[1].panel
-    window.cmb_chars_variant.setCurrentIndex(0)
+    window.pick_chars.combo.setCurrentText("_retail_")
     assert window.chars_stack.currentWidget() is tiles[0].panel and list_rows(tiles[0]) == [["Class", "Mage", "Page, Excel", "1"]]
 
 
@@ -1072,7 +1590,7 @@ def test_the_form_offers_the_types_and_the_entries_of_the_data(window, qtbot, st
     tile.kind.setCurrentIndex(tile.kind.findData("faction"))
     assert items(tile.value) == ["Alliance"]
     tile.kind.setCurrentIndex(tile.kind.findData("char"))
-    assert items(tile.value) == ["Alice-Realm", "Bob-Realm"]
+    assert items(tile.value) == as_shown("Alice-Realm", "Bob-Realm")
     tile.kind.setCurrentIndex(tile.kind.findData("level_below"))
     assert tile.value.isHidden() and not tile.level.isHidden() and tile.level.value() == 20
     tile.kind.setCurrentIndex(tile.kind.findData("class"))
@@ -1084,7 +1602,7 @@ def test_the_saved_rules_are_the_list_with_their_targets_and_the_characters_they
     window.cfg["char_rules"] = {"_retail_": [MAGE_PAGE, {"type": "class", "value": "DRUID"}, {"type": "level_below", "value": "75", "for": ["excel"]}, ghost]}
     tile = open_chars(window, qtbot)[0]
     assert list_rows(tile) == [["Class", "Mage", "Page", "1"], ["Class", "Druid", "Page, Excel", "1"], ["Level under", "75", "Excel", "1"],
-                               ["Character", "Ghost-Realm", "Page, Excel", "0"]]                 # a rule for a character the data lacks is seen, with 0 hits
+                               ["Character", "Ghost / Realm", "Page, Excel", "0"]]                 # a rule for a character the data lacks is seen, with 0 hits
     assert tile.counter.text() == "Page: 2 of 2 hidden · Excel: 1 of 2" and tile.pending.text() == ""
 
 
@@ -1284,7 +1802,7 @@ def test_building_the_blocks_again_leaves_no_block_behind(window, qtbot, stats_d
     window._chars_rebuild({"_retail_": None})
     window._chars_rebuild({"_retail_": None})
     qtbot.wait(50)
-    assert len(window.char_tiles) == 1 and window.chars_stack.count() == 1 and items(window.cmb_chars_variant) == ["_retail_"]
+    assert len(window.char_tiles) == 1 and window.chars_stack.count() == 1 and picker_items(window.pick_chars) == ["_retail_"]
 
 
 def test_the_apply_buttons_are_off_while_a_slow_action_runs_and_none_is_left_behind_by_a_new_build(window, qtbot, stats_data):
@@ -1332,8 +1850,21 @@ def mark_in(table, *rows):
 
 
 def pick_char(tile, key):
-    tile.del_char.setCurrentIndex(tile.del_char.findText(key))
+    tile.del_char.setCurrentIndex(tile.del_char.findData(key))
     tile.del_add.click()
+
+
+def test_a_surname_in_the_data_is_shown_in_the_lists_and_the_key_stays_the_data_behind_it(window, qtbot, stats_data):
+    import sqlite3
+    db, _page = stats_data
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE scans SET surname = 'Everbeen' WHERE char_key = 'Alice-Realm'")
+    conn.commit()
+    conn.close()
+    tile = open_chars(window, qtbot)[0]
+    assert items(tile.del_char) == ["Alice Everbeen / Realm", "Bob / Realm"]
+    pick_char(tile, "Alice-Realm")
+    assert del_rows(tile) == [["Alice Everbeen / Realm", "Mage", "80"]] and tile.del_list == ["Alice-Realm"]
 
 
 def test_the_block_delete_stands_under_ignore_for_a_game_version_with_data_only(window, qtbot, stats_data):
@@ -1346,15 +1877,15 @@ def test_the_block_delete_stands_under_ignore_for_a_game_version_with_data_only(
 
 def test_the_form_offers_the_characters_of_the_data_and_the_list_shows_what_was_picked(window, qtbot, stats_data):
     tile = open_chars(window, qtbot)[0]
-    assert items(tile.del_char) == ["Alice-Realm", "Bob-Realm"] and tile.del_char.currentText() == ""        # nothing is chosen for the person
+    assert items(tile.del_char) == as_shown("Alice-Realm", "Bob-Realm") and tile.del_char.currentText() == ""        # nothing is chosen for the person
     assert del_rows(tile) == [] and tile.del_preview.text() == "This list deletes 0 characters." and not tile.del_remove.isEnabled()
     pick_char(tile, "Bob-Realm")
-    assert del_rows(tile) == [["Bob-Realm", "Druid", "70"]] and tile.del_preview.text() == "This list deletes 1 characters."
+    assert del_rows(tile) == [["Bob / Realm", "Druid", "70"]] and tile.del_preview.text() == "This list deletes 1 characters."
     assert tile.del_char.currentText() == ""                                                                  # ready for the next one
     pick_char(tile, "Bob-Realm")                                                                              # a character once
-    assert del_rows(tile) == [["Bob-Realm", "Druid", "70"]]
+    assert del_rows(tile) == [["Bob / Realm", "Druid", "70"]]
     pick_char(tile, "Alice-Realm")
-    assert del_rows(tile) == [["Bob-Realm", "Druid", "70"], ["Alice-Realm", "Mage", "80"]] and tile.del_remove.isEnabled()
+    assert del_rows(tile) == [["Bob / Realm", "Druid", "70"], ["Alice / Realm", "Mage", "80"]] and tile.del_remove.isEnabled()
 
 
 def test_the_ticked_characters_are_taken_off_the_list_and_nothing_else_happens(window, qtbot, stats_data):
@@ -1363,7 +1894,7 @@ def test_the_ticked_characters_are_taken_off_the_list_and_nothing_else_happens(w
     pick_char(tile, "Bob-Realm")
     mark_in(tile.del_table, 0)
     tile.del_remove.click()
-    assert del_rows(tile) == [["Bob-Realm", "Druid", "70"]] and tile.del_preview.text() == "This list deletes 1 characters."
+    assert del_rows(tile) == [["Bob / Realm", "Druid", "70"]] and tile.del_preview.text() == "This list deletes 1 characters."
     assert window.cfg["char_blacklist"] == {} and config.load()[0]["char_blacklist"] == {}                  # nothing is saved, nothing is deleted
     assert scans_in_data("_retail_") == 2
 
@@ -1386,20 +1917,20 @@ def test_a_text_that_fits_no_character_is_not_added_and_a_part_of_a_name_is_enou
     assert del_rows(tile) == []
     tile.del_char.setCurrentText("ali")
     tile.del_add.click()
-    assert del_rows(tile) == [["Alice-Realm", "Mage", "80"]] and tile.del_message.text() == ""
+    assert del_rows(tile) == [["Alice / Realm", "Mage", "80"]] and tile.del_message.text() == ""
 
 
 def test_a_character_the_list_names_but_the_data_does_not_have_shows_without_class_and_level(window, qtbot, stats_data):
     tile = open_chars(window, qtbot)[0]
     tile.del_list = ["Ghost-Realm"]
     window._del_refresh(tile)
-    assert del_rows(tile) == [["Ghost-Realm", "", ""]]
+    assert del_rows(tile) == [["Ghost / Realm", "", ""]]
 
 
 def test_the_blacklist_of_the_game_version_is_listed(window, qtbot, stats_data):
     window.cfg["char_blacklist"] = {"_retail_": ["Gone-Realm", "Other-Realm"], "_forever_": ["Forever-Realm"]}
     tile = open_chars(window, qtbot)[0]
-    assert bl_rows(tile) == ["Gone-Realm", "Other-Realm"] and tile.bl_note.text() == "" and tile.bl_remove.isEnabled()
+    assert bl_rows(tile) == as_shown("Gone-Realm", "Other-Realm") and tile.bl_note.text() == "" and tile.bl_remove.isEnabled()
     window.cfg["char_blacklist"] = {}
     window._bl_refresh(tile)
     assert bl_rows(tile) == [] and tile.bl_note.text() == "The blacklist is empty." and not tile.bl_remove.isEnabled()
@@ -1412,7 +1943,7 @@ def test_the_ticked_entries_leave_the_blacklist_and_that_is_saved_at_once(window
     tile.bl_remove.click()
     wanted = {"_retail_": ["Other-Realm"], "_forever_": ["Forever-Realm"]}
     assert window.cfg["char_blacklist"] == wanted and config.load()[0]["char_blacklist"] == wanted
-    assert bl_rows(tile) == ["Other-Realm"] and "2 entries removed from the blacklist" in tile.bl_message.text()
+    assert bl_rows(tile) == as_shown("Other-Realm") and "2 entries removed from the blacklist" in tile.bl_message.text()
     assert "2 entries removed" in window.log.toPlainText() and "read again" in tile.bl_message.text()
     mark_in(tile.bl_table, 0)
     tile.bl_remove.click()
@@ -1423,7 +1954,7 @@ def test_nothing_ticked_changes_nothing(window, qtbot, stats_data):
     window.cfg["char_blacklist"] = {"_retail_": ["Gone-Realm"]}
     tile = open_chars(window, qtbot)[0]
     tile.bl_remove.click()
-    assert window.cfg["char_blacklist"] == {"_retail_": ["Gone-Realm"]} and bl_rows(tile) == ["Gone-Realm"] and tile.bl_message.text() == ""
+    assert window.cfg["char_blacklist"] == {"_retail_": ["Gone-Realm"]} and bl_rows(tile) == as_shown("Gone-Realm") and tile.bl_message.text() == ""
 
 
 def test_a_blacklist_that_cannot_be_saved_stays_as_it_was(window, qtbot, stats_data, monkeypatch):
@@ -1436,7 +1967,7 @@ def test_a_blacklist_that_cannot_be_saved_stays_as_it_was(window, qtbot, stats_d
     mark_in(tile.bl_table, 0)
     tile.bl_remove.click()
     assert window.cfg["char_blacklist"] == {"_retail_": ["Gone-Realm", "Other-Realm"]} and "disk full" in window.log.toPlainText()
-    assert bl_rows(tile) == ["Gone-Realm", "Other-Realm"]
+    assert bl_rows(tile) == as_shown("Gone-Realm", "Other-Realm")
 
 
 def test_the_delete_block_has_its_own_names_in_german(window, qtbot, stats_data):
@@ -1497,7 +2028,7 @@ def test_the_question_names_the_number_and_the_characters_and_no_deletes_nothing
     pick_char(tile, "Bob-Realm")
     tile.del_save.click()
     assert len(questions) == 1 and "Delete 2 characters for good from the database of _retail_" in questions[0]
-    assert "Alice-Realm\nBob-Realm" in questions[0] and str(delete_dir()) in questions[0] and "blacklist" in questions[0]
+    assert "Alice / Realm\nBob / Realm" in questions[0] and str(delete_dir()) in questions[0] and "blacklist" in questions[0]
     assert calls == [] and window.cfg["char_blacklist"] == {} and config.load()[0]["char_blacklist"] == {}
     assert del_rows(tile) != [] and len(del_rows(tile)) == 2 and tile.del_message.text() == "Cancelled, nothing was deleted."
     assert scans_in_data("_retail_") == 2 and delete_copies() == copies                              # no copy for a deleting that did not happen
@@ -1508,7 +2039,7 @@ def test_the_question_lists_twelve_names_and_says_how_many_more(window, qtbot, s
     tile = open_chars(window, qtbot)[0]
     tile.del_list = [f"C{n:02d}-R" for n in range(14)]
     tile.del_save.click()
-    assert "C11-R" in questions[0] and "C12-R" not in questions[0] and "... and 2 more" in questions[0] and "Delete 14 characters" in questions[0]
+    assert "C11 / R" in questions[0] and "C12 / R" not in questions[0] and "... and 2 more" in questions[0] and "Delete 14 characters" in questions[0]
 
 
 def test_after_yes_the_keys_are_on_the_blacklist_before_deleting_and_the_characters_are_gone(window, qtbot, stats_data, monkeypatch):
@@ -1520,7 +2051,7 @@ def test_after_yes_the_keys_are_on_the_blacklist_before_deleting_and_the_charact
     pick_char(tile, "Alice-Realm")
     window._tile_key = ("read before",)
     tile.del_save.click()
-    wait_rebuilt(window, qtbot, lambda built: built.del_list == [] and items(built.del_char) == ["Bob-Realm"])
+    wait_rebuilt(window, qtbot, lambda built: built.del_list == [] and items(built.del_char) == as_shown("Bob-Realm"))
     assert calls[0]["variant"] == "_retail_" and calls[0]["keys"] == ["Alice-Realm"]
     assert calls[0]["on_disk"] == {"_retail_": ["Alice-Realm"]}                                       # saved BEFORE the deleting began
     assert window.cfg["char_blacklist"] == {"_retail_": ["Alice-Realm"]} and config.load()[0]["char_blacklist"] == {"_retail_": ["Alice-Realm"]}
@@ -1528,7 +2059,7 @@ def test_after_yes_the_keys_are_on_the_blacklist_before_deleting_and_the_charact
     wait_page(window, qtbot, page, lambda text: "Alice-Realm" not in text)
     assert "Bob-Realm" in page_text(page)
     built = window.char_tiles[0]
-    assert bl_rows(built) == ["Alice-Realm"] and built.del_message.text() == "Deleted (_retail_): 1 characters."
+    assert bl_rows(built) == as_shown("Alice-Realm") and built.del_message.text() == "Deleted (_retail_): 1 characters."
     log = window.log.toPlainText()
     assert "Deleted (_retail_): 1 characters." in log and "characters deleted (1 scans): Alice-Realm" in log
     assert window._tile_key is None
@@ -1539,7 +2070,7 @@ def test_the_tiles_and_the_rules_of_the_game_version_reach_the_deleting(window, 
     calls = spy_delete(monkeypatch, result=(True, "", ["Alice-Realm"]))
     tiles = [{"stat": 2, "agg": "sum", "by": "all", "value": ""}]
     rules = [{"type": "char", "value": "Ghost-Realm"}]
-    window.cfg["top5"], window.cfg["char_rules"] = tiles, {"_retail_": rules, "_forever_": [{"type": "char", "value": "Other-Realm"}]}
+    window.cfg["top5"], window.cfg["char_rules"] = {"_retail_": tiles}, {"_retail_": rules, "_forever_": [{"type": "char", "value": "Other-Realm"}]}
     tile = open_chars(window, qtbot)[0]
     pick_char(tile, "Alice-Realm")
     tile.del_save.click()
@@ -1569,8 +2100,8 @@ def test_when_nothing_was_deleted_the_keys_come_off_the_blacklist_again(window, 
     assert calls[0]["on_disk"] == {"_retail_": ["Old-Realm", "Alice-Realm"]}
     assert window.cfg["char_blacklist"] == {"_retail_": ["Old-Realm"]} and config.load()[0]["char_blacklist"] == {"_retail_": ["Old-Realm"]}
     assert "the backup of the database failed" in window.log.toPlainText()
-    assert tile.del_message.text() == "Nothing was deleted, the blacklist is as it was (see the log)." and bl_rows(tile) == ["Old-Realm"]
-    assert del_rows(tile) == [["Alice-Realm", "Mage", "80"]] and scans_in_data("_retail_") == 2          # the list stays, nothing is gone
+    assert tile.del_message.text() == "Nothing was deleted, the blacklist is as it was (see the log)." and bl_rows(tile) == as_shown("Old-Realm")
+    assert del_rows(tile) == [["Alice / Realm", "Mage", "80"]] and scans_in_data("_retail_") == 2          # the list stays, nothing is gone
 
 
 def test_a_blacklist_that_had_no_entry_has_none_again_after_a_failure(window, qtbot, stats_data, monkeypatch):
@@ -1625,7 +2156,7 @@ def test_a_list_of_ignore_that_was_not_applied_survives_the_deleting(window, qtb
     add_rule(tile, "class", "Mage", excel=False)
     pick_char(tile, "Alice-Realm")                                                                    # she is the mage
     tile.del_save.click()
-    wait_rebuilt(window, qtbot, lambda built: built.del_list == [] and items(built.del_char) == ["Bob-Realm"])
+    wait_rebuilt(window, qtbot, lambda built: built.del_list == [] and items(built.del_char) == as_shown("Bob-Realm"))
     built = window.char_tiles[0]
     assert list_rows(built) == [["Class", "MAGE", "Page", "0"]]                                       # still there, hits nobody, and shown as it is: the data has no mage now
     assert built.pending.text() == "Changed, not applied yet." and window.cfg["char_rules"] == {}
@@ -1637,7 +2168,7 @@ def test_a_list_of_ignore_that_was_applied_is_not_taken_for_a_draft(window, qtbo
     tile = open_chars(window, qtbot)[0]
     pick_char(tile, "Bob-Realm")
     tile.del_save.click()
-    wait_rebuilt(window, qtbot, lambda built: built.del_list == [] and items(built.del_char) == ["Alice-Realm"])
+    wait_rebuilt(window, qtbot, lambda built: built.del_list == [] and items(built.del_char) == as_shown("Alice-Realm"))
     built = window.char_tiles[0]
     assert list_rows(built) == [["Class", "Mage", "Page", "1"]] and built.pending.text() == ""
 
@@ -1678,9 +2209,9 @@ def test_a_typed_part_of_a_name_is_taken_when_it_fits_one_entry_and_the_box_then
     first.stat.setCurrentText("quests don")                                              # typed, no entry of the list chosen
     second.stat.setCurrentText("GOLD EARNED (wealth)")                                   # the whole name in another case
     window.btn_top5.click()
-    assert window.cfg["top5"] == [{"stat": 3, "agg": "sum", "by": "all", "value": ""}, {"stat": 2, "agg": "sum", "by": "all", "value": ""}]
+    assert window.cfg["top5"] == {"_retail_": [{"stat": 3, "agg": "sum", "by": "all", "value": ""}, {"stat": 2, "agg": "sum", "by": "all", "value": ""}]}
     assert first.stat.currentText() == "Quests done (Quests)" and second.stat.currentText() == GOLD_LABEL
-    assert window.lbl_top5.text() == "Top 5 saved: 2 tiles."
+    assert window.lbl_top5.text() == "Top 5 saved (_retail_): 2 tiles."
     qtbot.waitUntil(lambda: not window._busy, timeout=20000)
 
 
@@ -1690,7 +2221,7 @@ def test_a_typed_text_that_fits_several_entries_or_none_is_not_guessed(window, q
     window.tile_rows[1].stat.setCurrentText("zzzz")                                      # fits none
     pick(window.tile_rows[2].stat, GOLD_LABEL)
     window.btn_top5.click()
-    assert window.cfg["top5"] == [{"stat": 2, "agg": "sum", "by": "all", "value": ""}]
+    assert window.cfg["top5"] == {"_retail_": [{"stat": 2, "agg": "sum", "by": "all", "value": ""}]}
     assert "row 1" in window.lbl_top5.text() and "row 2" in window.lbl_top5.text() and "row 3" not in window.lbl_top5.text()
     qtbot.waitUntil(lambda: not window._busy, timeout=20000)
 
@@ -1703,11 +2234,11 @@ def test_the_choice_of_a_row_is_a_search_box_too_and_a_text_that_fits_nothing_is
     assert row.value.isEditable() and row.value.completer().filterMode() == Qt.MatchFlag.MatchContains
     row.value.setCurrentText("mag")
     window.btn_top5.click()
-    assert window.cfg["top5"] == [{"stat": 2, "agg": "sum", "by": "class", "value": "MAGE"}] and row.value.currentText() == "Mage"
+    assert window.cfg["top5"] == {"_retail_": [{"stat": 2, "agg": "sum", "by": "class", "value": "MAGE"}]} and row.value.currentText() == "Mage"
     qtbot.waitUntil(lambda: not window._busy, timeout=20000)
     row.value.setCurrentText("warlock")
     window.btn_top5.click()
-    assert window.cfg["top5"] == [] and "Top 5, row 1: the choice does not fit exactly one entry" in window.lbl_top5.text()
+    assert window.cfg["top5"] == {} and "Top 5, row 1: the choice does not fit exactly one entry" in window.lbl_top5.text()
     qtbot.waitUntil(lambda: not window._busy, timeout=20000)
 
 
@@ -1781,3 +2312,18 @@ def test_a_click_into_the_statistic_does_not_open_a_list_of_hundreds(window, qtb
     QTest.mouseClick(window.tile_rows[0].stat.lineEdit(), Qt.MouseButton.LeftButton)
     qtbot.wait(300)
     assert not popup.isVisible()
+
+
+# ------------------------------------------------------------------------------------------------------------ closing (keep this test LAST: it closes the shared window)
+def test_closing_the_window_with_the_page_tab_shown_raises_nothing(window, env, qtbot):
+    """The sub tabs are destroyed while they are still in the tab widget: that must not call a method of a half destroyed tab (found by hand, 2026-11-10)."""
+    from PyQt6.QtCore import QCoreApplication, QEvent
+    window.cfg["enabled_variants"] = ["_retail_", "_forever_"]
+    window.refresh_variants()
+    window.tabs.setCurrentIndex(main_window.TAB_PAGE)
+    with qtbot.capture_exceptions() as exceptions:
+        env.win.close()
+        for _ in range(10):
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            qtbot.wait(20)
+    assert exceptions == []

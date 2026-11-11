@@ -207,9 +207,9 @@ def three_characters(instance, tmp_path):
 def test_every_type_of_rule_reaches_the_excel_file(instance, tmp_path):
     from app import actions
     three_characters(instance, tmp_path)
-    expected = {("level_below", "20"): ["Mia-Realm", "Old-Realm"], ("class", "MAGE"): ["Dru-Realm", "Old-Realm"],
-                ("class", ""): ["Dru-Realm", "Mia-Realm"], ("faction", "Horde"): ["Dru-Realm", "Mia-Realm"],
-                ("realm", "Realm"): None, ("char", "Mia-Realm"): ["Dru-Realm", "Old-Realm"]}
+    expected = {("level_below", "20"): ["Mia / Realm", "Old / Realm"], ("class", "MAGE"): ["Dru / Realm", "Old / Realm"],      # the columns carry "Name / Realm"
+                ("class", ""): ["Dru / Realm", "Mia / Realm"], ("faction", "Horde"): ["Dru / Realm", "Mia / Realm"],
+                ("realm", "Realm"): None, ("char", "Mia-Realm"): ["Dru / Realm", "Old / Realm"]}
     for (kind, value), shown in expected.items():
         ok, out, _path = actions.run_export({"_retail_": [{"type": kind, "value": value, "for": ["excel"]}]})
         if shown is None:                                                                # the realm of all three: nothing is left
@@ -217,23 +217,23 @@ def test_every_type_of_rule_reaches_the_excel_file(instance, tmp_path):
         else:
             assert ok is True and header_keys(sheet(instance)) == shown, (kind, value)
     ok, _out, _path = actions.run_export({"_retail_": [{"type": "level_below", "value": "20", "for": ["page"]}]})
-    assert ok is True and header_keys(sheet(instance)) == ["Dru-Realm", "Mia-Realm", "Old-Realm"]
+    assert ok is True and header_keys(sheet(instance)) == ["Dru / Realm", "Mia / Realm", "Old / Realm"]
 
 
 # ------------------------------------------------------------------------------ the same through the window's action
 def test_the_action_leaves_out_the_characters_the_rules_of_the_version_name_for_excel(populated):
     from app import actions
     ok, out, _path = actions.run_export({"_retail_": [rule(ALICE, **{"for": ["excel"]})]})
-    assert ok is True and header_keys(sheet(populated)) == [BOB] and "1 characters hidden" in out
+    assert ok is True and header_keys(sheet(populated)) == ["Bob / Realm"] and "1 characters hidden" in out
     ok, out, _path = actions.run_export({"_retail_": [rule(ALICE)]})                       # no "for": the page and Excel
-    assert ok is True and header_keys(sheet(populated)) == [BOB]
+    assert ok is True and header_keys(sheet(populated)) == ["Bob / Realm"]
 
 
 def test_the_action_leaves_every_character_in_when_no_rule_is_meant_for_this_sheet(populated):
     from app import actions
     for rules in (None, {}, {"_retail_": []}, {"_retail_": [rule(ALICE, **{"for": ["page"]})]}, {"_forever_": [rule(ALICE)]}):
         ok, out, _path = actions.run_export(rules)
-        assert ok is True and header_keys(sheet(populated)) == [ALICE, BOB] and "hidden" not in out
+        assert ok is True and header_keys(sheet(populated)) == ["Alice / Realm", "Bob / Realm"] and "hidden" not in out
 
 
 def test_the_action_reports_that_everything_is_hidden(populated):

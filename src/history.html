@@ -169,7 +169,7 @@ function init() {
     $("back").href = DATA.back; $("back").textContent = UI.hist_back || ""; $("back").hidden = false;
   }
   const c = DATA.char;
-  document.title = fmt(UI.hist_title, {char: c.key});
+  document.title = fmt(UI.hist_title, {char: c.label || c.key});
   $("title").textContent = document.title;
   $("who").textContent = [c.race, c.class, c.level].filter(Boolean).join(" · ");
   $("span").textContent = fmt(UI.hist_sub, {scans: DATA.scans.length, first: DATA.scans[0], last: DATA.scans[DATA.scans.length - 1]});

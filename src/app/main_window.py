@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Wewoc (github.com/wewoc)
 # main_window.py
-# StatTracker - the main window (Qt): four tabs, a status bar, nothing else. "Settings" holds the game folder, version and
-# account, the actions (install / uninstall the addon, read the data, open the page, Excel), the options, the design and
-# the log; "Page" shows the stats page in the window (QWebEngineView); "Top 5" sets the tiles at the top of the page; "Characters" sets which
+# StatTracker - the main window (Qt): four tabs, a status bar, nothing else. "Settings" holds the game folder and the account, the options, the
+# design, the group "Addon" (the game version and the buttons that install and uninstall the addon there), the group "Actions" (read the
+# data of every enabled game version and open the pages, Excel) and the log; "Page" shows the stats page in the window (a QWebEngineView in a sub tab for every enabled game version, PageTab); "Top 5" sets the tiles at the top of the page; "Characters" sets which
 # characters the page, the history pages and the Excel file leave out (the rules are in rules/char_rules.py). The status bar shows what is going on and the state
 # of the game folder, the data and the addon. The window only shows: what it does is in actions.py (the slow parts run in
 # a thread, the result comes back to the window through the `dispatch` signal). Replaces the Tk window.
@@ -32,7 +32,7 @@ from app.qwebengine_hardening import harden
 from core import app_info, config, i18n, paths, theme, updater
 from core.i18n import t
 from game import wow_install
-from rules import char_rules
+from rules import char_names, char_rules
 from store import db_backup
 
 TAB_SETTINGS, TAB_PAGE, TAB_TOP5, TAB_CHARS = 0, 1, 2, 3
@@ -55,6 +55,129 @@ class StatPage(QWebEnginePage):
         return None
 
 
+class VersionPicker(QWidget):
+    """"Game version: [ v ]": the choice of the game version in the tabs Page and Characters. It only shows the versions it is given and says which one was
+    chosen (`changed`); the window keeps the one choice for all of them (MainWindow._set_version)."""
+    changed = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        self.label = QLabel()
+        lay.addWidget(self.label)
+        self.combo = QComboBox()
+        self.combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.combo.setMinimumContentsLength(14)                # wide enough for "_anniversary_": the name is never cut off
+        self.combo.currentTextChanged.connect(self._chosen)
+        lay.addWidget(self.combo)
+        self._quiet = False
+
+    def _chosen(self, text):
+        if not self._quiet and text:
+            self.changed.emit(text)
+
+    def set_variants(self, variants, current):
+        """Shows these game versions with `current` chosen (the first one when it is not among them), without a signal."""
+        self._quiet = True
+        try:
+            self.combo.clear()
+            self.combo.addItems(variants)
+            if current in variants:
+                self.combo.setCurrentText(current)
+        finally:
+            self._quiet = False
+
+    def select(self, name):
+        """Chooses a version without a signal."""
+        self._quiet = True
+        try:
+            self.combo.setCurrentText(name)
+        finally:
+            self._quiet = False
+
+    def current(self):
+        return self.combo.currentText()
+
+
+class PageTab(QWidget):
+    """The stats page of one game version, one page of the stack in the Page tab: its own view, page, channel and bridge (so a page keeps its state while
+    another is shown). A page waits (`pending`) until its tab is shown: the window marks it with `want` and loads it with `load_if_wanted`."""
+
+    def __init__(self, variant, profile, scripts, presets, parent=None):
+        super().__init__(parent)
+        self.variant = variant
+        self.url = ""                                  # what the view was told to load last
+        self.pending, self.forced = True, False        # waits to be loaded (forced: loaded again even if the file is the one shown)
+        self.building = False                          # the program writes the page just now: nothing is loaded, the hint says so
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        self.stack = QStackedWidget()
+        self.placeholder = QLabel(t("page_missing"))
+        self.placeholder.setObjectName("placeholder")
+        self.placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.placeholder.setWordWrap(True)
+        self.stack.addWidget(self.placeholder)
+        self.view = QWebEngineView()
+        self.page = StatPage(profile, self.view)
+        self.view.setPage(self.page)
+        harden(self.view)
+        self.bridge = page_bridge.PageBridge(presets, self)          # the blocks of the page that Python writes
+        self.channel = QWebChannel(self)
+        self.channel.registerObject("bridge", self.bridge)
+        self.page.setWebChannel(self.channel)
+        for script in scripts:                         # the colours of the scheme, the script of the channel (None: it could not be read)
+            if script is not None:
+                self.page.scripts().insert(script)
+        self.stack.addWidget(self.view)
+        lay.addWidget(self.stack, 1)
+
+    def page_file(self):
+        return wow_install.out_files(self.variant)[1]
+
+    def want(self, force=False):
+        self.pending = True
+        self.forced = self.forced or force
+
+    def set_building(self, building):
+        """On: the page is being written (the file is not read meanwhile, the hint says so); off: the page waits to be loaded again."""
+        self.building = building
+        self.placeholder.setText(t("page_building" if building else "page_missing"))
+        if building:
+            self.stack.setCurrentWidget(self.placeholder)
+
+    def load_if_wanted(self):
+        if self.pending and not self.building:
+            force, self.pending, self.forced = self.forced, False, False
+            self.load(force)
+
+    def load(self, force=False):
+        """Shows the stats page of this game version (or the hint that there is none yet). Without `force` a page that is already shown is left alone."""
+        page = self.page_file()
+        if not page.is_file():
+            self.url = ""
+            self.stack.setCurrentWidget(self.placeholder)
+            return
+        url = QUrl.fromLocalFile(str(page))
+        if force or url.toString() != self.url:
+            self.url = url.toString()
+            if force and self.view.url() == url:
+                self.view.reload()
+            else:
+                self.view.setUrl(url)
+        self.stack.setCurrentWidget(self.view)
+
+    def retranslate(self):
+        self.placeholder.setText(t("page_building" if self.building else "page_missing"))
+
+    def shut_down(self):
+        """The view and its page go before the profile they belong to (Qt wants that order); the caller takes the tab out of the window first."""
+        self.page.setWebChannel(None)
+        self.view.deleteLater()
+        self.page.deleteLater()
+        self.deleteLater()
+
+
 class MainWindow(QMainWindow):
     dispatch = pyqtSignal(object)          # runs a callable on the GUI thread (used by the worker threads)
 
@@ -69,9 +192,11 @@ class MainWindow(QMainWindow):
         self._update_open = False        # update dialog open or update under way: no second dialog or download
         self._busy = False               # a slow action runs: the action buttons are off
         self._refreshing = False         # a drop-down is being filled: its change signals are not user choices
-        self._page_url = ""
+        self.page_views = {}             # {game version: PageTab}: one page in the Page tab for every enabled game version
+        self._version = None             # the game version chosen in the tabs Page and Characters (one choice for both)
         self._tile_choices = None        # what the Top 5 tab offers (actions.tile_choices) and for which data it was read
         self._tile_key = None
+        self._tile_variant = None        # the game version whose tiles the rows of the Top 5 tab show (the choice when they were read)
         self._chars_key = None           # for which data, game versions and language the Characters tab was built (None: build it again)
         self._chars_buttons = []         # the apply buttons of the blocks of the Characters tab (they are also in action_buttons and go with the blocks)
         self._chars_drafts = {}          # {game version: draft of its block "Ignore"} that the next build of the blocks keeps (after deleting characters)
@@ -85,6 +210,7 @@ class MainWindow(QMainWindow):
         self.refresh_variants(keep=self.cfg["variant"])
         self.retranslate()
         self.status_message(t("status_ready"))
+        QTimer.singleShot(0, self.build_pages)                          # the window comes first; the pages of the enabled game versions are made from their databases
         if warning:
             self.write(t("warn_config_broken", detail=warning), "err")
         if self.cfg["check_updates"]:
@@ -132,7 +258,7 @@ class MainWindow(QMainWindow):
         top.addWidget(self._build_game_group(), 3)
         top.addWidget(self._build_options_group(), 2)
         lay.addLayout(top)
-        lay.addWidget(self._build_actions_group())
+        lay.addLayout(self._build_actions_row())
         lay.addLayout(self._build_log())
         lay.addLayout(self._build_footer())
         return tab
@@ -149,17 +275,13 @@ class MainWindow(QMainWindow):
         grid.addWidget(self._text(QPushButton(), "setText", "btn_browse"), 0, 2)
         self._browse = grid.itemAtPosition(0, 2).widget()
         self._browse.clicked.connect(self.browse_wow)
-        grid.addWidget(self._text(QLabel(), "setText", "lbl_variant"), 1, 0)
-        self.cmb_var = QComboBox()
-        self.cmb_var.currentTextChanged.connect(lambda _t: None if self._refreshing else self.refresh_accounts())
-        grid.addWidget(self.cmb_var, 1, 1)
-        grid.addWidget(self._text(QLabel(), "setText", "lbl_account"), 2, 0)
+        grid.addWidget(self._text(QLabel(), "setText", "lbl_account"), 1, 0)
         self.cmb_acc = QComboBox()
         self.cmb_acc.currentTextChanged.connect(lambda _t: None if self._refreshing else self.update_status())
-        grid.addWidget(self.cmb_acc, 2, 1)
+        grid.addWidget(self.cmb_acc, 1, 1)
         reload_btn = self._text(QPushButton(), "setText", "btn_reload")
         reload_btn.clicked.connect(lambda: self.refresh_variants(keep=self.cmb_var.currentText()))
-        grid.addWidget(reload_btn, 2, 2)
+        grid.addWidget(reload_btn, 1, 2)
         return box
 
     def _build_options_group(self):
@@ -205,6 +327,13 @@ class MainWindow(QMainWindow):
         intro.setObjectName("hint")
         intro.setWordWrap(True)
         lay.addWidget(intro)
+        pick_row = QHBoxLayout()
+        self.pick_top5 = VersionPicker()
+        self._text(self.pick_top5.label, "setText", "lbl_game_version")
+        self.pick_top5.changed.connect(self._set_version)
+        pick_row.addWidget(self.pick_top5)
+        pick_row.addStretch()
+        lay.addLayout(pick_row)
         box = QGroupBox()
         self._text(box, "setTitle", "top5_group")
         grid = QGridLayout(box)
@@ -235,20 +364,41 @@ class MainWindow(QMainWindow):
         self._label_tile_combos()
         return tab
 
+    def _build_actions_row(self):
+        """The row below the settings: the group "Addon" (the game version the addon buttons act on, install, uninstall) and the group "Actions"
+        (read the data of every enabled game version and open the pages, Excel)."""
+        self.action_buttons = []
+        row = QHBoxLayout()
+        row.addWidget(self._build_addon_group(), 3)
+        row.addWidget(self._build_actions_group(), 2)
+        return row
+
+    def _action_button(self, key, handler, primary=False):
+        button = self._text(QPushButton(), "setText", key)
+        if primary:
+            button.setObjectName("primary")
+        button.clicked.connect(lambda _checked=False: handler())
+        self.action_buttons.append(button)                         # off while a slow action runs
+        return button
+
+    def _build_addon_group(self):
+        box = QGroupBox()
+        self._text(box, "setTitle", "grp_addon")
+        row = QHBoxLayout(box)
+        row.addWidget(self._text(QLabel(), "setText", "lbl_addon_for"))
+        self.cmb_var = QComboBox()
+        self.cmb_var.currentTextChanged.connect(lambda _t: None if self._refreshing else self.update_status())
+        row.addWidget(self.cmb_var)
+        row.addWidget(self._action_button("btn_install", self.on_install))
+        row.addWidget(self._action_button("btn_uninstall", self.on_uninstall))
+        return box
+
     def _build_actions_group(self):
         box = QGroupBox()
         self._text(box, "setTitle", "grp_actions")
         row = QHBoxLayout(box)
-        self.action_buttons = []
-        for key, handler, primary in (("btn_install", self.on_install, False), ("btn_parse", self.on_parse, False),
-                                      ("btn_open", self.on_open, False), ("btn_parse_open", self.on_parse_open, True),
-                                      ("btn_export", self.on_export, False), ("btn_uninstall", self.on_uninstall, False)):
-            button = self._text(QPushButton(), "setText", key)
-            if primary:
-                button.setObjectName("primary")
-            button.clicked.connect(lambda _checked=False, h=handler: h())
-            self.action_buttons.append(button)
-            row.addWidget(button)
+        row.addWidget(self._action_button("btn_parse_open", self.on_parse_open, primary=True))
+        row.addWidget(self._action_button("btn_export", self.on_export))
         return box
 
     def _build_log(self):
@@ -290,41 +440,82 @@ class MainWindow(QMainWindow):
         lay.setSpacing(0)
         bar = QHBoxLayout()
         bar.setContentsMargins(8, 4, 8, 4)
+        self.pick_page = VersionPicker()
+        self._text(self.pick_page.label, "setText", "lbl_game_version")
+        self.pick_page.changed.connect(self._set_version)
+        bar.addWidget(self.pick_page)
         reload_btn = self._text(QPushButton(), "setText", "btn_reload")
-        reload_btn.clicked.connect(lambda: self.load_page(force=True))
+        reload_btn.clicked.connect(self._reload_shown)
         bar.addWidget(reload_btn)
         browser = self._text(QPushButton(), "setText", "btn_open_browser")
         browser.clicked.connect(self.open_in_browser)
         bar.addWidget(browser)
         bar.addStretch()
         lay.addLayout(bar)
-        self.stack = QStackedWidget()
-        self.placeholder = QLabel()
-        self.placeholder.setObjectName("placeholder")
-        self.placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.placeholder.setWordWrap(True)
-        self._text(self.placeholder, "setText", "page_missing")
-        self.stack.addWidget(self.placeholder)
-        self._profile = QWebEngineProfile("StatTracker")       # keeps its storage (what a page keeps in the browser) in data/
+        self._profile = QWebEngineProfile("StatTracker")       # keeps its storage (what a page keeps in the browser) in data/; shared by the pages
         storage = paths.data_dir() / "webview"
         self._profile.setPersistentStoragePath(str(storage))
         self._profile.setCachePath(str(storage / "cache"))
         self._profile.downloadRequested.connect(self._download)
-        self.view = QWebEngineView()
-        self._page = StatPage(self._profile, self.view)
-        self.view.setPage(self._page)
-        harden(self.view)
-        self._page.scripts().insert(self._colour_script())
-        self._bridge = page_bridge.PageBridge(page_bridge.ConfigPresets(self.cfg), self)      # the blocks of the page that Python writes
-        self._channel = QWebChannel(self)
-        self._channel.registerObject("bridge", self._bridge)
-        self._page.setWebChannel(self._channel)
-        channel_script = self._channel_script()
-        if channel_script is not None:
-            self._page.scripts().insert(channel_script)
-        self.stack.addWidget(self.view)
-        lay.addWidget(self.stack, 1)
+        self.page_stack = QStackedWidget()                     # one page per enabled game version (_refresh_page_views); the chosen version is on view
+        self.page_stack.currentChanged.connect(lambda _index: self._load_shown())
+        lay.addWidget(self.page_stack, 1)
         return tab
+
+    def _refresh_page_views(self):
+        """Makes the pages of the Page tab match the enabled game versions (Retail first): a page that is still wanted stays as it is, a new one is added, one
+        that is not wanted any more goes (with its view and page). Then the pickers of the tabs are filled again (_refresh_version_pickers)."""
+        wanted = self._chars_variants()
+        for variant in [name for name in self.page_views if name not in wanted]:
+            tab = self.page_views.pop(variant)
+            self.page_stack.removeWidget(tab)
+            tab.shut_down()
+        for position, variant in enumerate(wanted):
+            if variant not in self.page_views:
+                tab = PageTab(variant, self._profile, [self._colour_script(), self._channel_script()], page_bridge.ConfigPresets(self.cfg), self)
+                self.page_views[variant] = tab
+                self.page_stack.insertWidget(position, tab)
+        self._refresh_version_pickers()
+
+    def _refresh_version_pickers(self):
+        """Fills the choice of the game version in the tabs Page and Characters with the enabled versions (Retail first) and keeps the version chosen
+        if it is still enabled, else the first one is chosen."""
+        variants = self._chars_variants()
+        if self._version not in variants:
+            self._version = variants[0] if variants else None
+        for picker in (self.pick_page, self.pick_top5, self.pick_chars):
+            picker.set_variants(variants, self._version)
+        self._show_version()
+
+    def _set_version(self, name):
+        """The game version was chosen in one of the tabs: the one choice is the same everywhere (all the choices show it, the Page tab shows its page,
+        the Characters tab its block)."""
+        if name and name != self._version:
+            self._version = name
+            for picker in (self.pick_page, self.pick_top5, self.pick_chars):
+                picker.select(name)
+            self._show_version()
+            if self.tabs.currentIndex() == TAB_TOP5:                  # the Top 5 tab is on view: it reads the tiles and choices of the new version
+                self._tab_changed(TAB_TOP5)
+
+    def _show_version(self):
+        """Puts the page and the block of the chosen game version in front."""
+        tab = self.page_views.get(self._version)
+        if tab is not None:
+            self.page_stack.setCurrentWidget(tab)
+        self._chars_show()
+
+    @property
+    def view(self):
+        """The view of the page that is on view (the chosen game version), or None."""
+        tab = self.page_stack.currentWidget()
+        return tab.view if tab is not None else None
+
+    @property
+    def _bridge(self):
+        """The bridge of the page that is on view, or None."""
+        tab = self.page_stack.currentWidget()
+        return tab.bridge if tab is not None else None
 
     def _channel_script(self):
         """The script of Qt that lets a page talk to the bridge (qwebchannel.js), or None when it cannot be read: the page then
@@ -359,6 +550,8 @@ class MainWindow(QMainWindow):
         self.tabs.setTabText(TAB_TOP5, t("tab_top5"))
         self.tabs.setTabText(TAB_PAGE, t("tab_page"))
         self.tabs.setTabText(TAB_CHARS, t("tab_chars"))
+        for tab in self.page_views.values():
+            tab.retranslate()
         self._label_tile_combos()
         self._tile_key = None                      # the names of the choices are in the language of the program: read them again when the tab is shown
         self._chars_key = None
@@ -470,13 +663,16 @@ class MainWindow(QMainWindow):
 
     def _tab_changed(self, index):
         """Reads what the Top 5 tab or the Characters tab offers (in a thread) the first time it is shown and whenever the data, the game version or the
-        language changed."""
+        language changed. The Page tab loads the page that is on view."""
+        if index == TAB_PAGE:
+            self._load_shown()
+            return
         if index == TAB_CHARS:
             self._chars_load()
             return
         if index != TAB_TOP5 or self._busy:
             return
-        _root, variant = self.root_and_variant()
+        variant = self._version
         if not variant:
             self.lbl_top5.setText(t("top5_no_data"))
             return
@@ -484,6 +680,9 @@ class MainWindow(QMainWindow):
         key = (variant, db_path.stat().st_mtime_ns if db_path.is_file() else None, i18n.get_language())
         if key == self._tile_key:
             return
+        # the rows still show the tiles of another game version: what was changed there and not saved is dropped, and the tab says so
+        dropped = (self._tile_variant not in (None, variant) and self._tile_choices is not None
+                   and self._collect_tiles()[0] != self.cfg["top5"].get(self._tile_variant, []))
 
         rules = list(self.cfg["char_rules"].get(variant, []))
 
@@ -492,15 +691,16 @@ class MainWindow(QMainWindow):
                 return actions.tile_choices(variant, rules)
             except (SystemExit, Exception) as exc:                        # a database newer than this program, or a broken one: say it, do not hang
                 return exc
-        self.run_in_thread(work, lambda result: self._tile_choices_loaded(result, key), t("status_busy_choices"))
+        self.run_in_thread(work, lambda result: self._tile_choices_loaded(result, key, dropped), t("status_busy_choices"))
 
-    def _tile_choices_loaded(self, result, key):
+    def _tile_choices_loaded(self, result, key, dropped=False):
         failed = isinstance(result, BaseException)
         if failed:
             self.write(str(result.code if isinstance(result, SystemExit) else f"{type(result).__name__}: {result}"), "err")
         self._tile_choices = None if (failed or result is None) else result
         self._tile_key = None if self._tile_choices is None else key
-        self.lbl_top5.setText(t("top5_no_data") if self._tile_choices is None else "")
+        self._tile_variant = key[0]
+        self.lbl_top5.setText(t("top5_no_data") if self._tile_choices is None else (t("top5_discarded") if dropped else ""))
         stats = (self._tile_choices or {}).get("stats", [])
         for row in self.tile_rows:
             row.stat.blockSignals(True)
@@ -513,7 +713,7 @@ class MainWindow(QMainWindow):
                     row.stat.setItemData(row.stat.count() - 1, name, SuggestionDelegate.NAME)
                     row.stat.setItemData(row.stat.count() - 1, category, SuggestionDelegate.DETAIL)
             row.stat.blockSignals(False)
-        self._show_tiles(self.cfg["top5"])
+        self._show_tiles(self.cfg["top5"].get(key[0], []))
 
     def _collect_tiles(self):
         """(the tiles the rows describe, [(row number, "stat" or "value")] for the rows that could not be read). A row without a statistic is skipped; a
@@ -541,27 +741,33 @@ class MainWindow(QMainWindow):
         return tiles, invalid
 
     def on_top5_apply(self):
-        """Saves the tiles in the settings and writes the page of the chosen game version again (from its database, in a thread)."""
+        """Saves the tiles of the game version the rows show in the settings and writes the page of that version again (from its database, in a thread)."""
         if self._busy:
             return
-        if self._tile_choices is None:                                    # nothing was read (no data): the rows are empty, saving would clear the tiles
+        if self._tile_choices is None or self._tile_variant is None:      # nothing was read (no data): the rows are empty, saving would clear the tiles
             dialogs.info(self, t("top5_no_data"))
             return
+        if self._tile_variant != self._version:                            # the choice changed while the tab could not read: read first, never save into the wrong version
+            self._tab_changed(TAB_TOP5)
+            return
+        variant = self._tile_variant
         tiles, invalid = self._collect_tiles()
         problems = [t("top5_row_invalid" if kind == "stat" else "top5_value_invalid", n=number) for number, kind in invalid]
         for text in problems:
             self.write(text, "err")
-        self.cfg["top5"] = config.clean_top5(tiles)
+        clean = config.clean_top5(tiles)
+        if clean:
+            self.cfg["top5"][variant] = clean
+        else:
+            self.cfg["top5"].pop(variant, None)                            # a version without tiles has no entry
         self.save()
-        saved = t("log_top5_saved", count=len(self.cfg["top5"]))
+        saved = t("log_top5_saved", variant=variant, count=len(clean))
         self.write(saved, "ok")
         self.lbl_top5.setText(" ".join([saved] + problems))                 # also here: the log is on the other tab
-        _root, variant = self.root_and_variant()
-        if not variant or not wow_install.out_files(variant)[0].is_file():
+        if not wow_install.out_files(variant)[0].is_file():
             return
-        saved = list(self.cfg["top5"])
         rules = list(self.cfg["char_rules"].get(variant, []))
-        self.run_in_thread(lambda: actions.rebuild_page(variant, saved, rules), self._page_rebuilt, t("status_busy_top5"))
+        self.run_in_thread(lambda: actions.rebuild_page(variant, list(clean), rules), lambda result: self._page_rebuilt(result, variant), t("status_busy_top5"))
 
     def _page_rebuilt(self, result, variant=None):
         """The page of `variant` (None: the chosen game version) was written again: the lines it printed, then the page in the window is loaded again."""
@@ -573,7 +779,7 @@ class MainWindow(QMainWindow):
             return
         path = wow_install.out_files(variant)[1] if variant else self.html_path()
         self.write(t("log_top5_page", path=path), "ok")
-        self.load_page(force=True)
+        self.load_page(force=True, variant=variant or self.root_and_variant()[1])
 
     # ----------------------------------------------------------------- the Characters tab
     CHAR_KINDS = (("class", "html_groups_by_class"), ("race", "html_groups_by_race"), ("faction", "html_groups_by_faction"),
@@ -590,10 +796,10 @@ class MainWindow(QMainWindow):
         intro.setWordWrap(True)
         lay.addWidget(intro)
         row = QHBoxLayout()
-        row.addWidget(self._text(QLabel(), "setText", "chars_variant"))
-        self.cmb_chars_variant = QComboBox()
-        self.cmb_chars_variant.currentIndexChanged.connect(self._chars_show)
-        row.addWidget(self.cmb_chars_variant)
+        self.pick_chars = VersionPicker()
+        self._text(self.pick_chars.label, "setText", "lbl_game_version")
+        self.pick_chars.changed.connect(self._set_version)
+        row.addWidget(self.pick_chars)
         row.addStretch()
         lay.addLayout(row)
         scroll = QScrollArea()
@@ -604,10 +810,12 @@ class MainWindow(QMainWindow):
         self.char_tiles = []
         return tab
 
-    def _chars_show(self, index):
+    def _chars_show(self):
         """Shows the block of the game version that is chosen (the other blocks keep what was set in them)."""
-        if 0 <= index < self.chars_stack.count():
-            self.chars_stack.setCurrentIndex(index)
+        for tile in self.char_tiles:
+            if tile.variant == self._version:
+                self.chars_stack.setCurrentWidget(tile.panel)
+                return
 
     def _chars_variants(self):
         """The enabled game versions, Retail first."""
@@ -650,10 +858,7 @@ class MainWindow(QMainWindow):
             widget = self.chars_stack.widget(0)
             self.chars_stack.removeWidget(widget)
             widget.deleteLater()
-        keep = self.cmb_chars_variant.currentText()
         self.char_tiles = []
-        self.cmb_chars_variant.blockSignals(True)
-        self.cmb_chars_variant.clear()
         for variant in self._chars_variants():
             tile = self._chars_tile(variant, found.get(variant))
             if variant in self._chars_drafts and tile.table is not None:     # after deleting characters: a list of "Ignore" that was not applied stays
@@ -663,10 +868,7 @@ class MainWindow(QMainWindow):
                 tile.del_message.setText(self._chars_notes[variant])
             self.char_tiles.append(tile)
             self.chars_stack.addWidget(tile.panel)
-            self.cmb_chars_variant.addItem(variant)
-        self.cmb_chars_variant.setCurrentIndex(max(0, self.cmb_chars_variant.findText(keep)))
-        self.cmb_chars_variant.blockSignals(False)
-        self._chars_show(self.cmb_chars_variant.currentIndex())
+        self._refresh_version_pickers()                       # the blocks and the choices come from the same list of versions; the chosen block is shown
         self._chars_drafts, self._chars_notes = {}, {}
 
     def _chars_tile(self, variant, result):
@@ -816,7 +1018,7 @@ class MainWindow(QMainWindow):
         names = dict(self.CHAR_KINDS)
         kind_text = t(names[kind]) if kind in names else str(kind)
         if kind in tile.values:
-            value_text = dict(tile.values[kind]).get(value, t("html_groups_unknown") if value == "" else str(value))
+            value_text = dict(tile.values[kind]).get(value, t("html_groups_unknown") if value == "" else (char_names.display(value) if kind == "char" else str(value)))
         else:
             value_text = str(value)
         return kind_text, value_text
@@ -977,7 +1179,7 @@ class MainWindow(QMainWindow):
         rows = []
         for key in tile.del_list:
             char = tile.by_key.get(key, {})
-            rows.append((key, str(char.get("class") or ""), "" if char.get("level") is None else str(char["level"])))
+            rows.append((char.get("label") or char_names.display(key), str(char.get("class") or ""), "" if char.get("level") is None else str(char["level"])))
         self._chars_fill_rows(tile.del_table, rows)
         tile.del_preview.setText(t("chars_del_preview", count=len(tile.del_list)))
         tile.del_remove.setEnabled(bool(tile.del_list))
@@ -993,7 +1195,7 @@ class MainWindow(QMainWindow):
         if not keys:
             tile.del_message.setText(t("chars_del_empty"))
             return
-        names = "\n".join(keys[:12]) + (("\n" + t("chars_del_more", count=len(keys) - 12)) if len(keys) > 12 else "")
+        names = "\n".join((tile.by_key.get(key) or {}).get("label") or char_names.display(key) for key in keys[:12]) + (("\n" + t("chars_del_more", count=len(keys) - 12)) if len(keys) > 12 else "")
         folder = db_backup.delete_dir(wow_install.out_files(variant)[0])
         if not dialogs.ask_yes_no(self, t("chars_del_ask", count=len(keys), variant=variant, names=names, folder=folder)):
             tile.del_message.setText(t("chars_del_cancelled"))
@@ -1008,7 +1210,7 @@ class MainWindow(QMainWindow):
             tile.del_message.setText(t("chars_del_blacklist_failed"))
             self._bl_refresh(tile)
             return
-        top5 = list(self.cfg["top5"])
+        top5 = list(self.cfg["top5"].get(variant, []))
         rules = list(self.cfg["char_rules"].get(variant, []))
         self.run_in_thread(lambda: actions.delete_chars(variant, keys, top5, rules),
                            lambda result: self._deleted(result, tile, before), t("status_busy_delete"))
@@ -1041,7 +1243,7 @@ class MainWindow(QMainWindow):
         self._chars_drafts = {each.variant: list(each.draft) for each in self.char_tiles if each.table is not None and each.draft != each.rules}
         self._chars_notes = {variant: done}
         self._chars_key = None                           # the data changed: the blocks are built again, with the drafts of "Ignore" kept
-        self.load_page(force=True)
+        self.load_page(force=True, variant=variant)
         self._chars_load()
 
     def _bl_keys(self, tile):
@@ -1049,7 +1251,7 @@ class MainWindow(QMainWindow):
 
     def _bl_refresh(self, tile):
         keys = self._bl_keys(tile)
-        self._chars_fill_rows(tile.bl_table, [(key,) for key in keys])
+        self._chars_fill_rows(tile.bl_table, [(char_names.display(key),) for key in keys])
         tile.bl_note.setText("" if keys else t("chars_bl_empty"))
         tile.bl_remove.setEnabled(bool(keys))
 
@@ -1101,7 +1303,7 @@ class MainWindow(QMainWindow):
         self._chars_refresh(tile)
         if not wow_install.out_files(variant)[0].is_file():
             return
-        top5 = list(self.cfg["top5"])
+        top5 = list(self.cfg["top5"].get(variant, []))
         self.run_in_thread(lambda: actions.rebuild_page(variant, top5, list(rules)), lambda result: self._page_rebuilt(result, variant), t("status_busy_top5"))
 
     # ----------------------------------------------------------------- log and status
@@ -1143,7 +1345,11 @@ class MainWindow(QMainWindow):
         self.cfg["wow_dir"] = str(root) if root else self.ed_wow.text().strip()
         if variant:
             self.cfg["variant"] = variant
-            self.cfg["accounts"][variant] = self.cmb_acc.currentText()
+        account = self.cmb_acc.currentText()
+        if account and root:                                      # one account for all game versions: kept for every version that has it
+            for name in self._read_variants(root):
+                if account in wow_install.list_accounts(root / name):
+                    self.cfg["accounts"][name] = account
         try:
             config.save(self.cfg)
         except OSError as e:
@@ -1173,6 +1379,7 @@ class MainWindow(QMainWindow):
         variants = wow_install.list_variants(root, self.cfg["enabled_variants"]) if root else []
         self._fill(self.cmb_var, variants, forced or keep)
         self._refresh_variant_boxes(root)
+        self._refresh_page_views()
         self.refresh_accounts()
 
     def _refresh_variant_boxes(self, root):
@@ -1184,14 +1391,22 @@ class MainWindow(QMainWindow):
         detected = wow_install.list_variants(root) if root else []
         for name in dict.fromkeys(list(detected) + list(self.cfg["enabled_variants"])):
             box = QCheckBox(name)
-            box.setChecked(name in self.cfg["enabled_variants"])
+            enabled = name in self.cfg["enabled_variants"]
+            box.setChecked(enabled)
+            if not enabled and not wow_install.is_tested(name):          # an untested version cannot be switched on (one that is on can still be switched off)
+                box.setEnabled(False)
+                box.setToolTip(t("settings_variant_untested"))
             box.toggled.connect(lambda _on, n=name: self.on_variant_toggled(n))
             self.variant_boxes.addWidget(box)
 
     def refresh_accounts(self):
-        game = self.game_dir()
-        accounts = wow_install.list_accounts(game) if game else []
-        self._fill(self.cmb_acc, accounts, self.cfg["accounts"].get(self.cmb_var.currentText(), ""))
+        """Fills the account box with the accounts of all the game versions that are read (one account for all): the one chosen now stays if it is
+        still there, else the one saved for the first version that has a saved one."""
+        root, _forced = wow_install.resolve_root(self.ed_wow.text())
+        variants = self._read_variants(root) if root else []
+        accounts = wow_install.list_accounts_of(root, variants) if root else []
+        saved = next((name for name in (self.cfg["accounts"].get(v, "") for v in variants) if name in accounts), "")
+        self._fill(self.cmb_acc, accounts, self.cmb_acc.currentText() if self.cmb_acc.currentText() in accounts else saved)
         self.update_status()
         self.load_page()
 
@@ -1204,7 +1419,7 @@ class MainWindow(QMainWindow):
             shown = forced or self.cmb_var.currentText()
             text = t("status_variant_disabled", variant=shown) if shown else t("status_invalid_root")
         else:
-            text = "  |  ".join(actions.status_parts(root, variant, self.cmb_acc.currentText()))
+            text = "  |  ".join(actions.status_parts(root, self._read_variants(root), self.cmb_acc.currentText(), variant))
         self.lbl_status.setText(text)
         self.lbl_status.setToolTip(text)
 
@@ -1259,6 +1474,8 @@ class MainWindow(QMainWindow):
         self.cfg["enabled_variants"] = enabled
         self.save()
         self.refresh_variants(keep=self.cmb_var.currentText())
+        if name in enabled:                                           # a version that was just enabled: its page is made from its database
+            self.build_pages([name])
 
     def on_options(self, _checked=None):
         self.cfg["check_updates"] = self.chk_updates.isChecked()
@@ -1322,47 +1539,63 @@ class MainWindow(QMainWindow):
         self.update_status()
 
     def on_parse(self, open_after=False):
-        """Reads the data file of the chosen account (in a thread); the log and the page follow when it is done."""
+        """Reads the data file of the chosen account of every enabled game version (in a thread, one after the other); the log and the pages follow when
+        it is done. A version that has no data file of this account is left out with a line in the log; with no file at all nothing is started."""
         if self._busy:
             return
-        root, variant = self.need_root()
+        root, _forced = wow_install.resolve_root(self.ed_wow.text())
         if not root:
+            dialogs.error(self, t("err_invalid_root"))
+            return
+        variants = self._read_variants(root)
+        if not variants:
+            dialogs.error(self, t("err_no_variant"))
             return
         account = self.cmb_acc.currentText()
         if not account:
             dialogs.error(self, t("err_no_account"))
             return
-        sv = wow_install.saved_vars_path(root / variant, account)
-        if not sv.is_file():
-            msg = t("err_no_data_file", path=sv)
+        jobs = []
+        for variant in variants:
+            sv = wow_install.saved_vars_path(root / variant, account)
+            if sv.is_file():
+                jobs.append((variant, sv, root, self.cfg["read_icons"], list(self.cfg["top5"].get(variant, [])),
+                             list(self.cfg["char_rules"].get(variant, [])), list(self.cfg["char_blacklist"].get(variant, []))))
+            else:
+                self.write(t("log_parse_skipped", variant=variant, account=account))
+        if not jobs:
+            msg = t("err_nothing_to_read", account=account, paths="\n".join(str(wow_install.saved_vars_path(root / v, account)) for v in variants))
             self.write(msg.replace("\n\n", " ").replace("\n", " "), "err")
             dialogs.error(self, msg)
             return
         self.save()
-        read_icons = self.cfg["read_icons"]
-        top5 = list(self.cfg["top5"])
-        rules = list(self.cfg["char_rules"].get(variant, []))
-        skip = list(self.cfg["char_blacklist"].get(variant, []))
-        self.run_in_thread(lambda: actions.import_saved_variables(sv, root, variant, read_icons, top5, rules, skip),
-                           lambda result: self._parsed(result, root, variant, account, open_after),
-                           t("status_busy_parse"))
+        self.run_in_thread(lambda: actions.import_all(jobs), lambda results: self._parsed(results, root, account, open_after), t("status_busy_parse"))
 
-    def _parsed(self, result, root, variant, account, open_after):
-        ok, out = result
+    def _parsed(self, results, root, account, open_after):
+        """The data was read: for each game version its lines and its result, then its page loads again."""
         self._tile_key = None                          # new data: the Top 5 tab reads what it offers again
         self._chars_key = None                         # and the Characters tab
-        for line in out.strip().splitlines():
-            self.write(line, "err" if (not ok or line.startswith(("FEHLER", "WARNUNG", "ERROR", "WARNING"))) else None)
-        self.write(t("log_parse_ok") if ok else t("log_parse_fail"), "ok" if ok else "err")
-        if ok:
-            others = actions.other_accounts(root, variant, account)
-            if others:
-                self.write(t("log_other_accounts", accounts=", ".join(others)))
+        for variant, ok, out in results:
+            self.write(t("log_parse_version", variant=variant))
+            for line in out.strip().splitlines():
+                self.write(line, "err" if (not ok or line.startswith(("FEHLER", "WARNUNG", "ERROR", "WARNING"))) else None)
+            self.write(t("log_parse_ok") if ok else t("log_parse_fail"), "ok" if ok else "err")
+            if ok:
+                others = actions.other_accounts(root, variant, account)
+                if others:
+                    self.write(t("log_other_accounts", accounts=", ".join(others)))
+                self.load_page(force=True, variant=variant)
         self.update_status()
-        if ok:
-            self.load_page(force=True)
-            if open_after:
-                self.on_open()
+        if open_after and any(ok for _variant, ok, _out in results):
+            self.on_open()
+
+    def _read_variants(self, root):
+        """The game versions that are read: the one version folder that was typed in as the WoW folder, else every enabled version that the game folder
+        has (Retail first)."""
+        _root, forced = wow_install.resolve_root(self.ed_wow.text())
+        if forced:
+            return [forced] if forced in self.cfg["enabled_variants"] else []
+        return wow_install.list_variants(root, self.cfg["enabled_variants"]) if root else []
 
     def on_parse_open(self):
         self.on_parse(open_after=True)
@@ -1372,29 +1605,22 @@ class MainWindow(QMainWindow):
         return wow_install.out_files(variant)[1] if variant else None
 
     def on_open(self):
-        """Shows the stats page of the chosen game version in the Page tab."""
-        _root, variant = self.root_and_variant()
-        if not variant:
-            dialogs.error(self, t("err_no_variant"))
-            return
-        page = self.html_path()
-        if not page.is_file():
-            dialogs.info(self, t("info_no_html", name=page.name))
-            return
+        """Shows the Page tab: every page is loaded again (the one on view at once, the others when their sub tab is shown). A game version
+        that has no page yet shows its hint."""
         self.load_page(force=True)
         self.tabs.setCurrentIndex(TAB_PAGE)
-        self.write(t("log_opened", path=page))
 
     def open_in_browser(self):
-        """Opens the stats page in the browser: a snapshot of what the window shows now (selection, filters, sorting; the controls are locked there
-        because the browser has no connection to the program). Without a page shown in the window, the stats page file itself is opened."""
-        page = self.html_path()
+        """Opens the stats page of the shown sub tab in the browser: a snapshot of what the window shows now (selection, filters, sorting; the controls are
+        locked there because the browser has no connection to the program). Without a page shown in the window, the stats page file itself is opened."""
+        tab = self.page_stack.currentWidget()
+        page = tab.page_file() if tab is not None else None
         if page is None or not page.is_file():
             dialogs.info(self, t("info_no_html", name=page.name if page else "stats.html"))
             return
-        view = self._bridge.view
+        view = tab.bridge.view
         if view is not None:
-            _root, variant = self.root_and_variant()
+            variant = tab.variant
             try:
                 page = actions.write_snapshot(view, variant)
             except OSError as e:
@@ -1405,22 +1631,61 @@ class MainWindow(QMainWindow):
         else:
             self.write(t("log_opened", path=page))
 
-    def load_page(self, force=False):
-        """Shows the stats page of the chosen game version (or the hint that there is none yet). Without `force` a page
-        that is already shown is left alone."""
-        page = self.html_path()
-        if page is None or not page.is_file():
-            self._page_url = ""
-            self.stack.setCurrentWidget(self.placeholder)
+    def load_page(self, force=False, variant=None):
+        """Marks the stats page of this game version (None: every page) to be shown, or the hint that there is none yet. Without `force` a page that is
+        already shown is left alone. The page that is on view loads at once; another waits until its tab is shown (the Page tab, then its sub tab)."""
+        for name, tab in self.page_views.items():
+            if variant is None or variant == name:
+                tab.want(force)
+        self._load_shown()
+
+    def _load_shown(self):
+        """Loads the page that is on view, if it is waiting."""
+        if self.tabs.currentIndex() != TAB_PAGE:
             return
-        url = QUrl.fromLocalFile(str(page))
-        if force or url.toString() != self._page_url:
-            self._page_url = url.toString()
-            if force and self.view.url() == url:
-                self.view.reload()
+        tab = self.page_stack.currentWidget()
+        if tab is not None:
+            tab.load_if_wanted()
+
+    def _reload_shown(self):
+        """The button "Reload": the page of the shown sub tab is loaded again."""
+        tab = self.page_stack.currentWidget()
+        if tab is not None:
+            self.load_page(force=True, variant=tab.variant)
+
+    def build_pages(self, variants=None):
+        """Writes the stats pages of the enabled game versions (or of `variants`) again from their databases, in a thread: no import, nothing written to a
+        database (actions.rebuild_pages). Only versions that have a database; without one nothing happens. A page that is being written is not loaded
+        meanwhile (PageTab.building); when it is done the pages load again. Runs at the start (so a page is never older than the program) and when a game
+        version is enabled; not while another action runs."""
+        if self._busy:
+            return
+        jobs = [(variant, list(self.cfg["top5"].get(variant, [])), list(self.cfg["char_rules"].get(variant, [])))
+                for variant in (variants if variants is not None else self._chars_variants())
+                if variant in self.page_views and wow_install.out_files(variant)[0].is_file()]
+        if not jobs:
+            return
+        for variant, _tiles, _rules in jobs:
+            self.page_views[variant].set_building(True)
+        self.run_in_thread(lambda: actions.rebuild_pages(jobs), self._pages_built, t("status_busy_top5"))
+
+    def _pages_built(self, results):
+        """The pages were written again: the lines they printed, then the pages load again (a page that could not be written stays as it was)."""
+        made = []
+        for variant, ok, out in results:
+            tab = self.page_views.get(variant)
+            if tab is not None:
+                tab.set_building(False)
+            for line in out.strip().splitlines():
+                self.write(line, "err" if (not ok or line.startswith(("FEHLER", "WARNUNG", "ERROR", "WARNING"))) else None)
+            if ok:
+                made.append(variant)
             else:
-                self.view.setUrl(url)
-        self.stack.setCurrentWidget(self.view)
+                self.write(t("log_page_build_fail", variant=variant), "err")
+            self.load_page(force=True, variant=variant)
+        if made:
+            self.write(t("log_pages_built", versions=", ".join(made)), "ok")
+        self._tab_changed(self.tabs.currentIndex())          # a tab that was opened meanwhile could not read its choices while the pages were written
 
     def _download(self, request):
         """A download the page asks for (the save button of a chart): the user chooses where it goes."""
@@ -1527,9 +1792,11 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ closing
     def closeEvent(self, event):
-        """The view and its page go before the profile they belong to (Qt wants that order)."""
-        self._page.setWebChannel(None)
-        self.view.deleteLater()
-        self._page.deleteLater()
+        """The views and their pages go before the profile they belong to (Qt wants that order). The pages are destroyed while they are still in
+        `page_stack`: it reports a change of the current page for each (the object is half destroyed then, `_load_shown` could not use it), so it is silenced first."""
+        self.page_stack.blockSignals(True)
+        for tab in self.page_views.values():
+            tab.shut_down()
+        self.page_views.clear()
         self._profile.deleteLater()
         super().closeEvent(event)

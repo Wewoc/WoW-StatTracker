@@ -130,7 +130,7 @@ def test_played_time_is_in_seconds_and_named_in_the_current_language(tmp_path):
 def test_the_char_block_is_the_latest_scan(tmp_path):
     db = make_db(tmp_path / "x.db", [scan("2026-10-01 10:00:00", {1: "1"}, level=79, race="Human"),
                                      scan("2026-10-02 10:00:00", {1: "2"}, level=80, race="Gnome")])
-    assert history(db)["char"] == {"key": KEY, "class": "Mage", "level": 80, "faction": "Alliance",
+    assert history(db)["char"] == {"key": KEY, "label": "Alice / Realm", "class": "Mage", "level": 80, "faction": "Alliance",
                                    "class_file": "MAGE", "race": "Human", "race_file": "Gnome"}
 
 
@@ -200,7 +200,7 @@ def test_a_database_from_before_schema_2_is_readable_without_migrating_it(tmp_pa
     conn.close()
     before = digest(db)
     h = history(db)
-    assert h["char"] == {"key": KEY, "class": "Mage", "level": 80, "faction": "Alliance",
+    assert h["char"] == {"key": KEY, "label": "Alice / Realm", "class": "Mage", "level": 80, "faction": "Alliance",
                          "class_file": None, "race": None, "race_file": None}
     assert by_id(h)[1]["v"] == [1234]
     assert h["gear"] is None                        # no specialization columns, no gear table: no gear block

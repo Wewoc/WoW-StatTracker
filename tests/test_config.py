@@ -131,10 +131,10 @@ TILE = {"stat": 328, "agg": "sum", "by": "class", "value": "MAGE"}
 
 def test_there_are_no_tiles_until_some_are_set_and_good_ones_survive_the_file(instance):
     cfg, _ = config.load()
-    assert cfg["top5"] == []
-    cfg["top5"] = [TILE, {"stat": -1, "agg": "max", "by": "all", "value": ""}]
+    assert cfg["top5"] == {}
+    cfg["top5"] = {"_retail_": [TILE, {"stat": -1, "agg": "max", "by": "all", "value": ""}], "_forever_": [TILE]}
     config.save(cfg)
-    assert config.load()[0]["top5"] == cfg["top5"]
+    assert config.load()[0]["top5"] == cfg["top5"]                           # the tiles are kept per game version
 
 
 def test_tiles_that_are_not_shaped_like_one_are_dropped_and_the_rest_stays_in_order(instance):
@@ -142,19 +142,30 @@ def test_tiles_that_are_not_shaped_like_one_are_dropped_and_the_rest_stays_in_or
             {"stat": "1", "agg": "sum", "by": "all"}, {"stat": 1, "agg": 3, "by": "all"}, {"stat": 1, "agg": "sum", "by": None},
             {"stat": 1, "agg": "sum", "by": "all", "value": 4}, {"stat": 2, "agg": "avg", "by": "char", "value": "A-B", "more": 1}, {"stat": 3, "agg": "median", "by": "guild"}]
     config.config_path().parent.mkdir(parents=True, exist_ok=True)
-    config.config_path().write_text(json.dumps({"top5": junk}), encoding="utf-8")
-    assert config.load()[0]["top5"] == [TILE, {"stat": 2, "agg": "avg", "by": "char", "value": "A-B"},
-                                       {"stat": 3, "agg": "median", "by": "guild", "value": ""}]       # only the shape is checked here, a missing value is empty
+    config.config_path().write_text(json.dumps({"top5": {"_forever_": junk}}), encoding="utf-8")
+    assert config.load()[0]["top5"] == {"_forever_": [TILE, {"stat": 2, "agg": "avg", "by": "char", "value": "A-B"},
+                                                      {"stat": 3, "agg": "median", "by": "guild", "value": ""}]}       # only the shape is checked here, a missing value is empty
 
 
-def test_at_most_five_tiles_are_kept_and_a_list_that_is_not_a_list_gives_none(instance):
+def test_at_most_five_tiles_per_version_are_kept_and_what_is_not_a_map_of_lists_gives_none(instance):
     config.config_path().parent.mkdir(parents=True, exist_ok=True)
     many = [{"stat": i, "agg": "sum", "by": "all", "value": ""} for i in range(config.TOP5_MAX + 3)]
-    config.config_path().write_text(json.dumps({"top5": many}), encoding="utf-8")
-    assert [t["stat"] for t in config.load()[0]["top5"]] == list(range(config.TOP5_MAX)) and config.TOP5_MAX == 5
-    for bad in ({"a": 1}, "text", 7, None):
+    config.config_path().write_text(json.dumps({"top5": {"_retail_": many}}), encoding="utf-8")
+    assert [t["stat"] for t in config.load()[0]["top5"]["_retail_"]] == list(range(config.TOP5_MAX)) and config.TOP5_MAX == 5
+    for bad in ("text", 7, None, {"a": [TILE]}, {"retail": [TILE]}, {"_retail_": "text"}, {"_retail_": []}, {7: [TILE]}):    # a key must be a game version folder name, a version without tiles has no entry
         config.config_path().write_text(json.dumps({"top5": bad}), encoding="utf-8")
-        assert config.load()[0]["top5"] == []
+        assert config.load()[0]["top5"] == {}
+
+
+def test_a_plain_list_of_tiles_from_before_is_the_tiles_of_retail(instance):
+    config.config_path().parent.mkdir(parents=True, exist_ok=True)
+    config.config_path().write_text(json.dumps({"top5": [TILE, {"stat": 9, "agg": "sum", "by": "all", "value": ""}]}), encoding="utf-8")
+    cfg, _ = config.load()
+    assert cfg["top5"] == {"_retail_": [TILE, {"stat": 9, "agg": "sum", "by": "all", "value": ""}]}
+    config.save(cfg)                                                           # saved again in the new form
+    assert json.loads(config.config_path().read_text(encoding="utf-8"))["top5"] == cfg["top5"]
+    config.config_path().write_text(json.dumps({"top5": []}), encoding="utf-8")
+    assert config.load()[0]["top5"] == {}
 
 
 def test_there_is_no_blacklist_until_a_character_is_deleted_and_it_survives_the_file(instance):

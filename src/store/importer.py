@@ -22,7 +22,7 @@ from store import stat_values
 # StatTracker.lua). The addon writes it for the whole file, so it is a ceiling, not a mark on
 # a single scan: a file with a higher number than DATA_VERSION is refused, a missing number is
 # accepted (hand-made files, older tests). Raising it goes with the change of the fields.
-DATA_VERSION = 4
+DATA_VERSION = 5
 
 
 def check_data_version(db, path):
@@ -166,7 +166,7 @@ def read_scan(c):
     rep, skipped_rep = _read_rep(c.get("rep"))
     return {"at": c["scannedAt"], "class": c.get("class"), "level": c.get("level"), "faction": c.get("faction"),
             "class_file": _name_or_none(c.get("classFile")), "race": _name_or_none(c.get("race")),
-            "race_file": _name_or_none(c.get("raceFile")), "stats": stats, "raw": c,
+            "race_file": _name_or_none(c.get("raceFile")), "surname": _name_or_none(c.get("surname")), "stats": stats, "raw": c,
             "spec_id": _int_or_none(c.get("specID")), "spec_name": _name_or_none(c.get("specName")),
             "role": _name_or_none(c.get("role")), "ilvl_total": _number_or_none(c.get("ilvlTotal")),
             "ilvl_equipped": _number_or_none(c.get("ilvlEquipped")),
@@ -253,10 +253,10 @@ def import_data(conn, db, skip=()):
             c = scan["raw"]
             cur = conn.execute(
                 "INSERT OR IGNORE INTO scans(char_key,scanned_at,class,level,faction,class_file,race,race_file,"
-                "spec_id,spec_name,role,ilvl_total,ilvl_equipped) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "spec_id,spec_name,role,ilvl_total,ilvl_equipped,surname) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (key, scan["at"], scan["class"], scan["level"], scan["faction"],
                  scan["class_file"], scan["race"], scan["race_file"],
-                 scan["spec_id"], scan["spec_name"], scan["role"], scan["ilvl_total"], scan["ilvl_equipped"]))
+                 scan["spec_id"], scan["spec_name"], scan["role"], scan["ilvl_total"], scan["ilvl_equipped"], scan["surname"]))
             if cur.rowcount == 0:
                 skipped += 1
                 continue

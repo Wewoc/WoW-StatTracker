@@ -352,6 +352,36 @@ def test_the_new_parts_of_a_scan_are_stored(tmp_path):
     conn.close()
 
 
+def test_the_surname_of_a_scan_is_stored_and_an_older_scan_without_one_stays_empty(tmp_path):
+    conn = import_parts(tmp_path, scan_lua("2026-10-05 10:00:00", extra=' surname = "Everbeen",'), older=[scan_lua("2026-09-01 10:00:00")])
+    assert dict(conn.execute("SELECT scanned_at, surname FROM scans")) == {"2026-10-05 10:00:00": "Everbeen", "2026-09-01 10:00:00": None}
+    payload = page_payload.build_payload(conn, "en")
+    assert [(c["key"], c["surname"], c["label"]) for c in payload["chars"]] == [("A-B", "Everbeen", "A Everbeen / B")]      # the newest scan decides
+    conn.close()
+
+
+def test_a_surname_of_the_wrong_type_is_null(tmp_path):
+    conn = import_parts(tmp_path, scan_lua("2026-10-05 10:00:00", extra=" surname = 5,"))
+    assert conn.execute("SELECT surname FROM scans").fetchall() == [(None,)]
+    conn.close()
+
+
+def test_a_database_from_before_schema_4_has_no_surname_and_is_read_without_a_migration(tmp_path):
+    conn = import_parts(tmp_path, scan_lua("2026-10-05 10:00:00", extra=' surname = "Everbeen",'))
+    conn.close()
+    db = tmp_path / "wow_stats.db"
+    old = sqlite3.connect(db)
+    old.execute("ALTER TABLE scans DROP COLUMN surname")                      # what a schema 3 database looks like
+    old.execute("PRAGMA user_version = 3")
+    old.commit()
+    old.close()
+    ro = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
+    chars = page_payload.build_payload(ro, "en")["chars"]
+    ro.close()
+    assert [(c["key"], c["surname"], c["label"]) for c in chars] == [("A-B", None, "A / B")]
+    assert sqlite3.connect(db).execute("PRAGMA user_version").fetchone()[0] == 3     # nothing was migrated
+
+
 def test_a_scan_without_the_new_parts_leaves_them_empty_next_to_one_with_them(tmp_path):
     conn = import_parts(tmp_path, NEW_PARTS, older=[scan_lua("2026-09-01 10:00:00")])
     old = conn.execute("SELECT spec_id, spec_name, role, ilvl_total, ilvl_equipped FROM scans WHERE scanned_at < '2026-10'").fetchall()

@@ -32,10 +32,12 @@ from core import i18n
 from core import paths
 from game import wow_icons
 from pages import plotly_asset
+from rules import char_names
 from store import db_schema
 from store import stat_values
 
 RACE_COLUMNS = ("class_file", "race", "race_file")     # scans.* since schema 2
+SURNAME_COLUMN = "surname"                              # scans.surname since schema 4
 SPEC_COLUMNS = tuple(name for name, _kind in db_schema.SCAN_COLUMNS_V3)      # scans.* since schema 3
 
 PAGE_TEMPLATE = "history.html"                  # bundled next to template.html
@@ -131,7 +133,8 @@ def build_history(conn, char_key):
     have = {r[1] for r in conn.execute("PRAGMA table_info(scans)")}
     race = [c for c in RACE_COLUMNS if c in have]
     spec = list(SPEC_COLUMNS) if all(c in have for c in SPEC_COLUMNS) else []
-    names = ["scan_id", "scanned_at", "class", "level", "faction", *race, *spec]
+    surname = [SURNAME_COLUMN] if SURNAME_COLUMN in have else []
+    names = ["scan_id", "scanned_at", "class", "level", "faction", *race, *surname, *spec]      # the spec columns stay LAST (_gear_history reads them from the end)
     scans = conn.execute(f"SELECT {', '.join(names)} FROM scans WHERE char_key=? ORDER BY scanned_at, scan_id",
                          (char_key,)).fetchall()
     if not scans:
@@ -157,7 +160,7 @@ def build_history(conn, char_key):
     stats = [{"id": sid, "name": defs[sid][0], "cat": defs[sid][1], "unit": _unit(sid, all_coin[sid]), "v": v}
              for sid, v in values.items()]
     stats.sort(key=lambda s: (s["cat"], s["name"]))
-    return {"char": {"key": char_key, "class": latest["class"], "level": latest["level"],
+    return {"char": {"key": char_key, "label": char_names.display(char_key, latest.get(SURNAME_COLUMN)), "class": latest["class"], "level": latest["level"],
                      "faction": latest["faction"], **{c: latest.get(c) for c in RACE_COLUMNS}},
             "scans": [row[1] for row in scans],
             "level": [row[3] for row in scans],

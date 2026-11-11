@@ -11,7 +11,7 @@
 # tile_rules, group_rules.
 
 from pages.blocks import cells
-from pages.blocks.markup import esc, ui
+from pages.blocks.markup import esc, label, ui
 from rules import group_rules, tile_rules
 
 
@@ -21,11 +21,11 @@ def _scope(payload, tile, found) -> str:
     if by == "all":
         return ui(payload, "top5_all")
     if by == "char":
-        return value
+        return next((label(c) for c in payload.get("chars") or [] if c["key"] == value), value)       # a character the page does not have is shown by its key
     if by in group_rules.GROUP_BY:
         # a group without any character (a class that nobody plays any more) still has a name; the stand-in member only keeps group_label from failing
-        label = group_rules.group_label(by, value or None, found or [{}], payload.get("names") or {}, cells.factions(payload), ui(payload, "groups_unknown"))
-        return f"{cells.by_labels(payload)[by]}: {label}"
+        name = group_rules.group_label(by, value or None, found or [{}], payload.get("names") or {}, cells.factions(payload), ui(payload, "groups_unknown"))
+        return f"{cells.by_labels(payload)[by]}: {name}"
     return f"{by}: {value}"
 
 
@@ -48,7 +48,7 @@ def _tile(payload, stats, chars, tile) -> str:
 
 def choices(payload) -> dict:
     """What a tile may name, from the payload of a page: {"stats": [(id, "Name (Category)")] (only statistics some character has a number for, the played
-    times included), "parts": {id: (name, category)} for those, "values": {"char": [(key, key)], "class" / "race" / "faction" / "realm": [(value, name)]}}.
+    times included), "parts": {id: (name, category)} for those, "values": {"char": [(key, label)], "class" / "race" / "faction" / "realm": [(value, name)]}}.
     The value "" is the group "unknown"."""
     chars = payload.get("chars") or []
 
@@ -57,7 +57,7 @@ def choices(payload) -> dict:
 
     offered = [s for s in payload.get("stats") or [] if has_number(s)]
     stats = [(s["id"], f'{s["name"]} ({s["cat"]})') for s in offered]
-    values = {"char": [(c["key"], c["key"]) for c in chars]}
+    values = {"char": [(c["key"], label(c)) for c in chars]}
     for by in group_rules.GROUP_BY:
         groups = group_rules.build_groups(chars, by, payload.get("names") or {}, cells.factions(payload), ui(payload, "groups_unknown"))
         values[by] = [("" if group.key is None else group.key, group.label) for group in groups]

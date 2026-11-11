@@ -18,14 +18,14 @@ StatTracker reads the **game statistics** of your World of Warcraft characters t
 
 1. Download `StatTracker.zip` from the latest release and unpack it into **your own folder**, for example `Documents\StatTracker`. Do not use `C:\Program Files`: the program keeps its data next to itself and needs write access. The download is about 160 MB because the program carries its own browser engine to show the page.
 2. Start `StatTracker.exe`. Windows SmartScreen may warn because the file is not code-signed: *More info -> Run anyway*.
-3. Choose your **WoW folder** (the folder that contains `_retail_`), the game version and the account.
-4. **1. Install / update addon**.
+3. Choose your **WoW folder** (the folder that contains `_retail_`) and the account.
+4. In the *Addon* group choose the game version and click **Install / update addon**.
 5. In game, once per character: `/statscan`. The scan takes about 10 seconds (spread out so the game does not freeze): chat shows "Stat sync started", then "Stat sync done" and "Played time ... recorded". Wait for that, then `/reload` (or log out). The addon also scans automatically 10 seconds after login.
-6. **2. Read data**, then **3. Open stats page** (it appears in the *Page* tab of the window) - or **Export to Excel**.
+6. **Read + open**: it reads the data of every enabled game version one after the other and shows the pages in the *Page* tab of the window (choose the game version above) - or **Export to Excel**.
 
 Repeat step 5/6 whenever you want fresh numbers. Scans that were read stay in the database. The addon itself keeps the last five scans per character, so a scan is only lost when more than five were made between two reads (the log says when scans may be missing): read the data after every play session if the history matters to you. Every WoW account has its own file; choose the account in the program (the log names the other accounts that have data).
 
-The addon also records each character's class (as a language-independent name) and race with every scan. Scans taken with an older addon lack this data and it is never filled in afterwards: those characters are listed under "unknown" for class and race in the Groups block - nothing is guessed. Run *1. Install / update addon* and scan the character again to get it.
+The addon also records each character's class (as a language-independent name) and race with every scan. Scans taken with an older addon lack this data and it is never filled in afterwards: those characters are listed under "unknown" for class and race in the Groups block - nothing is guessed. Run *Install / update addon* and scan the character again to get it.
 
 Each scan also records the specialization, the average item level, the equipped items (with enchantment, upgrade level and sockets) and the reputation list; they are stored in the database. The equipment is shown on the history page of the character (below); the reputation in the collapsible *Reputation* block of the stats page, which lists every faction of the ticked characters in the order of the game, with its level and a bar to the next one (friendships, renown and paragon included; account-wide reputation appears once). Scans taken with an older addon have none of this and it is never filled in afterwards: those characters are named under the block as without reputation data - scan them again with the updated addon.
 
@@ -33,7 +33,7 @@ The stats page shows race, class and level under each name. Its collapsible *Gro
 
 ![The Groups block: characters grouped by faction with number of characters, average level, played time, rates per hour and two added statistics.](docs/images/groups-en.png)
 
-Every character with at least two scans also gets a **history page**, linked from the *History* block of the stats page: pick up to ten statistics and see them as lines over your scans, as absolute values or as an index (first value = 100). A scan without a number leaves a gap, nothing is filled in. *2. Read data* makes the pages (for characters with a new scan or new item pictures) and needs no internet; the links work as long as the `history` folder lies next to the stats page.
+Every character with at least two scans also gets a **history page**, linked from the *History* block of the stats page: pick up to ten statistics and see them as lines over your scans, as absolute values or as an index (first value = 100). A scan without a number leaves a gap, nothing is filled in. *Read + open* makes the pages (for characters with a new scan or new item pictures) and needs no internet; the links work as long as the `history` folder lies next to the stats page.
 
 Two more lines are on offer there: the equipped and the overall item level of every scan (the overall one takes the best piece of each slot among everything the character carries, so it is higher when a better piece waits in the bags). Above the chart a collapsible *Character* block shows the equipment of one scan, arranged like the character screen of the game: for every slot the item with its item level, upgrade track, enchantment, stats and a note on an empty gem socket, plus the sum of the secondary stats (the values of inserted gems are not in the stored data and are not part of it). You can pick any scan and compare it with the previous one; slots that changed are marked. The shirt and the tabard are left out.
 
@@ -47,7 +47,7 @@ The slots show the item pictures of the game when StatTracker has them. While re
 
 The window has four tabs. **Settings** holds the game folder, game version and account, the options (game versions, update check, item pictures, the *Design*), the buttons and the log. **Page** shows the stats page inside the window; *Reload* reads the file again, and *Open in browser* opens a **snapshot** of what the window shows now - the ticked characters, filters, sorting, grouping and added statistics - as the file `stats_snapshot.html` next to the stats page (it is written again at every click). In the browser the controls of the snapshot are locked, because a page there has no connection to the program: it is a state, not a live copy. **Top 5** sets the tiles (below). **Characters** leaves characters out or deletes them (below).
 
-![The program window, Settings tab: game folder, version and account, the options, the buttons and the log.](docs/images/app-en.png)
+![The program window, Settings tab: game folder and account, the options, the Addon group (game version, install, uninstall), the actions and the log.](docs/images/app-en.png)
 
 The *Design* dropdown offers six colour schemes; the window and the stats page follow it, and the change applies after a restart. A page opened in a browser shows the original colours.
 
@@ -55,7 +55,7 @@ The *Design* dropdown offers six colour schemes; the window and the stats page f
 
 Up to five tiles stand at the very top of the stats page. Each shows one value from the newest scan of your characters: a statistic of your choice, combined as a **sum**, an **average** or a **maximum** over all characters, over one class, race, faction or realm, or for one character. A tile names the statistic, the function and whom it is about, and says how many characters it is made of when some had no number ("10 of 23 characters"); where no number exists it says so, nothing is made up. Gold is shown in gold and played time in hours. The tiles do not follow the ticked characters.
 
-Set them in the **Top 5** tab: type a part of the name of a statistic and pick it from the list that opens under the box, choose the function and whom it is for (a click into the last box opens its list), then *Save and write the page again*. The setting is for all game versions; the page of the chosen game version is written again at once, the others at the next read. A row without a statistic stays empty.
+Set them in the **Top 5** tab: type a part of the name of a statistic and pick it from the list that opens under the box, choose the function and whom it is for (a click into the last box opens its list), then *Save and write the page again*. Every game version has its own tiles: choose the version above the rows; the page of that version is written again at once. A row without a statistic stays empty.
 
 ![The Top 5 tab: five rows with statistic, function, scope and choice, and the button to save and write the page again.](docs/images/top5-en.png)
 
@@ -69,7 +69,7 @@ The **Characters** tab has a block for every enabled game version (choose the ve
 
 ## Game versions
 
-Only game versions you enabled show up in the dropdown. The default is **Retail** only. Open the *Settings* tab to enable others. Every game version gets its own database and page (`wow_stats.db` / `stats.html` for Retail, `wow_stats_<version>.db` / `stats_<version>.html` for the others).
+Only game versions you enabled show up in the dropdown. The default is **Retail** only. Open the *Settings* tab to enable **WoW Forever**; game versions that are not tested yet are greyed out there and cannot be enabled. Every game version gets its own database and page (`wow_stats.db` / `stats.html` for Retail, `wow_stats_<version>.db` / `stats_<version>.html` for the others).
 
 | Game version | Status |
 |---|---|

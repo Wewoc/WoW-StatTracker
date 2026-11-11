@@ -15,7 +15,7 @@
 # applied last, not the text that is in the box).
 # Needs markup, view, table_rules.
 
-from pages.blocks.markup import esc, fmt, ui
+from pages.blocks.markup import esc, fmt, label, ui
 from pages.blocks.view import View
 from rules import table_rules as rules
 
@@ -44,7 +44,7 @@ def _small(char) -> str:
 
 def _head(payload, chars) -> str:
     cells = [f'<th data-action="sort" data-key="">{esc(ui(payload, "col_cat"))}</th>', f'<th data-action="sort" data-key="">{esc(ui(payload, "col_stat"))}</th>']
-    cells += [f'<th class="num" data-action="sort" data-key="{esc(c["key"])}">{esc(c["key"])}{_small(c)}</th>' for c in chars]
+    cells += [f'<th class="num" data-action="sort" data-key="{esc(c["key"])}">{esc(label(c))}{_small(c)}</th>' for c in chars]
     return "<thead><tr>" + "".join(cells) + "</tr></thead>"
 
 

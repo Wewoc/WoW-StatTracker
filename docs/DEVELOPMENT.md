@@ -114,10 +114,10 @@ page). In PowerShell, Edge returns before it has written the file unless its out
 ```
 src/            start.py (entry script), the files the program bundles (template.html, history.html, updater_helper.ps1,
                 plotly.min.js, CascLib.dll) and the application code in folders (Python packages):
-  src/core/     names and version (app_info), folders (paths), settings (config), texts (i18n), updater
+  src/core/     names and version (app_info), folders (paths), settings (config), texts (i18n), colour schemes (theme), updater
   src/game/     the WoW installation and its files: wow_install, wow_icons, blp_decode, casclib_asset
   src/store/    the statistics database: lua_reader, stat_values, db_schema, importer, db_backup
-  src/rules/    stat_derive, group_rules, rep_rules, table_rules, tile_rules, collation, numfmt (figures, rows, sort order and number format, pure calculation)
+  src/rules/    stat_derive, group_rules, rep_rules, table_rules, tile_rules, char_rules, char_names, collation, numfmt (figures, rows, sort order, which characters the outputs leave out, how a character is shown, and number format, pure calculation)
   src/pages/    page_payload, outputs, stat_history, plotly_asset (what is shown and the files written);
                 blocks/ (the blocks of the stats page, one module each, and layout.py: which block fills which numbered place of the page)
   src/export/   export_xlsx

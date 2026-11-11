@@ -23,12 +23,10 @@ _STRINGS = {
     "lbl_language": {"de": "Sprache:", "en": "Language:"},
     "lbl_wow_folder": {"de": "WoW-Ordner:", "en": "WoW folder:"},
     "btn_browse": {"de": "Durchsuchen ...", "en": "Browse ..."},
-    "lbl_variant": {"de": "Spielversion:", "en": "Game version:"},
+    "lbl_addon_for": {"de": "Spielversion:", "en": "Game version:"},
     "lbl_account": {"de": "Account:", "en": "Account:"},
     "btn_reload": {"de": "Neu laden", "en": "Reload"},
-    "btn_install": {"de": "1. Addon installieren / aktualisieren", "en": "1. Install / update addon"},
-    "btn_parse": {"de": "2. Daten einlesen", "en": "2. Read data"},
-    "btn_open": {"de": "3. Statistik-Seite öffnen", "en": "3. Open stats page"},
+    "btn_install": {"de": "Addon installieren / aktualisieren", "en": "Install / update addon"},
     "btn_parse_open": {"de": "Einlesen + öffnen", "en": "Read + open"},
     "btn_export": {"de": "Excel exportieren", "en": "Export to Excel"},
     "btn_uninstall": {"de": "Addon deinstallieren", "en": "Uninstall addon"},
@@ -50,26 +48,19 @@ _STRINGS = {
         "en": "The game version {variant} is not enabled (Settings ...).",
     },
     "status_game": {"de": "Spiel: {path}", "en": "Game: {path}"},
-    "status_data_present": {
-        "de": "Datendatei vorhanden (zuletzt geschrieben {ts})",
-        "en": "Data file present (last written {ts})",
-    },
-    "status_data_missing": {
-        "de": "Datendatei fehlt noch: im Spiel Addon laden, /statscan, dann /reload",
-        "en": "Data file missing: in game load the addon, /statscan, then /reload",
-    },
+    "status_data_all": {"de": "Daten: {items}", "en": "Data: {items}"},
+    "status_data_item": {"de": "{variant} {ts}", "en": "{variant} {ts}"},
+    "status_data_item_missing": {"de": "{variant} fehlt", "en": "{variant} missing"},
     "status_no_account": {"de": "Kein Account gefunden", "en": "No account found"},
-    "status_html_present": {"de": "{name}: vorhanden", "en": "{name}: present"},
-    "status_html_missing": {"de": "{name}: noch nicht erzeugt", "en": "{name}: not created yet"},
     "status_addon_missing": {"de": "Addon: nicht installiert", "en": "Addon: not installed"},
     "status_addon_ok": {"de": "Addon: Version {version}", "en": "Addon: version {version}"},
     "status_addon_outdated": {
-        "de": "Addon: veraltet (installiert {installed}, mitgeliefert {bundled}) - Schritt 1 ausführen",
-        "en": "Addon: outdated (installed {installed}, bundled {bundled}) - run step 1",
+        "de": "Addon: veraltet (installiert {installed}, mitgeliefert {bundled}) - Addon aktualisieren",
+        "en": "Addon: outdated (installed {installed}, bundled {bundled}) - update the addon",
     },
     "status_addon_interface": {
-        "de": "Addon: Interface-Nummer passt nicht zum Spiel (installiert {installed}, Spiel {expected}) - Schritt 1 ausführen",
-        "en": "Addon: interface number does not match the game (installed {installed}, game {expected}) - run step 1",
+        "de": "Addon: Interface-Nummer passt nicht zum Spiel (installiert {installed}, Spiel {expected}) - Addon aktualisieren",
+        "en": "Addon: interface number does not match the game (installed {installed}, game {expected}) - update the addon",
     },
     "status_addon_unknown": {"de": "Addon: installiert", "en": "Addon: installed"},
 
@@ -81,9 +72,14 @@ _STRINGS = {
     },
     "err_no_account": {"de": "Kein Account ausgewählt.", "en": "No account selected."},
     "err_no_variant": {"de": "Keine Spielversion gewählt.", "en": "No game version selected."},
-    "err_no_data_file": {
-        "de": "Datendatei nicht gefunden:\n{path}\n\nIm Spiel /statscan ausführen, auf die Spielzeit-Meldung warten, dann /reload.",
-        "en": "Data file not found:\n{path}\n\nIn game run /statscan, wait for the played-time message, then /reload.",
+    "err_nothing_to_read": {
+        "de": "Keine Datendatei für den Account {account} gefunden:\n{paths}\n\nIm Spiel /statscan ausführen, auf die Spielzeit-Meldung warten, dann /reload.",
+        "en": "No data file found for the account {account}:\n{paths}\n\nIn game run /statscan, wait for the played-time message, then /reload.",
+    },
+    "log_parse_version": {"de": "Spielversion {variant}:", "en": "Game version {variant}:"},
+    "log_parse_skipped": {
+        "de": "{variant}: keine Datendatei für den Account {account}, nicht eingelesen.",
+        "en": "{variant}: no data file for the account {account}, not read.",
     },
     "info_no_html": {
         "de": "{name} existiert noch nicht. Zuerst Daten einlesen.",
@@ -168,13 +164,14 @@ _STRINGS = {
     "settings_variants_hint": {
         "de": "Nur aktivierte Spielversionen erscheinen in der Auswahl. Getestet: Retail und WoW Forever "
               "(bei Forever sind noch nicht alle Statistiken freigeschaltet, das hängt von der Charakterstufe ab). "
-              "Alle anderen Spielversionen sind ungetestet; BC Anniversary stellt keine Statistiken bereit "
+              "Alle anderen Spielversionen sind ungetestet und lassen sich nicht aktivieren; BC Anniversary stellt keine Statistiken bereit "
               "und funktioniert nicht.",
         "en": "Only enabled game versions appear in the selection. Tested: Retail and WoW Forever "
               "(on Forever not all statistics are unlocked yet, that depends on the character level). "
-              "All other game versions are untested; BC Anniversary provides no statistics "
+              "All other game versions are untested and cannot be enabled; BC Anniversary provides no statistics "
               "and does not work.",
     },
+    "settings_variant_untested": {"de": "Ungetestet: noch nicht freigeschaltet", "en": "Untested: not available yet"},
     "settings_check_updates": {"de": "Beim Start nach Updates suchen", "en": "Check for updates at start"},
     "settings_read_icons": {
         "de": "Item-Icons beim Einlesen aus den Spieldateien lesen",
@@ -203,7 +200,7 @@ _STRINGS = {
         "de": "Hier legst du fest, welche Charaktere die Seite und die Excel-Datei weglassen. Im Formular wählst du eine Art (Klasse, Rasse, Fraktion, Realm, Charakter oder Level), den Wert und die Ziele und nimmst die Regel in die Liste auf. Erst „Anwenden“ speichert die Liste und schreibt die Seite neu. Die Regeln bleiben in der Liste, bis du sie entfernst. Mehrere Regeln gelten zusammen: ein Charakter fehlt, sobald eine davon ihn trifft. Die Datenbank behält immer alles. Jede Spielversion hat ihre eigene Liste.",
         "en": "Here you set which characters the page and the Excel file leave out. In the form you pick a type (class, race, faction, realm, character or level), the value and the targets and add the rule to the list. Only “Apply” saves the list and writes the page again. The rules stay in the list until you take them out. Several rules work together: a character is left out as soon as one of them applies to it. The database always keeps everything. Every game version has its own list.",
     },
-    "chars_variant": {"de": "Spielversion:", "en": "Game version:"},
+    "lbl_game_version": {"de": "Spielversion:", "en": "Game version:"},
     "chars_group": {"de": "Ignorieren – {variant}", "en": "Ignore – {variant}"},
     "chars_kind": {"de": "Art", "en": "Type"},
     "chars_kind_level": {"de": "Level unter", "en": "Level under"},
@@ -282,8 +279,8 @@ _STRINGS = {
     },
     "top5_group": {"de": "Die fünf Kacheln oben auf der Seite", "en": "The five tiles at the top of the page"},
     "top5_intro": {
-        "de": "Jede Kachel zeigt einen Wert aus dem neuesten Scan der Charaktere: eine Statistik, zusammengefasst als Summe, Durchschnitt oder Maximum über alle Charaktere, eine Klasse, Rasse, Fraktion, einen Realm oder einen einzelnen Charakter. Eine Zeile ohne Statistik bleibt leer. Die Einstellung gilt für alle Spielversionen; die Seite der gewählten Spielversion wird sofort neu geschrieben, die anderen beim nächsten Einlesen.",
-        "en": "Each tile shows one value from the newest scan of the characters: a statistic, combined as a sum, an average or a maximum over all characters, a class, a race, a faction, a realm or one single character. A row without a statistic stays empty. The setting is for all game versions; the page of the chosen game version is written again at once, the others at the next import.",
+        "de": "Jede Kachel zeigt einen Wert aus dem neuesten Scan der Charaktere: eine Statistik, zusammengefasst als Summe, Durchschnitt oder Maximum über alle Charaktere, eine Klasse, Rasse, Fraktion, einen Realm oder einen einzelnen Charakter. Eine Zeile ohne Statistik bleibt leer. Jede Spielversion hat ihre eigenen Kacheln: Die Einstellung gilt für die oben gewählte Version, ihre Seite wird sofort neu geschrieben.",
+        "en": "Each tile shows one value from the newest scan of the characters: a statistic, combined as a sum, an average or a maximum over all characters, a class, a race, a faction, a realm or one single character. A row without a statistic stays empty. Every game version has its own tiles: the setting is for the version chosen above, and its page is written again at once.",
     },
     "top5_col_stat": {"de": "Statistik", "en": "Statistic"},
     "top5_col_agg": {"de": "Wert als", "en": "Value as"},
@@ -297,14 +294,19 @@ _STRINGS = {
                          "en": "Top 5, row {n}: the statistic does not fit exactly one entry of the list, the row stays empty."},
     "top5_value_invalid": {"de": "Top 5, Zeile {n}: Die Auswahl passt nicht auf genau einen Eintrag der Liste, die Zeile bleibt leer.",
                            "en": "Top 5, row {n}: the choice does not fit exactly one entry of the list, the row stays empty."},
-    "log_top5_saved": {"de": "Top 5 gespeichert: {count} Kacheln.", "en": "Top 5 saved: {count} tiles."},
+    "log_top5_saved": {"de": "Top 5 gespeichert ({variant}): {count} Kacheln.", "en": "Top 5 saved ({variant}): {count} tiles."},
+    "top5_discarded": {"de": "Nicht gespeicherte Änderungen der anderen Spielversion wurden verworfen.", "en": "Changes to the other game version that were not saved were dropped."},
     "log_top5_page": {"de": "Seite neu geschrieben: {path}", "en": "Page written again: {path}"},
     "log_top5_page_fail": {"de": "Die Seite konnte nicht neu geschrieben werden.", "en": "The page could not be written again."},
     "status_busy_top5": {"de": "Seite wird neu geschrieben ...", "en": "Writing the page again ..."},
+    "page_building": {"de": "Die Seite wird erzeugt ...", "en": "The page is being made ..."},
+    "log_pages_built": {"de": "Seiten erzeugt: {versions}", "en": "Pages made: {versions}"},
+    "log_page_build_fail": {"de": "Die Seite von {variant} konnte nicht erzeugt werden.", "en": "The page of {variant} could not be made."},
     "status_busy_choices": {"de": "Statistiken werden gelesen ...", "en": "Reading the statistics ..."},
     "grp_game": {"de": "Spiel", "en": "Game"},
     "grp_options": {"de": "Optionen", "en": "Options"},
     "grp_actions": {"de": "Aktionen", "en": "Actions"},
+    "grp_addon": {"de": "Addon", "en": "Addon"},
     "lbl_theme": {"de": "Design:", "en": "Design:"},
     "theme_restart": {"de": "Das neue Design gilt nach einem Neustart.", "en": "The new design applies after a restart."},
     "btn_open_browser": {"de": "Im Browser öffnen", "en": "Open in browser"},

@@ -8,12 +8,13 @@
 # Reads the statistics database through the connection it is given and writes nothing. The characters that the rules of the game version
 # (config.char_rules, see rules/char_rules.py) keep off the page are taken out first, so everything built from the characters (the statistics, the rates,
 # the reputation, and with them every block) never sees them; the database is not changed. Needs stat_values,
-# stat_derive, char_rules, i18n and app_info. Moved out of stat_parser.py; the rules are unchanged.
+# stat_derive, char_rules, char_names (the label a character is shown with), i18n and app_info. Moved out of stat_parser.py; the rules are unchanged.
 
 from datetime import datetime
 
 from core import app_info
 from core import i18n
+from rules import char_names
 from rules import char_rules
 from rules import stat_derive
 from store import stat_values
@@ -68,14 +69,16 @@ def rep_payload(conn, scan_to_char):
 def _newest_scans(conn):
     """(the rows of the newest scan of every character, the characters made from them as the page has them), ordered by character key. The one
     place that reads "the newest scan of a character": the page and the rules that keep characters off it both start from it."""
-    scans = conn.execute("""
+    have = {row[1] for row in conn.execute("PRAGMA table_info(scans)")}
+    surname = "s.surname" if "surname" in have else "NULL"                          # a database from before schema 4 has none: it is read without a migration
+    scans = conn.execute(f"""
         SELECT s.scan_id, s.char_key, s.scanned_at, s.class, s.level, s.faction,
-               s.class_file, s.race, s.race_file
+               s.class_file, s.race, s.race_file, {surname}
         FROM scans s
         WHERE s.scan_id = (SELECT scan_id FROM scans WHERE char_key = s.char_key
                            ORDER BY scanned_at DESC, scan_id DESC LIMIT 1)
         ORDER BY s.char_key""").fetchall()
-    chars = [{"key": r[1], "scanned_at": r[2], "class": r[3], "level": r[4], "faction": r[5],
+    chars = [{"key": r[1], "label": char_names.display(r[1], r[9]), "surname": r[9], "scanned_at": r[2], "class": r[3], "level": r[4], "faction": r[5],
               "class_file": r[6], "race": r[7], "race_file": r[8]}
              for r in scans]
     return scans, chars

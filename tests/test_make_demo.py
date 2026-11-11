@@ -171,7 +171,7 @@ def test_the_demo_has_five_top_tiles_and_the_page_shows_them_above_everything(tm
     block = page.split('id="top5"')[1].split('<div data-slot="1">')[0]
     for name in ("Total gold acquired", "Creatures killed", "Total deaths", "Jumps"):
         assert name in block, name
-    assert "Class: Paladin" in block and "Faction: Alliance" in block and "Mirella-Dawnspire" in block
+    assert "Class: Paladin" in block and "Faction: Alliance" in block and "Mirella / Dawnspire" in block
 
 
 def test_language_is_restored(tmp_path):

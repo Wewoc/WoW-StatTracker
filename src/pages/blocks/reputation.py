@@ -9,7 +9,7 @@
 # answers "query" (the search was typed in) and "selection" (the ticked characters changed) with the parts that changed:
 # repNone, repWrap and repMissing. No state of its own: the search text comes with the message (a snapshot writes it again from View.controls). Needs markup, view, rep_rules, numfmt.
 
-from pages.blocks.markup import esc, fmt, plain, ui
+from pages.blocks.markup import esc, fmt, label, plain, ui
 from pages.blocks.view import View
 from rules import numfmt
 from rules import rep_rules as rules
@@ -72,7 +72,7 @@ def _head(payload, chars) -> str:
             text = " · ".join(str(p) for p in parts if p)
             if text:
                 small += f'<span class="small">{esc(text)}</span>'
-        cells.append(f'<th>{esc(char["key"])}{small}</th>')
+        cells.append(f'<th>{esc(label(char))}{small}</th>')
     return "<tr>" + "".join(cells) + "</tr>"
 
 
@@ -107,7 +107,7 @@ def _updates(payload, view, query=""):
         none = ui(payload, "rep_none_selected")
     else:
         none = ui(payload, "rep_no_match") if have and not shown else ""
-    missing = [c["key"] for c in chars if c["key"] not in rep_chars]
+    missing = [label(c) for c in chars if c["key"] not in rep_chars]
     table = ('<table id="rpt"><thead>' + _head(payload, chars) + "</thead><tbody>" + _body(payload, chars, rep_chars, shown) + "</tbody></table>"
              if shown else '<table id="rpt"><thead></thead><tbody></tbody></table>')
     return [{"id": "repNone", "html": esc(none), "hidden": not none},

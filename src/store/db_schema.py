@@ -18,10 +18,10 @@ from store import db_backup
 # Schema version of the statistics database, kept in SQLite's PRAGMA user_version.
 # 0 = no number written yet (databases of v0.1.x), 1 = the same layout, 2 = the layout below
 # (scans gained class_file, race, race_file), 3 = the layout below (scans gained the specialization and item level,
-# new tables scan_gear, rep_defs, scan_reputation). Changing the layout means a new entry in
+# new tables scan_gear, rep_defs, scan_reputation), 4 = scans gained the surname (the optional last name of a character, data contract 5). Changing the layout means a new entry in
 # MIGRATIONS and a higher SCHEMA_VERSION; an old step is never edited.
 # A database newer than SCHEMA_VERSION is refused untouched (fail-closed).
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _migrate_0_to_1(conn):
@@ -99,7 +99,17 @@ def _migrate_2_to_3(conn):
         conn.execute(statement)
 
 
-MIGRATIONS = {1: _migrate_0_to_1, 2: _migrate_1_to_2, 3: _migrate_2_to_3}      # target version -> step from the version before
+# What schema 4 adds (one definition for a new file and for the migration, like SCAN_COLUMNS_V3).
+SCAN_COLUMNS_V4 = (("surname", "TEXT"),)
+
+
+def _migrate_3_to_4(conn):
+    """Schema 4 adds the optional last name to every scan. Scans taken before stay NULL: it is never filled in from a later scan."""
+    for column, kind in SCAN_COLUMNS_V4:
+        conn.execute(f"ALTER TABLE scans ADD COLUMN {column} {kind}")
+
+
+MIGRATIONS = {1: _migrate_0_to_1, 2: _migrate_1_to_2, 3: _migrate_2_to_3, 4: _migrate_3_to_4}      # target version -> step from the version before
 
 SCHEMA_SQL = """
         CREATE TABLE IF NOT EXISTS scans (
@@ -112,7 +122,7 @@ SCHEMA_SQL = """
             class_file TEXT,
             race       TEXT,
             race_file  TEXT,
-{scan_columns_v3}            UNIQUE (char_key, scanned_at)
+{scan_columns_v3}{scan_columns_v4}            UNIQUE (char_key, scanned_at)
         );
         CREATE TABLE IF NOT EXISTS stat_defs (
             stat_id  INTEGER PRIMARY KEY,
@@ -128,6 +138,7 @@ SCHEMA_SQL = """
         );
 """
 SCHEMA_SQL = SCHEMA_SQL.replace("{scan_columns_v3}", "".join(f"            {c} {k},\n" for c, k in SCAN_COLUMNS_V3))
+SCHEMA_SQL = SCHEMA_SQL.replace("{scan_columns_v4}", "".join(f"            {c} {k},\n" for c, k in SCAN_COLUMNS_V4))
 SCHEMA_SQL += ";\n".join(TABLES_V3) + ";\n"
 
 

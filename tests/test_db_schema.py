@@ -131,7 +131,7 @@ def test_schema_1_gets_the_race_columns_and_every_old_scan_stays_empty(tmp_path)
     assert rows(db) == before                                # the old columns are untouched
     names = [c for c, _t in columns(db)]
     assert names[6:9] == ["class_file", "race", "race_file"]            # schema 2 comes right after the v0.1 columns
-    assert names[9:] == [c for c, _k in db_schema.SCAN_COLUMNS_V3]    # and schema 3 after that
+    assert names[9:] == [c for c, _k in db_schema.SCAN_COLUMNS_V3 + db_schema.SCAN_COLUMNS_V4]    # and schema 3 and 4 after that
     conn = sqlite3.connect(db)
     assert conn.execute("SELECT class_file, race, race_file, spec_id, spec_name, role, ilvl_total, ilvl_equipped "
                         "FROM scans").fetchall() == [(None,) * 8]
@@ -197,14 +197,14 @@ def test_schema_2_gets_schema_3_and_every_old_scan_keeps_its_row_and_stays_empty
     db = make_v2(tmp_path / "v2.db")
     before = rows(db)
     db_schema.init_db(db).close()
-    assert version(db) == 3 and rows(db) == before
+    assert version(db) == SCHEMA_VERSION and rows(db) == before
     conn = sqlite3.connect(db)
     assert conn.execute("SELECT class_file, spec_id, spec_name, role, ilvl_total, ilvl_equipped FROM scans").fetchall() == \
         [("MAGE", None, None, None, None, None)]
     assert [conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in NEW_TABLES] == [0, 0, 0]
     conn.close()
     (copy,) = migration_copies(tmp_path)
-    assert copy.name.endswith(".pre-v3.bak") and version(copy) == 2
+    assert copy.name.endswith(f".pre-v{SCHEMA_VERSION}.bak") and version(copy) == 2
     assert not {"spec_id", "scan_gear"} & ({c for c, _t in columns(copy)} | set(layout(copy)))
 
 
