@@ -1,0 +1,28 @@
+# The exact packages the tests and the release build run with (CI and release.yml install this file, nothing else).
+# These are the versions the test suite ran with in .venv-build (Windows, Python 3.13), including what they pull in.
+# The ranges in requirements.txt and requirements-dev.txt stay as they are for everyone who runs the program from source.
+# To update: upgrade in .venv-build, run the tests and a build, then
+#   .venv-build\Scripts\python -m pip freeze > requirements-lock.txt   (and put this header back)
+# tests/test_workflows.py checks that every package is pinned with == and that the lock fits requirements.txt.
+altgraph==0.17.5
+colorama==0.4.6
+et_xmlfile==2.0.0
+iniconfig==2.3.1
+lupa==2.8
+openpyxl==3.1.5
+packaging==26.3
+pefile==2024.8.26
+pluggy==1.7.0
+Pygments==2.21.0
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.9
+PyQt6==6.11.0
+PyQt6-Qt6==6.11.2
+PyQt6-WebEngine==6.11.0
+PyQt6-WebEngine-Qt6==6.11.2
+PyQt6_sip==13.13.0
+pytest==9.2.0
+pytest-qt==4.5.0
+pywin32-ctypes==0.2.3
+setuptools==84.2.1
+typing_extensions==4.16.0

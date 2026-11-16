@@ -33,7 +33,7 @@ from PyQt6.QtCore import QCoreApplication, QEvent, QPoint  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from app import main_window  # noqa: E402
-from core import app_info, config, i18n, paths  # noqa: E402
+from core import config, i18n, paths  # noqa: E402
 from core.i18n import t  # noqa: E402
 from game import wow_install  # noqa: E402
 import make_demo  # noqa: E402
@@ -101,7 +101,7 @@ def _neutral(window, stats):
     for key, values, tag in LOG:
         window.write(t(key, **{k: (stats if v is None else v) for k, v in values.items()}), tag)
     parts = [t("status_game", path=NEUTRAL_GAME), t("status_data_all", items=t("status_data_item", variant="_retail_", ts="2026-10-28 19:44")),
-             t("status_addon_ok", version=app_info.APP_VERSION)]
+             t("status_addon_ok", version=wow_install.toc_version(Path(__file__).resolve().parent.parent / "addon" / "StatTracker" / "StatTracker.toc"))]
     window.lbl_status.setText("  |  ".join(parts))                # the permanent label of the status bar (update_status writes it)
 
 

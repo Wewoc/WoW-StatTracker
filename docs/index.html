@@ -56,6 +56,8 @@
   figcaption { color: var(--dim); font-size: .9rem; margin-top: 8px; }
   figure.app img { max-width: 902px; width: 100%; margin: 0 auto; }
   figure.app figcaption { max-width: 902px; margin-left: auto; margin-right: auto; }
+  figure.live img { max-width: 600px; width: 100%; margin: 0 auto; }
+  figure.live figcaption { max-width: 600px; margin-left: auto; margin-right: auto; }
 
   details { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 18px; margin-bottom: 10px; }
   summary { cursor: pointer; font-weight: 600; }
@@ -118,6 +120,8 @@
           <p><span class="en">Every scan is kept, so old numbers are not lost when you scan again. No account, no cloud.</span><span class="de">Jeder Scan bleibt erhalten, alte Zahlen gehen beim nächsten Scan nicht verloren. Kein Konto, keine Cloud.</span></p></div>
         <div class="card"><h3><span class="en">Per game version</span><span class="de">Pro Spielversion</span></h3>
           <p><span class="en">Only Retail is enabled by default. WoW Forever can be enabled in the settings; game versions that are not tested yet are greyed out there. Each one gets its own database and page.</span><span class="de">Standardmäßig ist nur Retail aktiv. WoW Forever lässt sich in den Einstellungen aktivieren; noch nicht getestete Spielversionen stehen dort ausgegraut. Jede hat eigene Datenbank und Seite.</span></p></div>
+        <div class="card"><h3><span class="en">Live window in game</span><span class="de">Live-Fenster im Spiel</span></h3>
+          <p><span class="en">The addon alone shows a small window for the character you play: five statistics with the change since login, session gold, played time and rates per hour. <code>/statlive</code> shows or hides it. No program needed; it only reads what the game gives, and a value the game does not give reads "no value", never 0.</span><span class="de">Das Addon allein zeigt ein kleines Fenster für den Charakter, den du spielst: fünf Statistiken mit der Änderung seit dem Einloggen, Session-Gold, Spielzeit und Raten pro Stunde. <code>/statlive</code> blendet es ein oder aus. Kein Programm nötig; es liest nur, was das Spiel liefert, und ein Wert, den das Spiel nicht liefert, steht als „kein Wert“ da, nie als 0.</span></p></div>
         <div class="card"><h3><span class="en">Addon at the click of a button</span><span class="de">Addon per Knopfdruck</span></h3>
           <p><span class="en">Install, update and uninstall the addon from the app; the interface number is set automatically. A gentle scan is spread over about 10 seconds, so the game does not freeze.</span><span class="de">Addon in der App installieren, aktualisieren und deinstallieren; die Interface-Nummer wird automatisch gesetzt. Der Scan ist auf etwa 10 Sekunden gestreckt, das Spiel friert nicht ein.</span></p></div>
         <div class="card"><h3><span class="en">A window of its own</span><span class="de">Ein eigenes Fenster</span></h3>
@@ -141,6 +145,11 @@
           <img class="shot en" loading="lazy" src="images/top5-en.png" width="1770" height="612" alt="The Top 5 tab of the StatTracker window: the choice of the game version above five rows, each with a statistic, how the value is combined, for whom it is and the choice; below them the button Save and write the page again.">
           <img class="shot de" loading="lazy" src="images/top5-de.png" width="1770" height="612" alt="Der Reiter Top 5 des StatTracker-Fensters: die Wahl der Spielversion über fünf Zeilen, jede mit Statistik, Zusammenfassung des Werts, für wen er gilt und der Auswahl; darunter der Knopf Speichern und Seite neu schreiben.">
           <figcaption><span class="en">The Top 5 tab: choose the game version, type a part of the name of a statistic and pick it from the list, choose how it is combined and for whom, then save - the five tiles at the top of the page of that version show the values.</span><span class="de">Der Reiter Top 5: Spielversion wählen, einen Teil des Namens einer Statistik tippen und aus der Liste wählen, Zusammenfassung und Bereich wählen, speichern - die fünf Kacheln oben auf der Seite dieser Version zeigen die Werte.</span></figcaption>
+        </figure>
+        <figure class="live">
+          <img class="shot en" loading="lazy" src="images/live-en.png" width="792" height="584" alt="Illustration of the live window of the addon: five statistics with the change since login, session gold, played time, rates per hour and the age of the last scan. Invented demo values, drawn from the texts of the addon.">
+          <img class="shot de" loading="lazy" src="images/live-de.png" width="792" height="584" alt="Illustration des Live-Fensters des Addons: fünf Statistiken mit der Änderung seit dem Einloggen, Session-Gold, Spielzeit, Raten pro Stunde und das Alter des letzten Scans. Erfundene Demo-Werte, aus den Texten des Addons gezeichnet.">
+          <figcaption><span class="en">The live window in game, opened with <code>/statlive</code>. This is an illustration with invented demo values, drawn from the texts the addon writes - not a screenshot of the game, where the look differs.</span><span class="de">Das Live-Fenster im Spiel, geöffnet mit <code>/statlive</code>. Das ist eine Illustration mit erfundenen Demo-Werten, aus den Texten gezeichnet, die das Addon schreibt - kein Screenshot des Spiels, dort sieht es anders aus.</span></figcaption>
         </figure>
         <figure>
           <img class="shot en" loading="lazy" src="images/compare-en.png" width="1920" height="1140" alt="The stats page with one character deselected and the table sorted by a character.">

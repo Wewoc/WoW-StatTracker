@@ -472,3 +472,64 @@ def test_the_payload_names_the_eight_reputation_levels(tmp_path, lang):
     assert sorted(standing, key=int) == [str(n) for n in range(1, 9)] and all(standing.values())
     assert standing["4"] == "Neutral"
     conn.close()
+
+
+# ------------------------------------------------------------------ a second variable in the file (StatTrackerUI, ingame addon)
+# The ingame addon keeps its settings and session values in a second SavedVariable, StatTrackerUI, in the same file. The parser reads every
+# variable of the file and takes only StatTrackerDB, so the second one must not change the import. An unreadable value in it would stop the
+# whole import: the addon must never write inf or nan (the last test pins that).
+UI_TEXT = ('StatTrackerUI = { ["version"] = 1, ["x"] = -12.5, ["scale"] = 1e-05, ["shown"] = true, ["hidden"] = false, '
+           '["when"] = 1794501092, ["text"] = "Müller \\"x\\"\\n", '
+           '["chars"] = { ["A-B"] = { ["base"] = { ["epoch"] = 1794501092, ["gold"] = 123456 }, [1] = 7 } } }')
+
+
+def lua_with_ui(folder, ui_first):
+    """The usual StatTracker.lua plus a second variable, before or after StatTrackerDB."""
+    path = file_lua(folder, scan_lua("2026-10-03 10:00:00"))
+    db = path.read_text(encoding="utf-8")
+    path.write_text(UI_TEXT + "\n" + db if ui_first else db + "\n" + UI_TEXT, encoding="utf-8")
+    return path
+
+
+def database_rows(folder):
+    conn = sqlite3.connect(folder / "wow_stats.db")
+    try:
+        return [conn.execute(sql).fetchall() for sql in (
+            "SELECT * FROM scans ORDER BY scan_id", "SELECT * FROM stat_values ORDER BY scan_id, stat_id",
+            "SELECT * FROM stat_defs ORDER BY stat_id")]
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("ui_first", [False, True])
+def test_a_second_variable_in_the_file_does_not_change_the_import(tmp_path, ui_first):
+    alone, both = tmp_path / "alone", tmp_path / "both"
+    alone.mkdir()
+    both.mkdir()
+    import_file(alone, file_lua(alone, scan_lua("2026-10-03 10:00:00")))
+    import_file(both, lua_with_ui(both, ui_first))
+    assert len(scans_in(both)) == 1
+    assert database_rows(both) == database_rows(alone)
+
+
+def test_the_reader_returns_a_second_variable_as_plain_data(tmp_path):
+    parsed = LuaReader(lua_with_ui(tmp_path, ui_first=False).read_text(encoding="utf-8")).parse_file()
+    assert set(parsed) == {"StatTrackerDB", "StatTrackerUI"}
+    ui = parsed["StatTrackerUI"]
+    assert ui["x"] == -12.5 and ui["scale"] == 1e-05 and ui["shown"] is True and ui["hidden"] is False
+    assert ui["when"] == 1794501092 and isinstance(ui["when"], int)
+    assert ui["text"] == 'Müller "x"\n'
+    assert ui["chars"]["A-B"] == {"base": {"epoch": 1794501092, "gold": 123456}, 1: 7}
+    assert parsed["StatTrackerDB"]["chars"]["A-B"]["stats"] == {1: "5"}
+
+
+@pytest.mark.parametrize("bad", ["inf", "-inf", "nan", "-nan(ind)"])
+def test_a_value_the_reader_cannot_read_in_the_second_variable_stops_the_whole_import(tmp_path, bad):
+    # Pins today's behaviour: the parser gives up on the first value it cannot read, in any variable of the file. The addon must
+    # never save inf or nan in StatTrackerUI. If the parser ever reads the variables one by one, this test changes.
+    path = file_lua(tmp_path, scan_lua("2026-10-03 10:00:00"))
+    path.write_text(path.read_text(encoding="utf-8") + '\nStatTrackerUI = { ["rate"] = ' + bad + ' }', encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        import_file(tmp_path, path)
+    assert "StatTracker.lua" in str(exc.value)
+    assert not (tmp_path / "wow_stats.db").exists() and not (tmp_path / "out.html").exists()

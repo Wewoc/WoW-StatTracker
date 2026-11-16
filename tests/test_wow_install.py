@@ -3,7 +3,7 @@
 
 import pytest
 
-from core import app_info
+from core import paths
 from game import wow_install
 
 
@@ -55,15 +55,36 @@ def test_install_requires_addons_folder(instance, fake_wow):
         wow_install.install_addon(fake_wow, "_anniversary_")
 
 
+def _bundled_version():
+    """The '## Version:' of the addon the program carries (its own number, not APP_VERSION)."""
+    return wow_install.toc_version(paths.addon_src() / "StatTracker.toc")
+
+
 def test_addon_status(instance, fake_wow):
     assert wow_install.addon_status(fake_wow, "_retail_") == ("missing",)
     res = wow_install.install_addon(fake_wow, "_retail_")
     assert wow_install.addon_status(fake_wow, "_retail_")[0] == "ok"
     toc = res.dest / "StatTracker.toc"
     toc.write_text(toc.read_text(encoding="utf-8").replace(
-        f"## Version: {app_info.APP_VERSION}", "## Version: 0.0.1"), encoding="utf-8")
+        f"## Version: {_bundled_version()}", "## Version: 0.0.1"), encoding="utf-8")
     status = wow_install.addon_status(fake_wow, "_retail_")
     assert status[0] == "outdated" and status[1] == "0.0.1"
+
+
+def test_addon_status_accepts_an_installed_addon_that_is_newer_than_the_bundled_one(instance, fake_wow):
+    res = wow_install.install_addon(fake_wow, "_retail_")
+    toc = res.dest / "StatTracker.toc"
+    toc.write_text(toc.read_text(encoding="utf-8").replace(
+        f"## Version: {_bundled_version()}", "## Version: 99.0.0"), encoding="utf-8")
+    assert wow_install.addon_status(fake_wow, "_retail_") == ("ok", "99.0.0")
+
+
+def test_addon_status_calls_two_different_versions_outdated_when_one_cannot_be_read(instance, fake_wow):
+    res = wow_install.install_addon(fake_wow, "_retail_")
+    toc = res.dest / "StatTracker.toc"
+    toc.write_text(toc.read_text(encoding="utf-8").replace(
+        f"## Version: {_bundled_version()}", "## Version: 0.2.3-beta"), encoding="utf-8")
+    assert wow_install.addon_status(fake_wow, "_retail_")[0] == "outdated"
 
 
 def _set_toc_interface(toc, value):
@@ -122,7 +143,7 @@ def test_addon_status_skips_interface_check_when_build_is_unknown(instance, fake
 def test_addon_status_outdated_wins_over_interface(instance, fake_wow):
     res = wow_install.install_addon(fake_wow, "_retail_")
     toc = res.dest / "StatTracker.toc"
-    text = toc.read_text(encoding="utf-8").replace(f"## Version: {app_info.APP_VERSION}", "## Version: 0.0.1")
+    text = toc.read_text(encoding="utf-8").replace(f"## Version: {_bundled_version()}", "## Version: 0.0.1")
     toc.write_text(text.replace("## Interface: 120105", "## Interface: 120000"), encoding="utf-8")
     assert wow_install.addon_status(fake_wow, "_retail_")[0] == "outdated"
 

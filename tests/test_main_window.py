@@ -152,7 +152,8 @@ def test_install_then_uninstall_through_the_window(window, env, monkeypatch):
     monkeypatch.setattr(dialogs, "ask_yes_no", lambda *a, **k: True)
     window.on_install()
     assert wow_install.addon_dir(env.wow, "_retail_").is_dir()
-    assert f"Addon: version {app_info.APP_VERSION}" in window.status_text()
+    installed = wow_install.toc_version(wow_install.addon_dir(env.wow, "_retail_") / "StatTracker.toc")      # the addon has its own version
+    assert f"Addon: version {installed}" in window.status_text()
     window.on_uninstall()
     assert not wow_install.addon_dir(env.wow, "_retail_").exists()
     assert "Addon: not installed" in window.status_text()

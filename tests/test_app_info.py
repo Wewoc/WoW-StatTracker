@@ -32,9 +32,10 @@ def test_is_newer(latest, current, expected):
     assert app_info.is_newer(latest, current) is expected
 
 
-def test_addon_version_matches_app_version():
+def test_addon_has_its_own_plain_dotted_version():
+    # the addon version is independent of APP_VERSION; compatibility is carried by StatTrackerDB.version, not by the numbers
     toc = ROOT / "addon" / "StatTracker" / "StatTracker.toc"
-    assert wow_install.toc_version(toc) == app_info.APP_VERSION
+    assert re.fullmatch(r"\d+\.\d+\.\d+", wow_install.toc_version(toc) or "")
 
 
 def test_version_is_plain_dotted_number():

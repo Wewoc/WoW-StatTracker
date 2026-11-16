@@ -1,0 +1,63 @@
+name: addon-release
+
+# Tag addon-vX.Y.Z (X.Y.Z = ## Version: of the .toc) -> the addon tests, then the BigWigs packager uploads the addon to CurseForge.
+# A manual start (workflow_dispatch) only makes the package (dry run: nothing is uploaded) and keeps it as an artifact to look at.
+# Only the upload step has the CurseForge token (secret CURSEFORGE); nothing here may write to the repository.
+# The staged folder is a small Git repository of its own (the packager wants a checkout and reads the version from its tag).
+# Every action is pinned to a commit (the version is in the comment); tests/test_workflows.py keeps that and the rules above.
+on:
+  push:
+    tags: ["addon-v*"]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  test:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-lock.txt
+      - run: python -m pytest -q tests/test_live_lua.py tests/test_addon_lua.py tests/test_data_contract.py tests/test_addon_package.py tests/test_architecture.py
+
+  package:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Stage the addon (a tag must be addon-v<version of the .toc>)
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            python3 compiler/addon_package.py --out stage --tag "$GITHUB_REF_NAME"
+          else
+            python3 compiler/addon_package.py --out stage
+          fi
+      - name: Package without uploading (manual start)
+        if: github.event_name != 'push'
+        uses: BigWigsMods/packager@e50a250f8705041e40f2fa1ddcb280a686d65aa0 # v2.6.1
+        with:
+          pandoc: "false"
+          args: -d -t stage/StatTracker
+      - name: Package and upload to CurseForge (tag)
+        if: github.event_name == 'push'
+        uses: BigWigsMods/packager@e50a250f8705041e40f2fa1ddcb280a686d65aa0 # v2.6.1
+        with:
+          pandoc: "false"
+          args: -t stage/StatTracker
+        env:
+          CF_API_TOKEN: ${{ secrets.CURSEFORGE }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: addon-package
+          retention-days: 7
+          if-no-files-found: error
+          include-hidden-files: true
+          path: stage/StatTracker/.release/*.zip

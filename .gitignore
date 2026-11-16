@@ -41,6 +41,9 @@ _update_success.flag
 CLAUDE.md
 ROADMAP.md
 
+# The addon package made for the CurseForge upload (compiler/addon_package.py)
+stage/
+
 # Local skills for the coding assistant (not part of the project)
 .claude/
 

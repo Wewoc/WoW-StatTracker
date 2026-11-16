@@ -122,7 +122,8 @@ def test_the_status_line_names_the_game_the_data_of_every_version_and_the_addon(
     data = actions.status_parts(fake_wow, both, "ACC1", "_retail_")[1]
     assert data.startswith("Data: _retail_ 20") and data.endswith(" · _forever_ missing")      # the time of the file, then the version without one
     wow_install.install_addon(fake_wow, "_retail_")
-    assert any(f"Addon: version {app_info.APP_VERSION}" in p for p in actions.status_parts(fake_wow, both, "ACC1", "_retail_"))
+    installed = wow_install.toc_version(wow_install.addon_dir(fake_wow, "_retail_") / "StatTracker.toc")      # the addon has its own version
+    assert any(f"Addon: version {installed}" in p for p in actions.status_parts(fake_wow, both, "ACC1", "_retail_"))
     assert any("Addon: not installed" in p for p in actions.status_parts(fake_wow, both, "ACC1", "_forever_"))     # the addon part follows the version asked for
 
 

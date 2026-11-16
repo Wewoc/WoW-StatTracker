@@ -67,9 +67,11 @@ and `src/core/app_info.py` are the single sources for names and release contents
 
 Release checklist:
 
-1. Set `APP_VERSION` in `src/core/app_info.py` and `## Version:` in `addon/StatTracker/StatTracker.toc` (a test checks they match); update `CHANGELOG.md`.
+1. Set `APP_VERSION` in `src/core/app_info.py` for a new app version. The addon has its own number: `## Version:` in `addon/StatTracker/StatTracker.toc`, raised whenever the addon changes (the two are independent; compatibility is carried by `StatTrackerDB.version`, not by the numbers, and the program offers a newer bundled addon through *Install / update addon*). Update `CHANGELOG.md`: addon changes appear in the chapter of the app release that ships them, as a line "Addon x.y.z: ...".
 2. Create an annotated tag `vX.Y.Z` (`git tag -a vX.Y.Z -F <message file>`: first line = release title, the rest = release notes) and push it - `.github/workflows/release.yml` builds, attaches the files and takes title and notes from the tag message. A lightweight tag still releases, but without title and notes.
-3. The repository is `Wewoc/WoW-StatTracker` (`REPO_OWNER`/`REPO_NAME` in `src/core/app_info.py`, `REPO_CONFIRMED = True`). If it is ever renamed or forked, change those, the GitHub links in `docs/index.html`, the READMEs and `X-Website` in the `.toc`; `SITE_URL` (the landing page shown in the footer of the stats page) follows from the same two values. While `REPO_CONFIRMED` is False the update check sends no request. A repository without a release counts as "up to date" (the GitHub API answers 404).
+3. The pipeline (`.github/workflows/`): `ci.yml` runs the tests on every push to `main` and can only read the repository. `release.yml` has no rights by default and two jobs: **build** (read-only: tests, the tag must equal `APP_VERSION`, the build, the checksum) and **publish** (the only job with write access: it checks the checksum of the downloaded ZIP again and makes the release). Every action is pinned to a full commit (the version stands in a comment), and both workflows install exactly `requirements-lock.txt` (every package pinned with `==`, including what the packages pull in). To update an action: take the commit of a release that is at least two weeks old from the action's repository (`git ls-remote --tags <repo>`; an annotated tag needs the `^{}` line), check that it runs on a current Node, and change commit and comment together. To update the packages: upgrade them in `.venv-build`, run the tests and a build, then `pip freeze > requirements-lock.txt` and put the header comment back. `tests/test_workflows.py` keeps the pins, the rights and the lock file. The real run is only seen on GitHub (a test run in a private test repository comes before a release that changes the workflows).
+4. The addon on CurseForge (project id 1810842, in the `.toc` as `X-Curse-Project-ID`) is released on its own, independent of the app: raise `## Version:` in the `.toc`, add the lines "- Addon x.y.z: ..." to the chapter of `CHANGELOG.md` that carries them (they become the changelog of the file page), then push an annotated tag `addon-vX.Y.Z` (the version of the `.toc`). `.github/workflows/addon-release.yml` runs the addon tests, stages the addon (`compiler/addon_package.py`: the interface line of the staged `.toc` also lists `16001`, the number of WoW Forever; the `.toc` in the repository stays as it is) and lets the BigWigs packager upload it; only that step has the token (the secret `CURSEFORGE`). Started by hand from the Actions tab, the workflow only makes the package (a dry run, nothing is uploaded) and keeps it as an artifact. The interface number of the `.toc` needs a look with every game patch.
+5. The repository is `Wewoc/WoW-StatTracker` (`REPO_OWNER`/`REPO_NAME` in `src/core/app_info.py`, `REPO_CONFIRMED = True`). If it is ever renamed or forked, change those, the GitHub links in `docs/index.html`, the READMEs and `X-Website` in the `.toc`; `SITE_URL` (the landing page shown in the footer of the stats page) follows from the same two values. While `REPO_CONFIRMED` is False the update check sends no request. A repository without a release counts as "up to date" (the GitHub API answers 404).
 
 ## Landing page (GitHub Pages)
 
@@ -93,6 +95,12 @@ The pictures of the program window, `app-*.png` (Settings tab) and `top5-*.png` 
 `python tools/make_window_shots.py --demo <demo folder> --out <folder>`: it starts the real window without a screen in a temporary instance folder (the Qt
 `offscreen` platform, system fonts, 1.5 times the size) and replaces the game folder, the log and the status line by invented texts, so nothing of the machine shows.
 Copy them to `docs/images/`; `tests/test_docs_site.py` checks that the sizes written into `docs/index.html` are the real ones.
+
+The picture of the in-game live window, `live-en.png` / `live-de.png`, is an **illustration**, not a screenshot (the window lives in the game, which cannot run here):
+`.venv-build/Scripts/python.exe tools/make_live_shot.py --out <folder>` runs the real addon files (`StatTrackerLive.lua`, `StatTrackerWindow.lua`) in an embedded Lua against
+the faked game API of `tests/test_live_lua.py` with invented values of the demo character (a login, a played-time answer, 47 minutes of play), takes the rows from `Live.WindowLines`
+and paints them with Qt on a plain background (it needs `lupa` and PyQt6, so use the build venv). The words and numbers are the addon's, the look (frame, font, corner) is not the game's.
+The captions and alt texts must say "illustration". Copy the pictures to `docs/images/`.
 
 For the history page add `--snapshots 12`: every character then gets 12 scans three days apart (the
 last one is exactly the single scan of the default run, so the pictures above stay the same), the
@@ -123,9 +131,9 @@ src/            start.py (entry script), the files the program bundles (template
   src/export/   export_xlsx
   src/app/      main_window, dialogs, qt_style, qwebengine_hardening, actions, page_bridge, suggest_list, stat_parser (the window, the bridge to the page, the order of the steps)
 addon/          the WoW addon (copied into AddOns by the program)
-compiler/       PyInstaller build
+compiler/       PyInstaller build and the addon package for CurseForge (addon_package.py)
 tests/          pytest
-tools/          developer helpers (check_stats.py, make_demo.py) - not part of the release
+tools/          developer helpers (check_stats.py, make_demo.py, make_window_shots.py, make_live_shot.py) - not part of the release
 docs/           this file
 ```
 

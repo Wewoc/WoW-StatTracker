@@ -260,7 +260,10 @@ def install_addon(root, variant, addon_src=None):
 
 def addon_status(root, variant, addon_src=None):
     """('missing',) | ('ok', ver) | ('outdated', installed, bundled) | ('interface', installed, expected)
-    | ('unknown',). 'unknown' = installed but a version cannot be compared. 'interface' = same version,
+    | ('unknown',). 'outdated' = the bundled addon is newer, or the two versions differ and one of them is not a plain
+    dotted number (the addon is installed by hand, so doubt shows 'outdated'); an installed addon that is newer than
+    the bundled one is 'ok' (the addon has its own version line, independent of APP_VERSION).
+    'unknown' = a .toc has no version. 'interface' = same version,
     but the installed .toc does not carry the interface number of the game build (.build.info), so WoW
     shows the addon as out of date; only reported when both numbers are known."""
     dest = addon_dir(root, variant)
@@ -270,7 +273,8 @@ def addon_status(root, variant, addon_src=None):
     bundled = toc_version((Path(addon_src) if addon_src else paths.addon_src()) / "StatTracker.toc")
     if not installed or not bundled:
         return ("unknown",)
-    if installed != bundled:
+    unreadable = app_info.parse_version(installed) is None or app_info.parse_version(bundled) is None
+    if app_info.is_newer(bundled, installed) or (installed != bundled and unreadable):
         return ("outdated", installed, bundled)
     expected = expected_interface(root, variant)
     carried = toc_interface(dest / "StatTracker.toc")

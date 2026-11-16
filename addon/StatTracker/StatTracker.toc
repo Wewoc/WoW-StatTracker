@@ -6,6 +6,10 @@
 ## Version: 0.2.3
 ## X-Website: https://github.com/Wewoc/WoW-StatTracker
 ## X-License: GPL-3.0-or-later
-## SavedVariables: StatTrackerDB
+## X-Curse-Project-ID: 1810842
+## SavedVariables: StatTrackerDB, StatTrackerUI
 
 StatTracker.lua
+StatTrackerLive.lua
+StatTrackerWindow.lua
+StatTrackerOptions.lua
