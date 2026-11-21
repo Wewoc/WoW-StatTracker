@@ -60,7 +60,7 @@ def test_site_url_is_the_published_landing_page():
 def test_repository_is_the_published_one_everywhere():
     assert app_info.REPO_URL == "https://github.com/Wewoc/WoW-StatTracker"
     assert app_info.REPO_CONFIRMED is True
-    stale = re.compile(r"github\.com/Wewoc/StatTracker\b|repos/Wewoc/StatTracker\b")
+    stale = re.compile(r"github\.com/Wewoc/StatTracker(?![\w-])|repos/Wewoc/StatTracker(?![\w-])")     # the old name; the repository StatTracker-Addon is not it
     files = [ROOT / n for n in ("README.md", "README.de.md", "CHANGELOG.md", "docs/index.html", "docs/DEVELOPMENT.md",
                                 "addon/StatTracker/StatTracker.toc")]
     files += list((ROOT / "src").rglob("*.py")) + list((ROOT / ".github").rglob("*.yml"))
