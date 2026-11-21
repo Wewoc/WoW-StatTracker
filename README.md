@@ -70,13 +70,13 @@ The **Characters** tab has a block for every enabled game version (choose the ve
 
 ## Live window in game
 
-The addon alone, without the program, shows a small **live window** for the character you are playing. Install the addon (step 4 of the quick start); nothing else is needed. `/statlive` shows or hides the window (it can be put in a macro on a key), `/statlive text` prints the values in the chat and `/statlive watch` follows every change.
+The addon alone, without the program, shows a small **live window** for the character you are playing. Install the addon (step 4 of the quick start); nothing else is needed. `/statlive` shows or hides the window (it can be put in a macro on a key), `/statlive text` prints the values in the chat, `/statlive watch` follows every change, and `/statlive lock` keeps the window from being dragged by mistake (`/statlive unlock` releases it).
 
 ![Illustration of the live window: five statistics with the change since login, session gold, played time, rates per hour and the age of the last scan. Invented demo values; this is drawn from the texts of the addon, not a screenshot of the game, and the look in the game differs.](docs/images/live-en.png)
 
 It shows five statistics (creatures killed, killing blows, deaths, quests completed, gold received) with the change since you logged in, the session gold, the played time and, after two minutes of play, the rates per hour for gold and kills. A value the game gives is white; if the game gives none, the value of your last scan stands there dimmed and marked "(Scan)"; if there is none either, the row reads "no value" - never 0. The tooltip of a statistic row tells the value of the last scan and how old it is. The played time is estimated between the game's own answers and marked "(estimated)". The window can be moved, its width is changed at the bottom right corner, and it remembers position, width and whether it was open, also after `/reload` and a new login. While it is closed, nothing is read. A few seconds after a login the addon asks the game once for the played time; the game answers with two lines of its own in the chat, as it does for `/played`.
 
-The page *StatTracker* in the game's *Options -> Addons* explains the commands, gives the link to the project page in a field to copy from, and says what the program is good for. The window saves its settings in a second variable of the addon, `StatTrackerUI`; the program ignores it, and the scan data (`StatTrackerDB`) are not touched. Seen in game on Retail and on WoW Forever.
+The page *StatTracker* in the game's *Options -> Addons* explains the commands, has check boxes for the window (lock its position, colour the numbers green or red against your own average, choose which rows it shows), gives the link to the project page in a field to copy from, and says what the program is good for. The window saves its settings in a second variable of the addon, `StatTrackerUI`; the program ignores it, and the scan data (`StatTrackerDB`) are not touched.
 
 ## Game versions
 

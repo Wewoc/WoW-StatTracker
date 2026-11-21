@@ -5,12 +5,15 @@
 -- since the start of the session. It keeps its own SavedVariable StatTrackerUI and never writes StatTrackerDB (the data
 -- of the scan stays as it is). StatTracker.lua is the scan and is not touched by this file.
 --   /statlive        shows or hides the window (StatTrackerWindow.lua); without one it writes the text to the chat
+--   /statlive lock   keeps the window from being dragged (the width still changes at its corner); /statlive unlock releases it
 --   /statlive text   writes the values in the chat (statistics, session gold, played time, rates per hour)
 --   /statlive watch  switches a mode on or off that reads every few seconds and writes every change into the chat
 --
 -- StatTrackerUI (account-wide, in the same file as StatTrackerDB):
 --   version  = 1
---   settings = { window = { point, rel, x, y, shown } }   the window (position, open or closed); more later (copy text, ...)
+--   settings = { window = { point, rel, x, y, width, shown, locked },   the window (position, width, open or closed, locked)
+--                rows = { ["107"] = false, ... },                       rows the window hides (only a saved false hides)
+--                colored = true }                                       green/red against the average of the character (default off)
 --   session  = { key = "Name-Realm", start = time(),  the current session of the logged-in character:
 --                money = copper at the start,         a new login starts a new session, /reload goes on with it
 --                stats = { [statID] = number },       the values at the start (filled in the first 90 seconds, see FillBaseline)
@@ -298,6 +301,7 @@ end
 -- what the window (StatTrackerWindow.lua) shares with the chat: the same texts and number formats
 Live.Tr, Live.Say, Live.Amount, Live.Signed, Live.Duration = Tr, Say, Amount, Signed, Duration
 Live.CharKey = CharKey
+Live.StatLabel = StatName                    -- the options page names the statistics with it (asked only when the page is shown: a name that failed is kept)
 
 function Live.PrintStatus()
     local v = Live.Values()
@@ -442,6 +446,15 @@ if type(SlashCmdList) == "table" then
                        "Watching on: every change is written to the chat (/statlive watch switches it off)."))
             else
                 Say(Tr("Beobachtung aus.", "Watching off."))
+            end
+        elseif (arg == "lock" or arg == "unlock") and Have(Live.SetLocked) then
+            local on = (arg == "lock")
+            if not Live.SetLocked(on) then
+                Say(Tr("Einstellungen nicht verfuegbar (Datei eines neueren Addons).", "Settings not available (file of a newer addon)."))
+            elseif on then
+                Say(Tr("Fenster gesperrt, die Position bleibt (/statlive unlock gibt es frei).", "Window locked in place (/statlive unlock releases it)."))
+            else
+                Say(Tr("Fenster freigegeben, es laesst sich wieder ziehen.", "Window unlocked, it can be dragged again."))
             end
         elseif arg == "" and Have(Live.ToggleWindow) then
             Live.ToggleWindow()                                -- the window (a client without one falls back to the chat)

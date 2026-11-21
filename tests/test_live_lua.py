@@ -142,6 +142,8 @@ local function Methods(f)
     function f:HighlightText() self.highlights = (self.highlights or 0) + 1 end
     function f:GetEffectiveScale() return SCALE end
     function f:SetWidth(w) self.width = w end
+    function f:SetChecked(on) self.checked = on and true or false end
+    function f:GetChecked() return self.checked or false end
     return f
 end
 function CreateFrame(kind, name, parent, template)
@@ -694,6 +696,299 @@ def test_the_rates_rows_come_after_two_minutes_and_the_window_grows_with_its_row
     assert lua.eval("NS.Live.window.height") == first_height + 16
 
 
+# ---------------------------------------------------------------- the choice of rows (StatTrackerUI.settings.rows)
+ROW_LABELS = [("107", {"Stat 107"}), ("1487", {"Stat 1487"}), ("60", {"Stat 60"}), ("98", {"Stat 98"}), ("328", {"Stat 328"}),
+              ("gold", {"Session gold"}), ("played", {"Played time"}), ("rates", {"Rates"}), ("footer", {"Updated", "Last scan"})]
+
+
+def shown_labels(lua):
+    return [str(l.label) for l in window_lines(lua)]
+
+
+def test_the_nine_keys_are_the_five_statistics_and_the_four_other_parts():
+    lua = window_start()
+    keys = [str(lua.eval("NS.Live.ROW_KEYS")[i]) for i in range(1, 10)]
+    assert keys == [k for k, _ in ROW_LABELS]
+    values = lua.eval("NS.Live.Values()")
+    assert [str(int(e["id"])) for e in values.stats.values()] == keys[:5]      # the keys of the statistics are their ids
+
+
+def test_every_row_is_shown_until_the_player_hides_it():
+    lua = window_start()
+    assert all(lua.eval(f'NS.Live.RowShown("{k}")') is True for k, _ in ROW_LABELS)
+    assert lua.eval("type(StatTrackerUI.settings.rows)") == "nil"              # nothing is saved for the default
+
+
+@pytest.mark.parametrize("key, labels", ROW_LABELS)
+def test_a_hidden_row_is_gone_the_others_stay_and_the_open_window_shrinks_and_grows_back(key, labels):
+    lua = window_start()
+    lua.execute("NS.Live.OpenWindow()")
+    before = shown_labels(lua)
+    height = lua.eval("NS.Live.window.height")
+    assert labels <= set(before)
+    assert lua.eval(f'NS.Live.SetRowShown("{key}", false)') is True
+    after = [label for label in before if label not in labels]
+    assert shown_labels(lua) == after
+    assert [left for left, _ in row_texts(lua)] == after                        # the drawn window changed at once, not at the next reading
+    assert lua.eval("NS.Live.window.height") == height - 16 * len(labels)
+    assert lua.globals().StatTrackerUI.settings.rows[key] is False and lua.eval(f'NS.Live.RowShown("{key}")') is False
+    assert lua.eval(f'NS.Live.SetRowShown("{key}", true)') is True
+    assert shown_labels(lua) == before and [left for left, _ in row_texts(lua)] == before
+    assert lua.eval("NS.Live.window.height") == height and lua.globals().StatTrackerUI.settings.rows[key] is True
+
+
+def test_the_rates_are_still_calculated_when_their_sources_are_hidden_and_hiding_them_removes_both_rows():
+    lua = window_start(login=False)
+    set_stats(lua, {107: "100"})
+    lua.globals().MONEY = 5000
+    do_login(lua)
+    lua.execute("RunTimers(60)")
+    lua.execute("NS.Live.OpenWindow()")
+    set_stats(lua, {107: "110"})
+    lua.globals().MONEY = 5100
+    lua.execute('NS.Live.SetRowShown("107", false); NS.Live.SetRowShown("gold", false); RunTimers(65)')
+    labels = shown_labels(lua)
+    assert "Stat 107" not in labels and "Session gold" not in labels
+    assert {"Gold per hour", "Stat 107 per hour"} <= set(labels)              # the rows are only not drawn, the values are still read
+    lua.execute('NS.Live.SetRowShown("rates", false)')
+    assert not {"Gold per hour", "Stat 107 per hour", "Rates"} & set(shown_labels(lua))
+
+
+def test_with_every_row_hidden_only_the_head_stays_and_so_does_the_note_of_a_client_without_statistics():
+    lua = window_start()
+    lua.execute('for _, k in ipairs(NS.Live.ROW_KEYS) do NS.Live.SetRowShown(k, false) end')
+    assert shown_labels(lua) == ["Alice-Realm"]
+    lua = window_start(before="GetStatistic = nil")
+    lua.execute('for _, k in ipairs(NS.Live.ROW_KEYS) do NS.Live.SetRowShown(k, false) end')
+    assert shown_labels(lua) == ["Alice-Realm", "This client provides no statistics."]
+
+
+def test_the_choice_of_rows_comes_back_after_a_reload_and_a_hidden_row_is_not_drawn_at_the_first_reading():
+    lua = window_start()
+    lua.execute('NS.Live.OpenWindow(); NS.Live.SetRowShown("60", false); NS.Live.SetRowShown("footer", false)')
+    reload_ui(lua, window=True)
+    assert lua.eval("NS.Live.window:IsShown()") is True
+    assert [left for left, _ in row_texts(lua)] == [l for l in shown_labels(lua)]
+    assert "Stat 60" not in shown_labels(lua) and "Last scan" not in shown_labels(lua) and "Stat 98" in shown_labels(lua)
+
+
+def test_a_choice_that_was_saved_in_the_file_hides_the_row_from_the_start():
+    lua = window_start(login=False, before='StatTrackerUI = { version = 1, settings = { rows = { ["107"] = false } } }')
+    do_login(lua)
+    lua.execute("NS.Live.OpenWindow()")
+    assert "Stat 107" not in shown_labels(lua) and "Stat 1487" in shown_labels(lua)
+
+
+@pytest.mark.parametrize("saved", ['"garbage"', '{ ["107"] = "no" }', '{ ["107"] = 0 }', '{ ["107"] = true }', '{ [107] = false }', '{ nope = false }'])
+def test_a_saved_choice_that_is_not_an_explicit_false_for_a_known_key_shows_everything(saved):
+    lua = window_start(login=False, before=f'StatTrackerUI = {{ version = 1, settings = {{ rows = {saved} }} }}')
+    do_login(lua)
+    assert "Stat 107" in shown_labels(lua) and len(shown_labels(lua)) == 11
+
+
+def test_a_damaged_choice_is_replaced_when_a_row_is_hidden():
+    lua = window_start(login=False, before='StatTrackerUI = { version = 1, settings = { rows = "garbage" } }')
+    do_login(lua)
+    assert lua.eval('NS.Live.SetRowShown("98", false)') is True
+    assert lua.eval("type(StatTrackerUI.settings.rows)") == "table" and "Stat 98" not in shown_labels(lua)
+    assert lua.eval("NonFinite(StatTrackerUI)") is False
+
+
+def test_an_unknown_key_changes_nothing_and_is_not_saved():
+    lua = window_start()
+    before = lua.eval("Serialize(StatTrackerUI)")
+    assert lua.eval('NS.Live.SetRowShown("nope", false)') is False and lua.eval('NS.Live.SetRowShown(107, false)') is False
+    assert lua.eval("Serialize(StatTrackerUI)") == before and len(shown_labels(lua)) == 11
+
+
+def test_a_file_of_a_newer_addon_is_neither_written_nor_obeyed_for_the_rows():
+    lua = start(login=False, window=True, before='StatTrackerUI = { version = 99, settings = { rows = { ["107"] = false } } }')
+    before = lua.eval("Serialize(StatTrackerUI)")
+    do_login(lua)
+    assert lua.eval('NS.Live.RowShown("107")') is True
+    assert lua.eval('NS.Live.SetRowShown("60", false)') is False
+    assert lua.eval("Serialize(StatTrackerUI)") == before and "Stat 107" in shown_labels(lua)
+
+
+def test_the_chat_text_ignores_the_choice_of_rows():
+    lua = window_start()
+    lua.execute('NS.Live.SetRowShown("107", false); NS.Live.SetRowShown("gold", false); NS.Live.SetRowShown("played", false)')
+    lua.execute('SlashCmdList["STATLIVE"]("text")')
+    text = "\n".join(chat_lines(lua))
+    assert "Stat 107" in text and "Played time" in text
+
+
+# ---------------------------------------------------------------- the colours (green and red against the average of the character)
+# The scan of the character: 100 hours played; averages per hour: 1000 (107), 5 (1487), 0.1 (60), 2 (98) and 10000 copper (328).
+def tint_db(played="360000", stats=None, epoch=880):
+    stats = {107: "100000", 1487: "500", 60: "10", 98: "200", 328: coin(gold=100), **(stats or {})}
+    body = ", ".join(f"[{k}] = [=[{v}]=]" for k, v in stats.items())
+    played_field = f"playedTotal = {played}, " if played is not None else ""
+    return f'StatTrackerDB = {{ version = 5, chars = {{ ["Alice-Realm"] = {{ scannedEpoch = {epoch}, {played_field}stats = {{ {body} }} }} }} }}'
+
+
+TINT_START = {107: "5000", 1487: "1000", 60: "3", 98: "50", 328: coin(gold=5)}
+# what ten hours of play at exactly the average add (the default of `now`: every statistic is neutral unless a test moves it)
+TINT_NEUTRAL = {107: "15000", 1487: "1050", 60: "4", 98: "70", 328: coin(gold=15)}
+
+
+def tint_start(now, seconds=36000, colored=True, locale="enUS", db=None):
+    """A character that logged in with TINT_START, played `seconds` (ten hours) and now has the values `now` (the rest neutral)."""
+    lua = window_start(locale, scan_db=False, before=tint_db() if db is None else db, login=False)
+    set_stats(lua, TINT_START)
+    do_login(lua)
+    lua.execute(f"RunTimers({seconds})")
+    set_stats(lua, {**TINT_NEUTRAL, **now})
+    if colored:
+        assert lua.eval("NS.Live.SetColored(true)") is True
+    return lua
+
+
+def by_label(lua):
+    return {str(l.label): l for l in window_lines(lua)}
+
+
+def test_the_colours_are_off_by_default_and_then_nothing_changes():
+    lua = tint_start({107: "16000", 60: "9"}, colored=False)
+    assert lua.eval("NS.Live.IsColored()") is False and lua.eval("type(StatTrackerUI.settings.colored)") == "nil"
+    for line in window_lines(lua):
+        assert line.tone is None and not str(line.value).endswith((" ^", " v")) and "\n" not in str(line.tip or "")
+    assert by_label(lua)["Stat 107"].value == "16000 (+11000)"
+
+
+@pytest.mark.parametrize("delta, tone, mark, percent", [          # ten hours at 1000 an hour is 10000
+    (11000, "GOOD", " ^", "+10"), (10999, None, "", None), (10000, None, "", None), (9001, None, "", None), (9000, "BAD", " v", "-10"),
+    (0, "BAD", " v", "-100"), (20000, "GOOD", " ^", "+100"),
+])
+def test_a_statistic_is_green_or_red_from_ten_percent_above_or_below_the_average_and_exactly_ten_counts(delta, tone, mark, percent):
+    lua = tint_start({107: str(5000 + delta)})
+    line = by_label(lua)["Stat 107"]
+    assert line.tone == tone and str(line.value) == f"{5000 + delta} (+{delta}){mark}"
+    if tone is None:
+        assert "\n" not in str(line.tip)
+    else:
+        word = "Above" if tone == "GOOD" else "Below"
+        assert str(line.tip).endswith(f"\n{word} your average ({percent} %)")
+    assert all(l.tone is None for label, l in by_label(lua).items() if label != "Stat 107")     # the others are exactly at their averages
+
+
+def test_deaths_are_the_other_way_round_fewer_than_the_average_is_green():
+    fewer = by_label(tint_start({60: "3"}))["Stat 60"]                          # no death in ten hours, the average is one in ten hours
+    assert (fewer.tone, str(fewer.value)) == ("GOOD", "3 (+0) v")
+    more = by_label(tint_start({60: "5"}))["Stat 60"]                           # two deaths: twice the average
+    assert (more.tone, str(more.value)) == ("BAD", "5 (+2) ^")
+
+
+def test_the_gold_statistic_is_compared_in_copper():
+    up = by_label(tint_start({328: coin(gold=17)}))["Stat 328"]                 # 120000 copper in ten hours against 100000
+    assert up.tone == "GOOD" and str(up.value).endswith(" ^") and str(up.tip).endswith("\nAbove your average (+20 %)")
+    down = by_label(tint_start({328: coin(gold=9)}))["Stat 328"]                # 40000 copper
+    assert down.tone == "BAD" and str(down.value).endswith(" v")
+
+
+def test_a_session_of_ten_minutes_is_compared_and_a_shorter_one_is_not():
+    now = {107: "5200"}                                                          # 200 in ten minutes = 1200 an hour
+    assert by_label(tint_start(now, seconds=600))["Stat 107"].tone == "GOOD"
+    assert by_label(tint_start(now, seconds=599))["Stat 107"].tone is None
+
+
+NO_COLOUR = {
+    "no scan": dict(db=""),
+    "no played time": dict(db=tint_db(played=None)),
+    "played time 0": dict(db=tint_db(played="0")),
+    "negative played time": dict(db=tint_db(played="-5")),
+    "played time is text": dict(db=tint_db(played='"x"')),
+    "average of 0": dict(db=tint_db(stats={107: "0"})),
+    "no value in the scan": dict(db=tint_db(stats={107: "--"})),
+    "text in the scan": dict(db=tint_db(stats={107: "many"})),
+}
+
+
+@pytest.mark.parametrize("case", list(NO_COLOUR))
+def test_without_an_average_there_is_no_colour_no_mark_and_no_made_up_number(case):
+    lua = tint_start({107: "16000"}, **NO_COLOUR[case])
+    line = by_label(lua)["Stat 107"]
+    assert line.tone is None and str(line.value) == "16000 (+11000)" and "\n" not in str(line.tip)
+
+
+def test_without_a_session_or_without_a_live_value_there_is_no_colour():
+    lua = tint_start({107: "16000"})
+    lua.execute("StatTrackerUI.session = nil")
+    assert all(l.tone is None for l in window_lines(lua))                       # no start values: no change, so no comparison
+    lua = tint_start({107: "16000", 98: None})                                   # 98: nothing live, the value of the scan is shown dimmed
+    lines = by_label(lua)
+    assert lines["Stat 98"].state == "SNAPSHOT" and lines["Stat 98"].tone is None and lines["Stat 107"].tone == "GOOD"
+
+
+def test_only_the_statistic_rows_are_coloured_and_a_hidden_row_stays_hidden():
+    lua = tint_start({107: "16000", 1487: "1060"})
+    lines = by_label(lua)
+    assert {label for label, l in lines.items() if l.tone} == {"Stat 107", "Stat 1487"}
+    assert all(l.tone is None for label, l in lines.items() if not label.startswith("Stat "))     # gold, played time, rates, footer
+    lua.execute('NS.Live.SetRowShown("107", false)')
+    lines = by_label(lua)
+    assert "Stat 107" not in lines and lines["Stat 1487"].tone == "GOOD"
+    lua.execute('SlashCmdList["STATLIVE"]("text")')
+    assert not any(line.rstrip().endswith((" ^", " v")) for line in chat_lines(lua))     # the chat text is not touched
+
+
+def test_switching_the_colours_redraws_an_open_window_and_only_the_value_changes_colour():
+    lua = tint_start({107: "16000"}, colored=False)
+    lua.execute("NS.Live.OpenWindow()")
+    lua.execute('''
+        for _, r in ipairs(NS.Live.window.rows) do
+            r.left.SetTextColor = function(self, ...) self.color = { ... } end
+            r.right.SetTextColor = function(self, ...) self.color = { ... } end
+        end
+        function ColorOf(text, side)
+            for _, r in ipairs(NS.Live.window.rows) do
+                if r.left.text == text then return r[side].color[1], r[side].color[2], r[side].color[3] end
+            end
+        end''')
+    assert lua.eval("NS.Live.SetColored(true)") is True
+    assert lua.eval("ColorOf('Stat 107', 'right')") == (0.25, 0.9, 0.25) and lua.eval("ColorOf('Stat 107', 'left')") == (1, 1, 1)
+    assert dict(row_texts(lua))["Stat 107"] == "16000 (+11000) ^"
+    assert lua.eval("ColorOf('Stat 1487', 'right')") == (1, 1, 1)
+    lua.execute("NS.Live.SetColored(false)")
+    assert lua.eval("ColorOf('Stat 107', 'right')") == (1, 1, 1) and dict(row_texts(lua))["Stat 107"] == "16000 (+11000)"
+    lua.execute("NS.Live.SetColored(true)")
+    lua.execute("NS.Live.SetRowShown('107', false)")
+    assert "Stat 107" not in dict(row_texts(lua))
+
+
+def test_the_red_is_red_and_the_setting_is_saved_as_a_plain_true_and_stays_after_a_reload():
+    lua = tint_start({107: "5500"})
+    assert lua.globals().StatTrackerUI.settings.colored is True and lua.eval("NonFinite(StatTrackerUI)") is False
+    assert by_label(lua)["Stat 107"].tone == "BAD"
+    lua.execute("NS.Live.OpenWindow()")
+    reload_ui(lua, window=True)
+    assert lua.eval("NS.Live.IsColored()") is True and by_label(lua)["Stat 107"].tone == "BAD"
+    lua.execute("NS.Live.SetColored(false)")
+    assert lua.globals().StatTrackerUI.settings.colored is False
+
+
+@pytest.mark.parametrize("saved", ["false", '"yes"', "1", "{}"])
+def test_only_an_explicit_true_switches_the_colours_on(saved):
+    lua = window_start(login=False, before=f'StatTrackerUI = {{ version = 1, settings = {{ colored = {saved} }} }}')
+    do_login(lua)
+    assert lua.eval("NS.Live.IsColored()") is False
+
+
+def test_a_file_of_a_newer_addon_is_neither_written_nor_obeyed_for_the_colours():
+    lua = start(login=False, window=True, before='StatTrackerUI = { version = 99, settings = { colored = true } }')
+    before = lua.eval("Serialize(StatTrackerUI)")
+    do_login(lua)
+    assert lua.eval("NS.Live.IsColored()") is False and lua.eval("NS.Live.SetColored(true)") is False
+    assert lua.eval("Serialize(StatTrackerUI)") == before
+
+
+def test_the_tooltip_lines_in_german():
+    up = by_label(tint_start({107: "17000"}, locale="deDE"))["Stat 107"]
+    assert str(up.tip).endswith("\nUeber deinem Schnitt (+20 %)")
+    down = by_label(tint_start({107: "11000"}, locale="deDE"))["Stat 107"]
+    assert str(down.tip).endswith("\nUnter deinem Schnitt (-40 %)")
+
+
 def test_a_client_without_statistics_shows_one_line_and_no_error():
     lua = window_start(before="GetStatistic = nil")
     lines = window_lines(lua)
@@ -760,6 +1055,95 @@ def test_a_row_moves_the_window_as_well():
     lua.execute("NS.Live.OpenWindow()")
     lua.execute("local r = NS.Live.window.rows[2]; r.scripts.OnDragStart(r); r.scripts.OnDragStop(r)")
     assert lua.globals().MOVES.start == 1 and lua.globals().MOVES.stop == 1
+
+
+# ---------------------------------------------------------------- locking the position (/statlive lock)
+def try_drag(lua):
+    """A drag of the window and of one of its rows, as the game fires it; returns how many StartMoving calls came through."""
+    lua.execute("MOVES.start = 0")
+    lua.execute("local w = NS.Live.window; w.scripts.OnDragStart(w); w.scripts.OnDragStop(w)")
+    lua.execute("local r = NS.Live.window.rows[2]; r.scripts.OnDragStart(r); r.scripts.OnDragStop(r)")
+    return lua.globals().MOVES.start
+
+
+def test_a_locked_window_does_not_move_when_it_or_a_row_is_dragged():
+    lua = window_start()
+    lua.execute("NS.Live.OpenWindow()")
+    assert try_drag(lua) == 2                                         # unlocked: both start a move, as before
+    lua.execute('SlashCmdList["STATLIVE"]("lock")')
+    assert lua.globals().StatTrackerUI.settings.window.locked is True and lua.eval("NS.Live.IsLocked()") is True
+    assert any("Window locked" in line for line in chat_lines(lua))
+    assert try_drag(lua) == 0
+    lua.execute('SlashCmdList["STATLIVE"]("UNLOCK ")')                # case and spaces do not matter
+    assert lua.globals().StatTrackerUI.settings.window.locked is False and lua.eval("NS.Live.IsLocked()") is False
+    assert any("Window unlocked" in line for line in chat_lines(lua))
+    assert try_drag(lua) == 2
+
+
+def test_the_lock_is_saved_with_the_position_and_survives_a_reload():
+    lua = window_start()
+    lua.execute("NS.Live.OpenWindow()")
+    lua.execute('SlashCmdList["STATLIVE"]("lock")')
+    lua.execute('local w = NS.Live.window; w.points = { { "RIGHT", UIParent, "RIGHT", -10, -20 } }; w.scripts.OnDragStop(w)')
+    saved = lua.globals().StatTrackerUI.settings.window
+    assert (saved.locked, saved.point, saved.x) == (True, "RIGHT", -10)       # saving the position keeps the lock
+    reload_ui(lua, window=True)
+    assert lua.eval("NS.Live.window:IsShown()") is True and lua.eval("NS.Live.IsLocked()") is True
+    assert try_drag(lua) == 0
+
+
+def test_the_window_can_be_locked_before_it_was_ever_opened():
+    lua = window_start()
+    assert lua.eval("NS.Live.window") is None
+    lua.execute('SlashCmdList["STATLIVE"]("lock")')
+    assert lua.eval("NS.Live.window") is None                         # the command builds nothing
+    lua.execute("NS.Live.OpenWindow()")
+    assert try_drag(lua) == 0
+    saved = lua.globals().StatTrackerUI.settings.window
+    assert saved.locked is True and saved.shown is True               # opening the window kept the lock
+
+
+def test_the_corner_still_changes_the_width_of_a_locked_window():
+    lua = window_start()
+    lua.execute("NS.Live.OpenWindow()")
+    lua.execute('SlashCmdList["STATLIVE"]("lock")')
+    drag_corner(lua, 1000, 1100)
+    assert lua.eval("NS.Live.window.width") == 440
+    saved = lua.globals().StatTrackerUI.settings.window
+    assert (saved.width, saved.locked) == (440, True)
+
+
+@pytest.mark.parametrize("saved", ["false", '"yes"', "1", "{}"])
+def test_only_an_explicit_true_counts_as_locked(saved):
+    lua = window_start(login=False, before=f'StatTrackerUI = {{ version = 1, settings = {{ window = {{ locked = {saved} }} }} }}')
+    do_login(lua)
+    lua.execute("NS.Live.OpenWindow()")
+    assert lua.eval("NS.Live.IsLocked()") is False and try_drag(lua) == 2
+
+
+def test_a_file_of_a_newer_addon_is_not_written_by_the_lock_command_and_does_not_lock():
+    lua = start(login=False, window=True, before='StatTrackerUI = { version = 99, settings = { window = { locked = true } } }')
+    before = lua.eval("Serialize(StatTrackerUI)")
+    do_login(lua)
+    assert lua.eval("NS.Live.IsLocked()") is False                    # read nothing from a file of a newer version
+    lua.execute('SlashCmdList["STATLIVE"]("lock")')
+    assert lua.eval("Serialize(StatTrackerUI)") == before
+    assert any("Settings not available" in line for line in chat_lines(lua))
+
+
+def test_a_damaged_window_entry_is_replaced_by_the_lock_command():
+    lua = window_start(login=False, before='StatTrackerUI = { version = 1, settings = { window = "garbage" } }')
+    do_login(lua)
+    lua.execute('SlashCmdList["STATLIVE"]("lock")')
+    assert lua.eval("type(StatTrackerUI.settings.window)") == "table" and lua.eval("NS.Live.IsLocked()") is True
+    assert lua.eval("NonFinite(StatTrackerUI)") is False
+
+
+def test_the_lock_commands_in_german():
+    lua = window_start("deDE")
+    lua.execute('SlashCmdList["STATLIVE"]("lock"); SlashCmdList["STATLIVE"]("unlock")')
+    text = "\n".join(chat_lines(lua))
+    assert "Fenster gesperrt" in text and "Fenster freigegeben" in text
 
 
 def test_a_window_that_was_closed_or_never_opened_does_not_come_back():
@@ -1141,3 +1525,178 @@ def test_the_page_is_built_when_this_addon_has_loaded_not_when_another_one_has()
     assert lua.eval("#REGISTERED") == 0
     lua.execute('Fire("ADDON_LOADED", "StatTracker"); Fire("ADDON_LOADED", "StatTracker")')
     assert lua.eval("#REGISTERED") == 1                              # and once only
+
+
+# ---------------------------------------------------------------- the settings of the window on that page (check boxes)
+# boxes[1] locks, boxes[2] colours, boxes[3..11] are the rows in the order of NS.Live.ROW_KEYS (107, 1487, 60, 98, 328, gold, played, rates, footer)
+def show_page(lua):
+    lua.execute("local p = NS.Live.optionsPanel; p.scripts.OnShow(p)")
+
+
+def box_checked(lua, i):
+    return lua.eval(f"NS.Live.optionsPanel.boxes[{i}]:GetChecked()")
+
+
+def click_box(lua, i):
+    """What a click does: the game turns the box over, then calls OnClick."""
+    lua.execute(f"local b = NS.Live.optionsPanel.boxes[{i}]; b:SetChecked(not b:GetChecked()); b.scripts.OnClick(b)")
+
+
+def captions(lua):
+    return [str(lua.eval(f"NS.Live.optionsPanel.boxes[{i}].caption.text")) for i in range(1, 12)]
+
+
+def test_the_page_has_eleven_check_boxes_two_for_the_window_and_nine_for_the_rows():
+    lua = window_start()
+    assert lua.eval("#NS.Live.optionsPanel.boxes") == 11
+    assert captions(lua)[:2] == ["Lock the window (position)", "Colour the numbers (green/red)"]
+    assert captions(lua)[7:] == ["Session gold", "Played time", "Rates per hour", "Footer (updated, last scan)"]
+    assert captions(lua)[2:7] == [f"Statistic {k}" for k in (107, 1487, 60, 98, 328)]         # until the page is shown and the game names them
+    assert all(lua.eval(f"NS.Live.optionsPanel.boxes[{i}].kind") == "CheckButton" for i in range(1, 12))
+
+
+def test_the_boxes_sit_in_two_columns_and_the_link_hangs_below_the_last_one():
+    lua = window_start()
+    points = [lua.eval(f"NS.Live.optionsPanel.boxes[{i}].points[1]") for i in range(1, 12)]
+    assert [(p[4], p[5]) for p in points[:2]] == [(0, -4), (290, -4)]                          # the two window boxes side by side
+    assert [(p[4], p[5]) for p in points[2:7]] == [(0, -4 - 24 * row) for row in range(5)]     # the five statistics, left column
+    assert [(p[4], p[5]) for p in points[7:]] == [(290, -4 - 24 * row) for row in range(4)]    # the other four, right column
+    assert lua.eval("NS.Live.optionsPanel.linkLabel.points[1][2] == NS.Live.optionsPanel.boxes[7]")
+    assert lua.eval("NS.Live.optionsPanel.appRows[1].points[1][2] == NS.Live.optionsPanel.link")      # still below the link field
+
+
+def test_the_boxes_show_what_is_saved_when_the_page_is_shown_and_the_statistics_get_their_names():
+    lua = window_start()
+    lua.execute('NS.Live.SetLocked(true); NS.Live.SetColored(true); NS.Live.SetRowShown("60", false); NS.Live.SetRowShown("footer", false)')
+    show_page(lua)
+    assert [box_checked(lua, i) for i in range(1, 12)] == [True, True, True, True, False, True, True, True, True, True, False]
+    assert captions(lua)[2:7] == ["Stat 107", "Stat 1487", "Stat 60", "Stat 98", "Stat 328"]
+
+
+def test_the_boxes_show_what_is_saved_right_after_loading_even_before_the_page_is_shown():
+    lua = window_start(login=False, before='StatTrackerUI = { version = 1, settings = { colored = true, window = { locked = true }, rows = { ["98"] = false } } }')
+    do_login(lua)
+    assert [box_checked(lua, i) for i in range(1, 12)] == [True, True, True, True, True, False, True, True, True, True, True]
+
+
+def test_a_command_in_the_chat_shows_in_the_boxes_the_next_time_the_page_is_shown():
+    lua = window_start()
+    show_page(lua)
+    assert box_checked(lua, 1) is False
+    lua.execute('SlashCmdList["STATLIVE"]("lock")')
+    show_page(lua)
+    assert box_checked(lua, 1) is True
+    lua.execute('SlashCmdList["STATLIVE"]("unlock")')
+    show_page(lua)
+    assert box_checked(lua, 1) is False
+
+
+def test_clicking_the_lock_locks_the_window_and_clicking_again_releases_it():
+    lua = window_start()
+    lua.execute("NS.Live.OpenWindow()")
+    click_box(lua, 1)
+    assert lua.eval("NS.Live.IsLocked()") is True and lua.globals().StatTrackerUI.settings.window.locked is True
+    assert try_drag(lua) == 0
+    click_box(lua, 1)
+    assert lua.eval("NS.Live.IsLocked()") is False and try_drag(lua) == 2
+
+
+def test_clicking_a_row_hides_it_in_the_open_window_and_clicking_again_brings_it_back():
+    lua = window_start()
+    lua.execute("NS.Live.OpenWindow()")
+    show_page(lua)                                                                             # the boxes are filled when the page is shown
+    click_box(lua, 3)                                                                          # the first statistic, 107
+    assert "Stat 107" not in dict(row_texts(lua)) and lua.globals().StatTrackerUI.settings.rows["107"] is False
+    click_box(lua, 10)                                                                         # rates
+    assert "Rates" not in dict(row_texts(lua))
+    click_box(lua, 3)
+    assert "Stat 107" in dict(row_texts(lua)) and lua.globals().StatTrackerUI.settings.rows["107"] is True
+
+
+def test_clicking_the_colour_box_switches_the_colours_on_and_off():
+    lua = tint_start({107: "16000"}, colored=False)
+    assert by_label(lua)["Stat 107"].tone is None
+    click_box(lua, 2)
+    assert by_label(lua)["Stat 107"].tone == "GOOD" and lua.globals().StatTrackerUI.settings.colored is True
+    click_box(lua, 2)
+    assert by_label(lua)["Stat 107"].tone is None and lua.globals().StatTrackerUI.settings.colored is False
+
+
+def test_in_a_file_of_a_newer_addon_the_box_goes_back_the_chat_says_so_and_nothing_is_written():
+    lua = start(login=False, window=True, before='StatTrackerUI = { version = 99, settings = {} }')
+    before = lua.eval("Serialize(StatTrackerUI)")
+    do_login(lua)
+    show_page(lua)
+    for i in (1, 2, 3, 9):
+        click_box(lua, i)
+        assert box_checked(lua, i) is (i == 3 or i == 9)                                        # back to what it was: the rows on, lock and colours off
+    assert sum("Settings not available" in line for line in chat_lines(lua)) == 4
+    assert lua.eval("Serialize(StatTrackerUI)") == before
+
+
+def test_a_box_that_cannot_save_goes_back_and_the_problem_is_told_once():
+    lua = window_start()
+    show_page(lua)
+    lua.execute("NS.Live.SetRowShown = function() error('boom') end")
+    click_box(lua, 3)
+    click_box(lua, 4)
+    assert box_checked(lua, 3) is True and box_checked(lua, 4) is True
+    assert sum("Options page: error" in line and "boom" in line for line in chat_lines(lua)) == 1
+
+
+def test_the_two_window_boxes_explain_themselves_in_a_tooltip_and_the_row_boxes_do_not():
+    lua = window_start()
+    lua.execute("local b = NS.Live.optionsPanel.boxes[1]; b.scripts.OnEnter(b)")
+    assert lua.globals().TIP[1] == "Lock the window (position)" and "by mistake" in lua.globals().TIP[2] and lua.globals().TIP.shown is True
+    lua.execute("local b = NS.Live.optionsPanel.boxes[1]; b.scripts.OnLeave(b)")
+    assert lua.globals().TIP.shown is False
+    lua.execute("local b = NS.Live.optionsPanel.boxes[2]; b.scripts.OnEnter(b)")
+    tip = str(lua.globals().TIP[2])
+    assert "10 minutes" in tip and "10 %" in tip and "deaths" in tip and "^" in tip
+    assert lua.eval("NS.Live.optionsPanel.boxes[3].scripts.OnEnter") is None
+
+
+def test_the_boxes_and_the_new_line_speak_german_for_a_german_client():
+    lua = window_start("deDE")
+    assert captions(lua)[:2] == ["Fenster sperren (Position)", "Zahlen einfaerben (gruen/rot)"]
+    assert captions(lua)[7:] == ["Session-Gold", "Spielzeit", "Raten pro Stunde", "Fusszeile (Aktualisiert, Letzter Scan)"]
+    assert "Fenster sperren: /statlive lock, freigeben: /statlive unlock." in options_texts(lua)
+    lua.execute("local b = NS.Live.optionsPanel.boxes[2]; b.scripts.OnEnter(b)")
+    assert "Gruen oder rot" in str(lua.globals().TIP[2]) and all(c.isascii() for c in captions(lua) + [str(lua.globals().TIP[2])])
+
+
+def test_the_english_page_names_the_lock_commands():
+    assert "Lock the window: /statlive lock, release it: /statlive unlock." in options_texts(window_start())
+
+
+def test_without_the_window_part_the_page_has_no_boxes_and_the_rest_stays():
+    lua = window_start()
+    lua.execute("FRAMES = {}; REGISTERED = {}; NS = {}")
+    load(lua, LIVE)("StatTracker", lua.globals().NS)
+    load(lua, OPTIONS)("StatTracker", lua.globals().NS)                                        # the window file is not loaded
+    lua.execute('Fire("ADDON_LOADED", "StatTracker")')
+    assert lua.eval("NS.Live.optionsPanel ~= nil") is True and lua.eval("NS.Live.optionsPanel.boxes") is None
+    assert lua.eval("NS.Live.optionsPanel.link:GetText()") == "https://wewoc.github.io/WoW-StatTracker/"
+    assert lua.eval("NS.Live.optionsPanel.linkLabel.points[1][2] == NS.Live.optionsPanel.rows[#NS.Live.optionsPanel.rows]")
+    show_page(lua)                                                                             # showing it works without the boxes, too
+    assert not any("Options page" in line for line in chat_lines(lua))
+
+
+def test_a_client_that_cannot_build_a_check_button_loses_only_the_boxes():
+    lua = window_start(before='local plain = CreateFrame; function CreateFrame(kind, ...) if kind == "CheckButton" then error("no check buttons") end '
+                              'return plain(kind, ...) end')
+    assert sum("Options page: error" in line and "no check buttons" in line for line in chat_lines(lua)) == 1
+    assert lua.eval("NS.Live.optionsPanel.link:GetText()") == "https://wewoc.github.io/WoW-StatTracker/" and len(app_texts(lua)) == 3
+    lua.execute('SlashCmdList["STATLIVE"]("")')
+    assert lua.eval("NS.Live.window:IsShown()") is True
+
+
+def test_the_page_still_touches_no_saved_variable_itself():
+    code = "\n".join(line for line in OPTIONS.read_text(encoding="utf-8").splitlines() if not line.lstrip().startswith("--"))
+    assert "StatTrackerDB" not in code and "StatTrackerUI" not in code and "settings.rows" not in code
+    lua = window_start(login=False)
+    before = lua.eval("Serialize(StatTrackerDB)")
+    do_login(lua)
+    show_page(lua)
+    click_box(lua, 1)
+    assert lua.eval("Serialize(StatTrackerDB)") == before and lua.eval("NonFinite(StatTrackerUI)") is False

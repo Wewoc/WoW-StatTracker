@@ -7,7 +7,14 @@
 --   with "Scan") or UNKNOWN ("no value", never 0). The tooltip of a statistic row tells the value of the last scan and how old it is.
 --   The scan (StatTrackerDB) is only READ here, to show its value and its age; nothing in this file writes it.
 --   The title "StatTracker v<version>" sits above the rows. The corner at the bottom right changes the width (the height follows the rows).
---   The position, the width and whether it was open are kept in StatTrackerUI.settings.window = { point, rel, x, y, width, shown }.
+--   The position, the width and whether it was open are kept in StatTrackerUI.settings.window = { point, rel, x, y, width, shown, locked }.
+--   "locked" (/statlive lock and unlock) only keeps the window from being dragged by mistake; the corner still changes the width.
+--   Which rows it shows: StatTrackerUI.settings.rows = { ["107"] = false, ... } (ROW_KEYS); only a saved false hides a row, the default is all shown.
+--   Colours (StatTrackerUI.settings.colored = true, default off): the value of a statistic row is green or red when the rate of the session (change per
+--   hour) is at least TINT_PCT percent above or below the average rate of the character (value of the last scan / played time of that scan), with a
+--   "^" or "v" behind it (for those who cannot tell the colours) and a line in the tooltip. Deaths are the other way round (fewer is green). No colour
+--   without an average (no scan, no played time, an average of 0) or before TINT_MIN_AGE seconds of session: no number is made up. The average is that
+--   of the whole life of the character up to the last scan (a scan made in the middle of the session already holds part of it).
 -- Without a frame API (or when anything in building the window fails) the file does nothing and /statlive writes the chat text.
 
 local ADDON, ns = ...
@@ -23,9 +30,13 @@ local PAD = 18                            -- space below the last row (the corne
 -- the anchors, and how much of a change of the width moves the left edge to the left (0 left anchor, 0.5 centre, 1 right):
 -- the corner keeps the left edge where it is, so the offset of the window is moved by that share of the change
 local ANCHORS = { TOPLEFT = 0, LEFT = 0, BOTTOMLEFT = 0, TOP = 0.5, CENTER = 0.5, BOTTOM = 0.5, TOPRIGHT = 1, RIGHT = 1, BOTTOMRIGHT = 1 }
-local COLORS = {                          -- r, g, b per state
+local COLORS = {                          -- r, g, b per state (GOOD and BAD: the value of a row against the average, see VersusAverage)
     HEAD = { 1, 0.82, 0 }, LIVE = { 1, 1, 1 }, SNAPSHOT = { 0.65, 0.65, 0.65 }, UNKNOWN = { 0.5, 0.5, 0.5 }, FOOT = { 0.55, 0.55, 0.55 },
+    GOOD = { 0.25, 0.9, 0.25 }, BAD = { 1, 0.3, 0.3 },
 }
+local TINT_MIN_AGE = 600                  -- seconds of session before a value is compared with the average (a young session says nothing)
+local TINT_PCT = 10                       -- the percent above or below the average at which the colour starts (fixed, no setting)
+local WORSE_WHEN_HIGHER = { [60] = true } -- deaths: more than the average is red, fewer is green
 
 local Tr, Say, Amount, Signed, Duration = Live.Tr, Live.Say, Live.Amount, Live.Signed, Live.Duration
 local function Have(fn) return type(fn) == "function" end
@@ -69,12 +80,31 @@ end
 
 -- ---------------------------------------------------------------------------------------------------- the lines
 
--- The rows of the window for the values v: { { label, value, state, tip }, ... }; state is HEAD, LIVE, SNAPSHOT, UNKNOWN or FOOT.
--- A pure function of v, the scan and the clock (the tests read the rows, the window only draws them).
+-- The value of a statistic row against the average of the character. Returns nil (no colour, no mark) or "UP" or "DOWN" and the percent
+-- above or below the average. Rate of the session = change / session hours; average = value of the last scan / played hours of that scan.
+-- The comparison is cross-multiplied (no division), so a value exactly at the limit counts and a float does not decide.
+local function VersusAverage(v, e, rec, scanNumber)
+    if not Live.IsColored() then return nil end
+    local session = v.session
+    if not (session and Finite(session.age) and session.age >= TINT_MIN_AGE) then return nil end
+    if e.number == nil or not Finite(e.delta) then return nil end
+    if not (rec and Finite(rec.playedTotal) and rec.playedTotal > 0) then return nil end
+    if not (Finite(scanNumber) and scanNumber > 0) then return nil end
+    local ours, theirs = e.delta * rec.playedTotal, session.age * scanNumber      -- rate / average = ours / theirs
+    local percent = (ours / theirs - 1) * 100
+    if ours * 100 >= theirs * (100 + TINT_PCT) then return "UP", percent end
+    if ours * 100 <= theirs * (100 - TINT_PCT) then return "DOWN", percent end
+    return nil
+end
+
+-- The rows of the window for the values v: { { label, value, state, tip, tone }, ... }; state is HEAD, LIVE, SNAPSHOT, UNKNOWN or FOOT;
+-- tone (only with the colours on) is GOOD or BAD for the colour of the value.
+-- A pure function of v, the scan, the clock and the choice of rows (Live.RowShown; the tests read the rows, the window only draws them).
+-- The head (the character) and the note of a client without statistics are always there.
 function Live.WindowLines(v)
     local lines = {}
-    local function add(label, value, state, tip)
-        lines[#lines + 1] = { label = label, value = value or "", state = state or "LIVE", tip = tip }
+    local function add(label, value, state, tip, tone)
+        lines[#lines + 1] = { label = label, value = value or "", state = state or "LIVE", tip = tip, tone = tone }
     end
     local key = v.session and v.session.key or Live.CharKey()
     local rec = Scan(key)
@@ -85,47 +115,65 @@ function Live.WindowLines(v)
     end
     local none = Tr("kein Wert", "no value")
     for _, e in ipairs(v.stats) do
-        local scanText = rec and rec.stats[e.id]
-        if scanText == "--" or scanText == "" then scanText = nil end
-        local scanShown
-        if scanText ~= nil then
-            scanText = tostring(scanText)
-            local number
-            if e.coin then number = Live.ParseCoins(scanText) else number = Live.ParseNumber(scanText) end
-            scanShown = (number ~= nil) and Amount(number, e.coin) or scanText
+        if Live.RowShown(tostring(e.id)) then
+            local scanText = rec and rec.stats[e.id]
+            if scanText == "--" or scanText == "" then scanText = nil end
+            local scanShown, scanNumber
+            if scanText ~= nil then
+                scanText = tostring(scanText)
+                if e.coin then scanNumber = Live.ParseCoins(scanText) else scanNumber = Live.ParseNumber(scanText) end
+                scanShown = (scanNumber ~= nil) and Amount(scanNumber, e.coin) or scanText
+            end
+            local tip
+            if scanShown then tip = Tr("Letzter Scan: ", "Last scan: ") .. scanShown .. ", " .. Age(v.time - rec.scannedEpoch)
+            else tip = Tr("Noch kein Scan", "No scan yet") end
+            if e.state == "LIVE" then
+                local value = (e.number ~= nil) and Amount(e.number, e.coin) or e.text
+                if e.delta ~= nil then value = value .. " (" .. Signed(e.delta, e.coin) .. ")" end
+                local tone
+                local direction, percent = VersusAverage(v, e, rec, scanNumber)
+                if direction then
+                    local up = (direction == "UP")
+                    value = value .. (up and " ^" or " v")
+                    tone = ((up ~= (WORSE_WHEN_HIGHER[e.id] == true)) and "GOOD") or "BAD"
+                    tip = tip .. "\n" .. (up and Tr("Ueber deinem Schnitt", "Above your average") or Tr("Unter deinem Schnitt", "Below your average"))
+                          .. string.format(" (%+.0f %%)", percent)
+                end
+                add(e.label, value, "LIVE", tip, tone)
+            elseif scanShown then
+                add(e.label, scanShown .. " (Scan)", "SNAPSHOT", tip)
+            else
+                add(e.label, none, "UNKNOWN", tip)
+            end
         end
-        local tip
-        if scanShown then tip = Tr("Letzter Scan: ", "Last scan: ") .. scanShown .. ", " .. Age(v.time - rec.scannedEpoch)
-        else tip = Tr("Noch kein Scan", "No scan yet") end
-        if e.state == "LIVE" then
-            local value = (e.number ~= nil) and Amount(e.number, e.coin) or e.text
-            if e.delta ~= nil then value = value .. " (" .. Signed(e.delta, e.coin) .. ")" end
-            add(e.label, value, "LIVE", tip)
-        elseif scanShown then
-            add(e.label, scanShown .. " (Scan)", "SNAPSHOT", tip)
+    end
+    if Live.RowShown("gold") then
+        if v.gold and v.gold.delta ~= nil then add(Tr("Session-Gold", "Session gold"), Signed(v.gold.delta, true), "LIVE")
+        else add(Tr("Session-Gold", "Session gold"), none, "UNKNOWN") end
+    end
+    if Live.RowShown("played") then
+        if v.played then
+            local note = v.played.estimate and (" " .. Tr("(geschaetzt)", "(estimated)")) or ""
+            add(Tr("Spielzeit", "Played time"), Duration(v.played.total) .. note, "LIVE")
         else
-            add(e.label, none, "UNKNOWN", tip)
+            add(Tr("Spielzeit", "Played time"), none, "UNKNOWN")
         end
     end
-    if v.gold and v.gold.delta ~= nil then add(Tr("Session-Gold", "Session gold"), Signed(v.gold.delta, true), "LIVE")
-    else add(Tr("Session-Gold", "Session gold"), none, "UNKNOWN") end
-    if v.played then
-        local note = v.played.estimate and (" " .. Tr("(geschaetzt)", "(estimated)")) or ""
-        add(Tr("Spielzeit", "Played time"), Duration(v.played.total) .. note, "LIVE")
-    else
-        add(Tr("Spielzeit", "Played time"), none, "UNKNOWN")
-    end
-    if v.rates.ready then
-        if v.rates.gold ~= nil then add(Tr("Gold pro Stunde", "Gold per hour"), Signed(v.rates.gold, true), "LIVE") end
-        if v.rates.kills ~= nil then
-            add(v.rates.killsLabel .. Tr(" pro Stunde", " per hour"), string.format("%.1f", v.rates.kills), "LIVE")
+    if Live.RowShown("rates") then
+        if v.rates.ready then
+            if v.rates.gold ~= nil then add(Tr("Gold pro Stunde", "Gold per hour"), Signed(v.rates.gold, true), "LIVE") end
+            if v.rates.kills ~= nil then
+                add(v.rates.killsLabel .. Tr(" pro Stunde", " per hour"), string.format("%.1f", v.rates.kills), "LIVE")
+            end
+        elseif v.session then
+            add(Tr("Raten", "Rates"), string.format(Tr("ab %.0f min", "after %.0f min"), v.rates.minAge / 60), "UNKNOWN")
         end
-    elseif v.session then
-        add(Tr("Raten", "Rates"), string.format(Tr("ab %.0f min", "after %.0f min"), v.rates.minAge / 60), "UNKNOWN")
     end
-    local clock = Have(date) and date("%H:%M:%S", v.time) or ""
-    add(Tr("Aktualisiert", "Updated"), clock, "FOOT")
-    add(Tr("Letzter Scan", "Last scan"), rec and Age(v.time - rec.scannedEpoch) or Tr("noch keiner", "none yet"), "FOOT")
+    if Live.RowShown("footer") then
+        local clock = Have(date) and date("%H:%M:%S", v.time) or ""
+        add(Tr("Aktualisiert", "Updated"), clock, "FOOT")
+        add(Tr("Letzter Scan", "Last scan"), rec and Age(v.time - rec.scannedEpoch) or Tr("noch keiner", "none yet"), "FOOT")
+    end
     return lines
 end
 
@@ -174,7 +222,26 @@ end
 
 -- ---------------------------------------------------------------------------------------------------- the frame
 
-local function StartMove() Try(win, "StartMoving") end
+-- Is the window locked in place? Only a saved, explicit true counts; no settings (none yet, or a file of a newer addon) is not locked.
+function Live.IsLocked()
+    local s = Settings()
+    return s ~= nil and type(s.window) == "table" and s.window.locked == true
+end
+
+-- Lock or unlock the position. Works without a built window (it only writes the setting); false when the settings may not be written.
+function Live.SetLocked(on)
+    local s = Settings()
+    if not s then return false end
+    local w = type(s.window) == "table" and s.window or {}
+    w.locked = on and true or false
+    s.window = w
+    return true
+end
+
+local function StartMove()
+    if Live.IsLocked() then return end        -- a locked window stays where it is (the end of a drag that never started is harmless)
+    Try(win, "StartMoving")
+end
 local function StopMove() Try(win, "StopMovingOrSizing") SaveWindow(false) end
 
 -- The corner at the bottom right changes the width only (the height follows the rows). It reads the mouse itself instead of using the
@@ -271,8 +338,9 @@ local function Render(v)
         r.label, r.tip = line.label, line.tip
         r.left:SetText(line.label)
         r.right:SetText(line.value)
+        local vc = line.tone and COLORS[line.tone] or c
         Try(r.left, "SetTextColor", c[1], c[2], c[3])
-        Try(r.right, "SetTextColor", c[1], c[2], c[3])
+        Try(r.right, "SetTextColor", vc[1], vc[2], vc[3])
         r:Show()
     end
     for i = #lines + 1, #win.rows do win.rows[i]:Hide() end
@@ -287,6 +355,46 @@ local function SafeRender(v)
         drawError = true
         Say(Tr("Fenster: Fehler beim Zeichnen: ", "Window: error while drawing: ") .. tostring(err))
     end
+end
+
+-- Which rows the window shows. The keys: the five statistics by id, and gold (session gold), played, rates, footer.
+-- A row is hidden only by a saved false: nothing saved, no settings (a file of a newer addon) or anything else means shown.
+local ROW_KEYS = { "107", "1487", "60", "98", "328", "gold", "played", "rates", "footer" }
+Live.ROW_KEYS = ROW_KEYS
+
+function Live.RowShown(key)
+    local s = Settings()
+    local rows = s and s.rows
+    return not (type(rows) == "table" and rows[key] == false)
+end
+
+-- Show or hide a row and draw an open window again at once. False (nothing written) for an unknown key or settings that may not be written.
+function Live.SetRowShown(key, on)
+    local known = false
+    for _, k in ipairs(ROW_KEYS) do
+        if k == key then known = true end
+    end
+    local s = Settings()
+    if not known or not s then return false end
+    if type(s.rows) ~= "table" then s.rows = {} end
+    s.rows[key] = on and true or false
+    if win and win:IsShown() then SafeRender() end
+    return true
+end
+
+-- The colours (green and red against the average of the character): off unless a true is saved.
+function Live.IsColored()
+    local s = Settings()
+    return s ~= nil and s.colored == true
+end
+
+-- Switch the colours on or off and draw an open window again at once. False (nothing written) when the settings may not be written.
+function Live.SetColored(on)
+    local s = Settings()
+    if not s then return false end
+    s.colored = on and true or false
+    if win and win:IsShown() then SafeRender() end
+    return true
 end
 
 local function Build()
