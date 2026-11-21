@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Wewoc (github.com/wewoc)
 # compiler/addon_package.py: what goes to CurseForge. The tag must be addon-v<version of the .toc>, the changelog of the file page comes from
-# the "- Addon <version>:" lines of CHANGELOG.md (the current version must have some, so an addon release cannot be made without them), the
+# the lines of the chapter "## <version>" of addon/CHANGELOG.md (the current version must have some, so an addon release cannot be made without them), the
 # staged .toc lists the interface number of WoW Forever as well and the .toc in the repository stays as it is.
 
 import importlib.util
@@ -29,21 +29,27 @@ def test_the_tag_must_be_addon_v_and_the_version_of_the_toc():
             addon_package.check_tag(bad, "0.2.4")
 
 
-def test_the_changelog_lines_of_one_addon_version_without_the_prefix():
-    text = ("## 0.2.4\n\n- Addon 0.2.4: New: a window\n- Note: something else\n- Addon 0.2.4: New: a page \n"
-            "- Addon 0.2.40: not this one\n- Addon 0.2.3: older\n")
+def test_the_changelog_lines_of_one_addon_version_are_the_lines_of_its_chapter():
+    text = ("# Changelog\n\n- an introduction line before the first chapter\n\n"
+            "## 0.2.5\n\n- Fixed: a bug \n\n## 0.2.4\n\n- New: a window\n  not a line of its own\n- New: a page \n\n"
+            "## 0.2.40\n\n- not this one\n\n## 0.2.3\n\n- older\n")
     assert addon_package.changelog_lines(text, "0.2.4") == ["New: a window", "New: a page"]
-    with pytest.raises(addon_package.PackageError):
-        addon_package.changelog_lines(text, "0.9.9")
+    assert addon_package.changelog_lines(text, "0.2.5") == ["Fixed: a bug"]          # the first chapter ends at the next heading too
+    assert addon_package.changelog_lines(text, "0.2.3") == ["older"]                 # and the last one at the end of the text
+    for missing in ("0.9.9", "0.2"):
+        with pytest.raises(addon_package.PackageError):
+            addon_package.changelog_lines(text, missing)
+    with pytest.raises(addon_package.PackageError):                                   # a chapter without lines is no changelog
+        addon_package.changelog_lines("## 0.2.4\n\nno list here\n\n## 0.2.3\n\n- older\n", "0.2.4")
 
 
 def test_changelog_lines_with_windows_line_ends_have_no_carriage_return():
-    text = "## 0.2.4\r\n\r\n- Addon 0.2.4: New: a window\r\n- Addon 0.2.4: New: a page\r\n"
+    text = "## 0.2.4\r\n\r\n- New: a window\r\n- New: a page\r\n"
     assert addon_package.changelog_lines(text, "0.2.4") == ["New: a window", "New: a page"]
 
 
 def test_the_current_addon_version_has_changelog_lines():
-    lines = addon_package.changelog_lines((ROOT / "CHANGELOG.md").read_text(encoding="utf-8"), repo_version())
+    lines = addon_package.changelog_lines((ROOT / "addon" / "CHANGELOG.md").read_text(encoding="utf-8"), repo_version())
     assert lines and all(line.strip() for line in lines)
 
 

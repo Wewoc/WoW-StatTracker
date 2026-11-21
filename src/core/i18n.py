@@ -96,6 +96,14 @@ _STRINGS = {
 
     # ---------------------------------------------------------------- log lines
     "log_install_ok": {"de": "Addon kopiert nach {dest}", "en": "Addon copied to {dest}"},
+    "log_install_curseforge": {
+        "de": "Das Addon gibt es auch bei CurseForge, dort kommen Updates: {url}",
+        "en": "The addon is also on CurseForge, where updates arrive: {url}",
+    },
+    "log_install_kept": {
+        "de": "Addon nicht überschrieben: installiert ist Version {installed}, neuer als die mitgelieferte {bundled} ({dest}).",
+        "en": "Addon left as it is: the installed version {installed} is newer than the bundled {bundled} ({dest}).",
+    },
     "log_interface_set": {
         "de": "Interface-Nummer {number} gesetzt (Version {version}, Produkt {product}).",
         "en": "Interface number {number} set (version {version}, product {product}).",

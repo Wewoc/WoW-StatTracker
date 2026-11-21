@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Wewoc (github.com/wewoc)
 
+import shutil
+
 import pytest
 
 from core import paths
@@ -48,6 +50,98 @@ def test_install_unknown_product_leaves_interface_alone(instance, fake_wow):
     (fake_wow / "_classic_" / "Interface" / "AddOns").mkdir(parents=True)
     res = wow_install.install_addon(fake_wow, "_classic_")
     assert res.number is None and res.product == "wow_classic"
+
+
+def _set_installed_version(res, version):
+    toc = res.dest / "StatTracker.toc"
+    toc.write_text(toc.read_text(encoding="utf-8").replace(f"## Version: {wow_install.toc_version(toc)}", f"## Version: {version}"),
+                   encoding="utf-8")
+
+
+def test_install_leaves_an_installed_addon_alone_that_is_newer_than_the_source(instance, fake_wow):
+    res = wow_install.install_addon(fake_wow, "_retail_")
+    assert res.kept is False
+    _set_installed_version(res, "99.0.0")
+    (res.dest / "StatTracker.lua").write_text("-- from an addon manager", encoding="utf-8")
+    toc_before = (res.dest / "StatTracker.toc").read_bytes()
+    again = wow_install.install_addon(fake_wow, "_retail_")
+    assert again.kept is True and again.installed_version == "99.0.0" and again.bundled_version == _bundled_version()
+    assert again.number is None and again.dest == res.dest
+    assert (res.dest / "StatTracker.toc").read_bytes() == toc_before                 # no interface number written either
+    assert (res.dest / "StatTracker.lua").read_text(encoding="utf-8") == "-- from an addon manager"
+
+
+@pytest.mark.parametrize("installed", ["same", "0.0.1", "0.2.3-beta", "beta"])
+def test_install_copies_over_the_same_an_older_or_an_unreadable_version(instance, fake_wow, installed):
+    installed = _bundled_version() if installed == "same" else installed
+    res = wow_install.install_addon(fake_wow, "_retail_")
+    _set_installed_version(res, installed)
+    (res.dest / "StatTracker.lua").write_text("-- damaged", encoding="utf-8")
+    again = wow_install.install_addon(fake_wow, "_retail_")
+    assert again.kept is False and again.number == 120105
+    assert (res.dest / "StatTracker.lua").read_bytes() == (paths.addon_src() / "StatTracker.lua").read_bytes()
+    assert wow_install.toc_version(res.dest / "StatTracker.toc") == _bundled_version()
+
+
+def test_install_copies_when_the_installed_addon_has_no_toc_or_no_version(instance, fake_wow):
+    dest = wow_install.addon_dir(fake_wow, "_retail_")
+    dest.mkdir(parents=True)
+    (dest / "StatTracker.lua").write_text("-- broken", encoding="utf-8")                # no .toc at all
+    assert wow_install.install_addon(fake_wow, "_retail_").kept is False
+    (dest / "StatTracker.toc").write_text("## Title: x\n", encoding="utf-8")            # a .toc without a version
+    assert wow_install.install_addon(fake_wow, "_retail_").kept is False
+    assert wow_install.toc_version(dest / "StatTracker.toc") == _bundled_version()
+
+
+def test_install_from_another_source_follows_the_same_rule(instance, fake_wow, tmp_path):
+    src = tmp_path / "newer"
+    shutil.copytree(paths.addon_src(), src)
+    toc = src / "StatTracker.toc"
+    toc.write_text(toc.read_text(encoding="utf-8").replace(f"## Version: {_bundled_version()}", "## Version: 98.0.0"), encoding="utf-8")
+    res = wow_install.install_addon(fake_wow, "_retail_")                                # the bundled one is installed
+    again = wow_install.install_addon(fake_wow, "_retail_", addon_src=src)              # a newer source is copied
+    assert again.kept is False and wow_install.toc_version(res.dest / "StatTracker.toc") == "98.0.0"
+    assert wow_install.install_addon(fake_wow, "_retail_").kept is True                 # and the bundled one no longer overwrites it
+
+
+BOM = b"\xef\xbb\xbf"
+
+
+def _with_bom(toc):
+    toc.write_bytes(BOM + toc.read_bytes().removeprefix(BOM))
+
+
+def test_a_toc_with_a_byte_order_mark_is_read_and_patched_in_its_first_line(tmp_path):
+    toc = tmp_path / "StatTracker.toc"
+    toc.write_bytes(BOM + b"## Interface: 120000, 16001\r\n## Version: 1.2.3\r\n")
+    assert wow_install.toc_interface(toc) == [120000, 16001]
+    assert wow_install.toc_version(toc) == "1.2.3"
+    wow_install.patch_toc_interface(toc, 120105)
+    assert wow_install.toc_interface(toc) == [120105] and wow_install.toc_version(toc) == "1.2.3"
+    assert not toc.read_bytes().startswith(BOM) and toc.read_bytes().startswith(b"## Interface: 120105")
+
+
+def test_a_version_in_the_first_line_is_read_with_or_without_a_byte_order_mark(tmp_path):
+    toc = tmp_path / "StatTracker.toc"
+    toc.write_bytes(BOM + b"## Version: 4.5.6\r\n## Interface: 120105\r\n")
+    assert wow_install.toc_version(toc) == "4.5.6"
+    toc.write_bytes(b"## Version: 4.5.6\r\n## Interface: 120105\r\n")
+    assert wow_install.toc_version(toc) == "4.5.6"
+
+
+def test_install_works_with_a_source_toc_that_has_a_byte_order_mark(instance, fake_wow):
+    _with_bom(instance / "addon" / "StatTracker" / "StatTracker.toc")
+    res = wow_install.install_addon(fake_wow, "_retail_")
+    assert res.number == 120105 and wow_install.toc_interface(res.dest / "StatTracker.toc") == [120105]
+    assert wow_install.addon_status(fake_wow, "_retail_")[0] == "ok"
+
+
+def test_the_status_reads_the_interface_of_an_installed_toc_with_a_byte_order_mark(instance, fake_wow):
+    res = wow_install.install_addon(fake_wow, "_retail_")
+    toc = res.dest / "StatTracker.toc"
+    toc.write_text(toc.read_text(encoding="utf-8").replace("## Interface: 120105", "## Interface: 120000"), encoding="utf-8")
+    _with_bom(toc)
+    assert wow_install.addon_status(fake_wow, "_retail_") == ("interface", 120000, 120105)
 
 
 def test_install_requires_addons_folder(instance, fake_wow):

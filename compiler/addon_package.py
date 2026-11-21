@@ -6,7 +6,7 @@
     python compiler/addon_package.py --out stage [--tag addon-v0.2.4]
 
 - the tag (when given) must be addon-v<version of the .toc>;
-- the changelog of the file page is made of the lines "- Addon <version>: ..." of CHANGELOG.md (none = stop: an addon release needs its lines);
+- the changelog of the file page is made of the lines of the chapter "## <version>" of addon/CHANGELOG.md (none = stop: an addon release needs its lines);
 - <out>/StatTracker/ gets a copy of addon/StatTracker with the interface line of the .toc extended by the number of WoW Forever
   (the .toc in the repository stays as it is: only the copy the program installs gets its number from .build.info), a .pkgmeta
   (folder name and the changelog) and CHANGELOG.md; the folder is made a small Git repository with one commit and the tag <version>
@@ -42,10 +42,11 @@ def check_tag(tag, version):
 
 
 def changelog_lines(changelog_text, version):
-    """The lines '- Addon <version>: ...' of CHANGELOG.md, without the prefix; at least one."""
-    found = re.findall(rf"(?m)^- Addon {re.escape(version)}: (.+?)[ \t\r]*$", changelog_text)
+    """The '- ' lines of the chapter '## <version>' of addon/CHANGELOG.md, without the '- '; at least one."""
+    chapter = re.search(rf"(?ms)^## {re.escape(version)}[ \t]*\r?$(.*?)(?=^## |\Z)", changelog_text)
+    found = re.findall(r"(?m)^- (.+?)[ \t\r]*$", chapter.group(1)) if chapter else []
     if not found:
-        raise PackageError(f"CHANGELOG.md has no line '- Addon {version}: ...'")
+        raise PackageError(f"addon/CHANGELOG.md has no chapter '## {version}' with lines '- ...'")
     return found
 
 
@@ -68,7 +69,7 @@ def stage(root, out):
     version = toc_value(toc_text, "Version")
     if not version or not re.fullmatch(r"\d+(?:\.\d+)*", version):
         raise PackageError(f"no usable '## Version:' line in the .toc: {version!r}")
-    lines = changelog_lines((Path(root) / "CHANGELOG.md").read_text(encoding="utf-8"), version)
+    lines = changelog_lines((Path(root) / "addon" / "CHANGELOG.md").read_text(encoding="utf-8"), version)
 
     dest = Path(out) / ADDON_NAME
     if dest.exists():

@@ -48,6 +48,10 @@ def test_urls_are_derived_from_one_repo():
     assert app_info.RELEASES_URL.startswith(app_info.REPO_URL)
 
 
+def test_the_curseforge_page_of_the_addon_is_one_https_address():
+    assert app_info.CURSEFORGE_URL == "https://www.curseforge.com/wow/addons/stattracker"
+
+
 def test_site_url_is_the_published_landing_page():
     assert app_info.SITE_URL == "https://wewoc.github.io/WoW-StatTracker/"
     assert app_info.SITE_URL.startswith("https://") and app_info.SITE_URL.endswith("/")

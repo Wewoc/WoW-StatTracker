@@ -44,7 +44,7 @@ QTabWidget::pane {{ border: none; background: {c['bg']}; }}
 QTabBar::tab {{ background: {c['bg3']}; color: {c['text2']}; padding: 6px 18px; border: none; }}
 QTabBar::tab:selected {{ background: {c['bg']}; color: {c['text']}; border-bottom: 2px solid {c['accent']}; }}
 QTabBar::tab:hover {{ color: {c['text']}; }}
-QPlainTextEdit#log {{ background: {c['bg0']}; color: {c['text']}; border: none; padding: 4px; font-family: Consolas; font-size: 9pt; }}
+QTextBrowser#log {{ background: {c['bg0']}; color: {c['text']}; border: none; padding: 4px; font-family: Consolas; font-size: 9pt; }}
 QStatusBar {{ background: {c['bg3']}; color: {c['text2']}; }}
 QStatusBar::item {{ border: none; }}
 QScrollBar:vertical {{ background: {c['bg']}; width: 10px; }}

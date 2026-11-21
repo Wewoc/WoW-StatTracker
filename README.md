@@ -20,7 +20,7 @@ StatTracker reads the **game statistics** of your World of Warcraft characters t
 1. Download `StatTracker.zip` from the latest release and unpack it into **your own folder**, for example `Documents\StatTracker`. Do not use `C:\Program Files`: the program keeps its data next to itself and needs write access. The download is about 160 MB because the program carries its own browser engine to show the page.
 2. Start `StatTracker.exe`. Windows SmartScreen may warn because the file is not code-signed: *More info -> Run anyway*.
 3. Choose your **WoW folder** (the folder that contains `_retail_`) and the account.
-4. In the *Addon* group choose the game version and click **Install / update addon**.
+4. In the *Addon* group choose the game version and click **Install / update addon**. The addon is also on [CurseForge](https://www.curseforge.com/wow/addons/stattracker), where its updates arrive through an addon manager; the button never overwrites a newer installed addon with the older copy that comes with the program.
 5. In game, once per character: `/statscan`. The scan takes about 10 seconds (spread out so the game does not freeze): chat shows "Stat sync started", then "Stat sync done" and "Played time ... recorded". Wait for that, then `/reload` (or log out). The addon also scans automatically 10 seconds after login.
 6. **Read + open**: it reads the data of every enabled game version one after the other and shows the pages in the *Page* tab of the window (choose the game version above) - or **Export to Excel**.
 

@@ -159,6 +159,65 @@ def test_install_then_uninstall_through_the_window(window, env, monkeypatch):
     assert "Addon: not installed" in window.status_text()
 
 
+def test_the_install_button_leaves_a_newer_addon_alone_and_says_so(window, env):
+    window.on_install()
+    toc = wow_install.addon_dir(env.wow, "_retail_") / "StatTracker.toc"
+    bundled = wow_install.toc_version(toc)
+    toc.write_text(toc.read_text(encoding="utf-8").replace(f"## Version: {bundled}", "## Version: 99.0.0"), encoding="utf-8")
+    before = toc.read_bytes()
+    window.clear_log()
+    window.on_install()
+    text = window.log.toPlainText()
+    assert f"Addon left as it is: the installed version 99.0.0 is newer than the bundled {bundled}" in text
+    assert "Addon copied" not in text and "Interface number" not in text and "reload" not in text
+    assert toc.read_bytes() == before and "Addon: version 99.0.0" in window.status_text()
+    assert f"The addon is also on CurseForge, where updates arrive: {app_info.CURSEFORGE_URL}" in text       # the link comes with this outcome too
+
+
+def _log_anchors(window):
+    """The hrefs of the links in the log (the html of a QTextBrowser lists them)."""
+    import html
+    import re
+    return [html.unescape(h) for h in re.findall(r"<a href=\"([^\"]*)\"", window.log.toHtml())]
+
+
+def test_the_install_button_names_the_curseforge_page_as_a_link_that_opens_in_the_browser(window, env, monkeypatch):
+    opened = []
+    monkeypatch.setattr(main_window.QDesktopServices, "openUrl", lambda url: opened.append(url.toString()))
+    window.clear_log()
+    window.on_install()
+    text = window.log.toPlainText()
+    assert text.count(app_info.CURSEFORGE_URL) == 1 and "The addon is also on CurseForge, where updates arrive:" in text
+    assert text.index("Addon copied") < text.index("CurseForge")
+    assert _log_anchors(window) == [app_info.CURSEFORGE_URL]
+    window.log.anchorClicked.emit(QUrl(app_info.CURSEFORGE_URL))
+    assert opened == [app_info.CURSEFORGE_URL]
+
+
+def test_a_click_on_any_other_link_in_the_log_opens_nothing(window, monkeypatch):
+    opened = []
+    monkeypatch.setattr(main_window.QDesktopServices, "openUrl", lambda url: opened.append(url.toString()))
+    for other in ("https://example.org/", "http://www.curseforge.com/wow/addons/stattracker", "file:///C:/Windows/notepad.exe"):
+        window.log.anchorClicked.emit(QUrl(other))
+    assert opened == []
+
+
+def test_the_log_makes_a_link_only_where_it_is_asked_to_and_keeps_other_text_escaped(window):
+    window.clear_log()
+    window.write("a <b>tag</b> https://example.org/?a=1&b=2")                       # no link asked for: plain text, escaped
+    window.write("see https://example.org/?a=1&b=2 here", link="https://example.org/?a=1&b=2")
+    window.write("no address here", link="https://example.org/")                    # a link that is not in the text is ignored
+    assert _log_anchors(window) == ["https://example.org/?a=1&b=2"]
+    text = window.log.toPlainText()
+    assert "a <b>tag</b> https://example.org/?a=1&b=2" in text and "no address here" in text
+
+
+def test_nothing_about_curseforge_is_written_without_a_click_on_install(window):
+    window.clear_log()
+    window.update_status()
+    assert "CurseForge" not in window.log.toPlainText()
+
+
 def test_the_status_shows_a_wrong_interface_number_until_reinstalled(window, env):
     window.on_install()
     toc = wow_install.addon_dir(env.wow, "_retail_") / "StatTracker.toc"

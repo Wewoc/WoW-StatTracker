@@ -185,8 +185,13 @@ def interface_number(version):
     return a * 10000 + b * 100 + c
 
 
+def _read_toc(toc_path, errors="replace"):
+    """The text of a .toc file. A byte order mark (some editors write one) is dropped: it would hide a '## ' key in the first line."""
+    return Path(toc_path).read_text(encoding="utf-8-sig", errors=errors)
+
+
 def patch_toc_interface(toc_path, number):
-    text = toc_path.read_text(encoding="utf-8")
+    text = _read_toc(toc_path, errors="strict")                 # the file is written back: no replacement characters into it
     new, n = re.subn(r"(?m)^## Interface:.*$", f"## Interface: {number}", text, count=1)
     if n != 1:
         raise RuntimeError(t("err_toc_interface", path=toc_path))
@@ -196,7 +201,7 @@ def patch_toc_interface(toc_path, number):
 def toc_version(toc_path):
     """The '## Version:' value of a .toc file, or None."""
     try:
-        text = Path(toc_path).read_text(encoding="utf-8", errors="replace")
+        text = _read_toc(toc_path)
     except OSError:
         return None
     m = re.search(r"(?m)^## Version:\s*(\S+)", text)
@@ -206,7 +211,7 @@ def toc_version(toc_path):
 def toc_interface(toc_path):
     """The numbers of the '## Interface:' line of a .toc file (it may list several), or None."""
     try:
-        text = Path(toc_path).read_text(encoding="utf-8", errors="replace")
+        text = _read_toc(toc_path)
     except OSError:
         return None
     m = re.search(r"(?m)^## Interface:[ \t]*([\d, \t]+)", text)
@@ -227,6 +232,9 @@ class InstallResult:
     number: int = None      # interface number written into the copy (None = not set)
     version: str = None
     product: str = None
+    kept: bool = False              # True = the installed addon is newer than the source: nothing was copied
+    installed_version: str = None   # '## Version:' of the installed addon (set with kept)
+    bundled_version: str = None     # '## Version:' of the source (set with kept)
 
 
 def addon_dir(root, variant):
@@ -235,7 +243,10 @@ def addon_dir(root, variant):
 
 def install_addon(root, variant, addon_src=None):
     """Copies the addon to <root>/<variant>/Interface/AddOns and sets the interface
-    number in the COPY from .build.info. Raises RuntimeError (translated message)."""
+    number in the COPY from .build.info. Raises RuntimeError (translated message).
+    Protection (the addon may also come from an addon manager): an installed addon whose version is strictly newer than the
+    source (both plain dotted numbers) is left alone, nothing is copied (result.kept); the same or an older version, an
+    unreadable version or no installed addon are copied as before (so a damaged addon can still be repaired)."""
     src = Path(addon_src) if addon_src else paths.addon_src()
     if not (src / "StatTracker.toc").is_file() or not (src / "StatTracker.lua").is_file():
         raise RuntimeError(t("err_addon_source", path=src))
@@ -243,6 +254,10 @@ def install_addon(root, variant, addon_src=None):
     if not addons.is_dir():
         raise RuntimeError(t("err_addons_dir", path=addons))
     dest = addons / ADDON_NAME
+    installed = toc_version(dest / "StatTracker.toc")
+    bundled = toc_version(src / "StatTracker.toc")
+    if installed and bundled and app_info.is_newer(installed, bundled):
+        return InstallResult(dest=dest, kept=True, installed_version=installed, bundled_version=bundled)
     shutil.copytree(src, dest, dirs_exist_ok=True)
     for name in ("StatTracker.toc", "StatTracker.lua"):  # check: copy exists and has the same size
         if (dest / name).stat().st_size != (src / name).stat().st_size:

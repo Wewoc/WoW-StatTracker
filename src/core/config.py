@@ -223,7 +223,7 @@ def load():
     if not path.is_file():
         return defaults(), None
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))      # -sig: a file saved with a BOM (some editors) is still fine
         if not isinstance(raw, dict):
             raise ValueError("not a JSON object")
     except (OSError, ValueError) as exc:

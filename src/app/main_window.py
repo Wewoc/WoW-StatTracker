@@ -23,8 +23,8 @@ from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QCompleter, QFileDialog, QGridLayout, QGroupBox,
-                             QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
-                             QStackedWidget, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
+                             QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea, QSpinBox,
+                             QStackedWidget, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
 
 from app import actions, dialogs, page_bridge, qt_style
 from app.suggest_list import ShowAllOnClick, SuggestionDelegate
@@ -412,9 +412,11 @@ class MainWindow(QMainWindow):
         clear.clicked.connect(self.clear_log)
         bar.addWidget(clear)
         lay.addLayout(bar)
-        self.log = QPlainTextEdit()
+        self.log = QTextBrowser()        # a browser, so a link in a line can be clicked and copied (right click: copy link location)
         self.log.setObjectName("log")
         self.log.setReadOnly(True)
+        self.log.setOpenLinks(False)     # nothing is opened by the widget itself: _log_link_clicked opens only the project page of the addon
+        self.log.anchorClicked.connect(self._log_link_clicked)
         self.log.setMinimumHeight(140)
         lay.addWidget(self.log, 1)
         return lay
@@ -1307,11 +1309,22 @@ class MainWindow(QMainWindow):
         self.run_in_thread(lambda: actions.rebuild_page(variant, top5, list(rules)), lambda result: self._page_rebuilt(result, variant), t("status_busy_top5"))
 
     # ----------------------------------------------------------------- log and status
-    def write(self, text, tag=None):
+    def write(self, text, tag=None, link=None):
+        """One line into the log. `link` (an address that stands in `text`) is shown as a link that can be clicked and copied."""
         line = f"[{datetime.now():%H:%M:%S}] {text}"
         self._log_lines.append((line, tag))
         color = {"err": self.colors["red"], "ok": self.colors["green"]}.get(tag, self.colors["text"])
-        self.log.appendHtml(f"<span style='color:{color}; white-space:pre-wrap'>{html.escape(line)}</span>")
+        body = html.escape(line)
+        if link and html.escape(link) in body:
+            href = link.replace("'", "%27").replace('"', "%22")          # Qt takes an attribute as it is (no &amp; decoding), only the quote must not occur
+            anchor = f"<a href='{href}' style='color:{theme.readable_accent(self.colors)}'>{html.escape(link)}</a>"
+            body = body.replace(html.escape(link), anchor, 1)
+        self.log.append(f"<span style='color:{color}; white-space:pre-wrap'>{body}</span>")
+
+    def _log_link_clicked(self, url):
+        """A click on a link in the log: only the project page of the addon is opened (in the browser of the system)."""
+        if url.toString() == app_info.CURSEFORGE_URL:
+            QDesktopServices.openUrl(url)
 
     def clear_log(self):
         self._log_lines.clear()
@@ -1505,12 +1518,18 @@ class MainWindow(QMainWindow):
             dialogs.error(self, t("err_install_failed", error=e))
             return
         self.save()
+        if res.kept:
+            self.write(t("log_install_kept", installed=res.installed_version, bundled=res.bundled_version, dest=res.dest))
+            self.write(t("log_install_curseforge", url=app_info.CURSEFORGE_URL), link=app_info.CURSEFORGE_URL)
+            self.update_status()
+            return
         self.write(t("log_install_ok", dest=res.dest), "ok")
         if res.number is not None:
             self.write(t("log_interface_set", number=res.number, version=res.version, product=res.product), "ok")
         else:
             self.write(t("log_interface_unset", product=res.product), "err")
         self.write(t("log_install_reload"))
+        self.write(t("log_install_curseforge", url=app_info.CURSEFORGE_URL), link=app_info.CURSEFORGE_URL)
         self.update_status()
 
     def on_uninstall(self):

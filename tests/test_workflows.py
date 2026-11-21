@@ -4,6 +4,7 @@
 # release only the publish job may write (the build job runs the packages and the tests, so it must not be able to publish).
 # Text checks only (no YAML library); the real run is only seen on GitHub.
 
+import importlib.util
 import re
 from pathlib import Path
 
@@ -11,6 +12,8 @@ WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 CI = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
 RELEASE = (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
 ADDON = (WORKFLOWS / "addon-release.yml").read_text(encoding="utf-8")
+# The workflow of the repository StatTracker-Addon: it is kept here (compiler/addon-repo/) and copied there by hand, so it is not in WORKFLOWS.
+ADDON_REPO = (WORKFLOWS.parent.parent / "compiler" / "addon-repo" / "addon-release.yml").read_text(encoding="utf-8")
 
 
 def uses_lines(text):
@@ -25,7 +28,7 @@ def job_text(text, job):
 
 
 def test_every_action_is_pinned_to_a_commit_with_its_version_in_a_comment():
-    for name, text in (("ci.yml", CI), ("release.yml", RELEASE), ("addon-release.yml", ADDON)):
+    for name, text in (("ci.yml", CI), ("release.yml", RELEASE), ("addon-release.yml", ADDON), ("addon-repo/addon-release.yml", ADDON_REPO)):
         lines = uses_lines(text)
         assert lines, name
         for line in lines:
@@ -124,3 +127,82 @@ def test_the_publish_job_checks_the_checksum_before_it_publishes():
     publish = job_text(RELEASE, "publish")
     assert publish.index("checksum must match") < publish.index("action-gh-release")
     assert "needs: build" in publish
+
+
+# --- the workflow of the repository StatTracker-Addon (compiler/addon-repo/addon-release.yml) ---
+
+def addon_zip_module():
+    path = ROOT / "compiler" / "addon_zip.py"
+    spec = importlib.util.spec_from_file_location("addon_zip_for_workflow_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_addon_repo_workflow_starts_by_hand_only_and_has_no_rights_by_default():
+    top = ADDON_REPO.split("jobs:")[0]
+    assert re.search(r"^permissions: \{\}$", top, re.M)
+    assert re.search(r"^on:\n  workflow_dispatch:\n", top, re.M)
+    assert not re.search(r"^  (push|pull_request|pull_request_target|schedule|release|workflow_run):", top, re.M)
+    publish_input = re.search(r"^      publish:\n(.*?)(?=^      \w+:\n|^permissions)", top, re.M | re.S).group(1)
+    assert "type: boolean" in publish_input and "default: false" in publish_input     # a start without the tick only builds
+    assert re.search(r"^concurrency:\n  group: addon-release-\$\{\{ inputs.tag \}\}\n  cancel-in-progress: false\n", top, re.M)
+
+
+def test_in_the_addon_repo_workflow_only_the_publish_job_writes_and_only_when_ticked():
+    assert ADDON_REPO.count("contents: write") == 1 and ": write" not in job_text(ADDON_REPO, "build")
+    build, publish = job_text(ADDON_REPO, "build"), job_text(ADDON_REPO, "publish")
+    assert "contents: read" in build and "contents: write" in publish
+    assert "needs: build" in publish and "if: ${{ inputs.publish }}" in publish
+    assert "action-gh-release" in publish and "action-gh-release" not in build
+
+
+def test_the_addon_repo_workflow_has_no_secret_no_package_install_and_the_tag_input_only_reaches_scripts_through_env():
+    assert "secrets." not in ADDON_REPO and "GITHUB_OAUTH" not in ADDON_REPO                             # no token of ours; the release uses the token of the run
+    assert "pip install" not in ADDON_REPO and "setup-python" not in ADDON_REPO     # addon_zip.py is standard library only
+    for line in ADDON_REPO.splitlines():
+        if "inputs." not in line or line.lstrip().startswith("#"):
+            continue
+        assert re.fullmatch(r"\s*(TAG: \$\{\{ inputs\.tag \}\}|group: addon-release-\$\{\{ inputs\.tag \}\}|ref: refs/tags/\$\{\{ inputs\.tag \}\}"
+                            r"|if: \$\{\{ inputs\.publish \}\})", line), line      # never inside the text of a command
+
+
+def test_the_addon_repo_workflow_checks_the_tag_before_the_checkout_and_takes_no_credentials_along():
+    build = job_text(ADDON_REPO, "build")
+    assert build.index("must have the form addon-vX.Y.Z") < build.index("actions/checkout") < build.index("addon_zip.py")
+    assert r"^addon-v[0-9]+(\.[0-9]+)+$" in step_text(ADDON_REPO, "must have the form")
+    checkout = build[build.index("actions/checkout"):build.index("- name: Build the files")]
+    assert "persist-credentials: false" in checkout and "ref: refs/tags/${{ inputs.tag }}" in checkout
+    assert "repository: ${{ vars.ADDON_SOURCE_REPO || 'Wewoc/WoW-StatTracker' }}" in checkout     # the variable is only set in a test copy
+    assert 'python3 compiler/addon_zip.py --out dist --tag "$TAG" --commit "$(git rev-parse HEAD)"' in step_text(ADDON_REPO, "Build the files")
+
+
+def test_the_addon_repo_workflow_checks_the_checksum_and_the_name_before_it_publishes_and_never_overwrites():
+    publish = job_text(ADDON_REPO, "publish")
+    assert publish.index("checksum must match") < publish.index("Name of the release") < publish.index("No release of this name may exist") < publish.index("action-gh-release")
+    assert r"^addon-v[0-9]+(\.[0-9]+)+$" in step_text(ADDON_REPO, "Name of the release")      # the tag is checked in this job again
+    assert 'RELEASE_TAG=v${TAG#addon-v}' in step_text(ADDON_REPO, "Name of the release")
+    assert 'gh release view "$RELEASE_TAG"' in step_text(ADDON_REPO, "No release of this name may exist")
+    assert "exit 1" in step_text(ADDON_REPO, "No release of this name may exist")
+    assert "tag_name: ${{ env.RELEASE_TAG }}" in publish and "fail_on_unmatched_files: true" in publish
+
+
+def test_the_file_names_in_the_addon_repo_workflow_are_those_of_addon_zip():
+    zip_module = addon_zip_module()
+    build, publish = job_text(ADDON_REPO, "build"), job_text(ADDON_REPO, "publish")
+    for name in (zip_module.ZIP_NAME, zip_module.CHECKSUM_NAME, zip_module.NOTES_NAME, zip_module.RELEASE_NAME_FILE):
+        assert f"dist/{name}" in build, name                          # the artifact holds all four files
+    for name in (zip_module.ZIP_NAME, zip_module.CHECKSUM_NAME):
+        assert f"dist/{name}" in publish, name                        # the release carries the ZIP and its checksum
+    assert f"dist/{zip_module.NOTES_NAME}" in publish and f"dist/{zip_module.RELEASE_NAME_FILE}" in publish
+    assert zip_module.SOURCE_URL == "https://github.com/Wewoc/WoW-StatTracker"
+    assert "'Wewoc/WoW-StatTracker'" in ADDON_REPO                    # the default source is the main repository
+
+
+def test_the_readme_for_the_addon_repo_names_the_files_and_the_curseforge_page():
+    from core import app_info
+    readme = (ROOT / "compiler" / "addon-repo" / "README.md").read_text(encoding="utf-8")
+    zip_module = addon_zip_module()
+    assert app_info.CURSEFORGE_URL in readme
+    assert zip_module.ZIP_NAME in readme and zip_module.CHECKSUM_NAME in readme
+    assert "https://github.com/Wewoc/WoW-StatTracker" in readme

@@ -1,0 +1,112 @@
+name: addon-release
+
+# This file lives in compiler/addon-repo/ of the main repository (Wewoc/WoW-StatTracker) and is copied BY HAND to
+# .github/workflows/ of the repository StatTracker-Addon. It is not a workflow of the main repository.
+#
+# Started by hand only (Actions -> addon-release -> Run workflow): enter the tag addon-vX.Y.Z of the main repository.
+#   build   (read-only, no secrets): checks out the main repository at that tag and builds the files with compiler/addon_zip.py
+#           (StatTracker-addon.zip, its .sha256, the release notes and name; they stay as an artifact).
+#   publish (the only job that may write; only when "publish" is ticked): checks the checksum again and makes the release vX.Y.Z.
+#           A release of that name that exists is never changed: the run stops (a fix is a new version).
+# The tag input only ever reaches a script through env:, never inside the text of a command.
+# Variable ADDON_SOURCE_REPO (Settings -> Variables) is only for a test copy of the repository (value: the test repository);
+# it stays empty in StatTracker-Addon. tests/test_workflows.py keeps the rules of this file.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag of the main repository, addon-vX.Y.Z"
+        required: true
+        type: string
+      publish:
+        description: "Make the release (unticked: only build, the files stay as an artifact for 7 days)"
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: addon-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: The tag must have the form addon-vX.Y.Z
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! [[ "$TAG" =~ ^addon-v[0-9]+(\.[0-9]+)+$ ]]; then
+            echo "::error::'$TAG' is not of the form addon-vX.Y.Z"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ vars.ADDON_SOURCE_REPO || 'Wewoc/WoW-StatTracker' }}
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - name: Build the files
+        env:
+          TAG: ${{ inputs.tag }}
+        run: python3 compiler/addon_zip.py --out dist --tag "$TAG" --commit "$(git rev-parse HEAD)"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: addon-release-files
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            dist/StatTracker-addon.zip
+            dist/StatTracker-addon.zip.sha256
+            dist/release-notes.md
+            dist/release-name.txt
+
+  publish:
+    needs: build
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: addon-release-files
+          path: dist
+      - name: The checksum must match the ZIP
+        shell: python
+        run: |
+          import hashlib, sys
+          expected = open("dist/StatTracker-addon.zip.sha256", encoding="ascii").read().split()[0].lower()
+          actual = hashlib.sha256(open("dist/StatTracker-addon.zip", "rb").read()).hexdigest()
+          if expected != actual:
+              sys.exit(f"checksum mismatch: {expected} != {actual}")
+      - name: Name of the release and the title
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! [[ "$TAG" =~ ^addon-v[0-9]+(\.[0-9]+)+$ ]]; then
+            echo "::error::'$TAG' is not of the form addon-vX.Y.Z"
+            exit 1
+          fi
+          echo "RELEASE_TAG=v${TAG#addon-v}" >> "$GITHUB_ENV"
+          echo "RELEASE_NAME=$(tr -d '\r' < dist/release-name.txt)" >> "$GITHUB_ENV"
+      - name: No release of this name may exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            echo "::error::The release $RELEASE_TAG exists already and is never changed (a fix is a new version)"
+            exit 1
+          fi
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_NAME }}
+          body_path: dist/release-notes.md
+          fail_on_unmatched_files: true
+          files: |
+            dist/StatTracker-addon.zip
+            dist/StatTracker-addon.zip.sha256

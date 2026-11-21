@@ -39,6 +39,28 @@ def test_corrupt_file_is_moved_aside_not_overwritten(instance):
     assert (path.parent / "config.json.broken").read_text(encoding="utf-8") == "{ not json"
 
 
+def test_a_file_with_a_byte_order_mark_is_read_not_moved_aside(instance):
+    """Some editors (older Notepad) save UTF-8 with a BOM; the file is fine and must keep its settings."""
+    path = config.config_path()
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"\xef\xbb\xbf" + json.dumps({"language": "de", "check_updates": False}).encode("utf-8"))
+    cfg, warning = config.load()
+    assert warning is None and cfg["language"] == "de" and cfg["check_updates"] is False
+    assert path.exists() and not (path.parent / "config.json.broken").exists()
+    config.save(cfg)
+    assert not path.read_bytes().startswith(b"\xef\xbb\xbf")                         # the next save writes without a BOM
+    assert config.load() == (cfg, None)
+
+
+def test_a_broken_file_with_a_byte_order_mark_is_still_moved_aside(instance):
+    path = config.config_path()
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"\xef\xbb\xbf{ not json")
+    cfg, warning = config.load()
+    assert warning and cfg["enabled_variants"] == ["_retail_"]
+    assert not path.exists() and (path.parent / "config.json.broken").exists()
+
+
 def test_invalid_values_fall_back_to_defaults(instance):
     path = config.config_path()
     path.parent.mkdir(parents=True)
